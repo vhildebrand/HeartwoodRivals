@@ -1,0 +1,18 @@
+# docker-compose.yml
+version: '3.8'
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=heartwood_user
+      - POSTGRES_PASSWORD=heartwood_password
+      - POSTGRES_DB=heartwood_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
