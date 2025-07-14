@@ -1,5 +1,4 @@
 # docker-compose.yml
-version: '3.8'
 services:
   # PostgreSQL Database
   postgres:
@@ -13,6 +12,40 @@ services:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # Web API Server
+  web-api:
+    build:
+      context: ./web-api
+    ports:
+      - '3000:3000' # Expose API on port 3000
+    volumes:
+      - ./web-api:/usr/src/app
+    depends_on:
+      - postgres
+
+  # Game Server (Colyseus)
+  game-server:
+    build:
+      context: ./game-server
+    ports:
+      - '2567:2567' # Default Colyseus port
+    volumes:
+      - ./game-server:/usr/src/app
+    depends_on:
+      - postgres
+
+  # Client (Phaser)
+  client:
+    build:
+      context: ./client
+    ports:
+      - '5173:5173' # Default Vite port
+    volumes:
+      - ./client:/usr/src/app
+      - /usr/src/app/node_modules # Prevents local node_modules from overwriting container's
+
 
 volumes:
   postgres_data:
