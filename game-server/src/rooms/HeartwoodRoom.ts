@@ -1,6 +1,8 @@
 import { Room, Client } from "colyseus";
 import { GameState, Player } from "./schema";
-import { isTileWalkable, pixelToTile, tileToPixel, TILE_SIZE } from "../maps/townCollision";
+import { MapManager } from "../maps/MapManager";
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Direction constants
 const DIRECTIONS = {
@@ -11,6 +13,7 @@ const DIRECTIONS = {
 };
 
 // Movement deltas for each direction
+const TILE_SIZE = 16;
 const MOVEMENT_DELTAS = {
     up: { x: 0, y: -TILE_SIZE },
     down: { x: 0, y: TILE_SIZE },
@@ -20,6 +23,8 @@ const MOVEMENT_DELTAS = {
 
 export class HeartwoodRoom extends Room<GameState> {
     maxClients = 10;
+    private mapManager!: MapManager;
+    private readonly MAP_ID = 'large_town';
 
     onJoin(client: Client, options: any) {
         console.log(`Player ${client.sessionId} joined the heartwood_room`);
@@ -30,9 +35,9 @@ export class HeartwoodRoom extends Room<GameState> {
         player.name = options.name || `Player_${client.sessionId.substring(0, 8)}`;
         
         // Set starting position (center of map, safe area)
-        const startTileX = 15; // Center of 30-tile wide map
-        const startTileY = 5;  // Safe area in upper portion
-        const startPixel = tileToPixel(startTileX, startTileY);
+        const startTileX = 50; // Center of 100-tile wide map
+        const startTileY = 10;  // Safe area in upper portion
+        const startPixel = this.mapManager.tileToPixel(this.MAP_ID, startTileX, startTileY);
         
         player.x = startPixel.pixelX;
         player.y = startPixel.pixelY;
@@ -49,9 +54,21 @@ export class HeartwoodRoom extends Room<GameState> {
     onCreate(options: any) {
         console.log("HeartwoodRoom created!", options);
         
+        // Initialize MapManager and load the large map
+        this.mapManager = MapManager.getInstance();
+        this.loadMap();
+        
         // Initialize room state with proper schema
         this.setState(new GameState());
         this.state.timestamp = Date.now();
+        
+        // Update state with map dimensions
+        const mapData = this.mapManager.getMap(this.MAP_ID);
+        if (mapData) {
+            this.state.mapWidth = mapData.width;
+            this.state.mapHeight = mapData.height;
+            this.state.tileSize = mapData.tileWidth;
+        }
         
         // Register message handlers
         this.onMessage("move", (client: Client, message: { direction: string }) => {
@@ -81,6 +98,25 @@ export class HeartwoodRoom extends Room<GameState> {
         console.log("HeartwoodRoom: GameState initialized");
     }
 
+    private loadMap() {
+        try {
+            // Load the large map data
+            const mapPath = path.join(__dirname, '../maps/large_test_map.json');
+            const mapData = JSON.parse(fs.readFileSync(mapPath, 'utf8'));
+            
+            // Load the map into the MapManager
+            this.mapManager.loadMap(this.MAP_ID, mapData);
+            
+            console.log(`HeartwoodRoom: Loaded map ${this.MAP_ID} with dimensions ${mapData.width}x${mapData.height}`);
+        } catch (error) {
+            console.error('Failed to load map:', error);
+            // Fallback to default small map dimensions
+            this.state.mapWidth = 30;
+            this.state.mapHeight = 20;
+            this.state.tileSize = 16;
+        }
+    }
+
     private handlePlayerMovement(client: Client, message: { direction: string }) {
         const player = this.state.players.get(client.sessionId);
         
@@ -103,10 +139,10 @@ export class HeartwoodRoom extends Room<GameState> {
         const newY = player.y + delta.y;
         
         // Convert to tile coordinates for collision checking
-        const newTile = pixelToTile(newX, newY);
+        const newTile = this.mapManager.pixelToTile(this.MAP_ID, newX, newY);
         
         // Check if the new position is walkable
-        if (isTileWalkable(newTile.tileX, newTile.tileY)) {
+        if (this.mapManager.isTileWalkable(this.MAP_ID, newTile.tileX, newTile.tileY)) {
             // Update player position and velocity for smooth movement
             player.x = newX;
             player.y = newY;
@@ -235,8 +271,8 @@ export class HeartwoodRoom extends Room<GameState> {
         const newY = player.y + combinedVelocityY;
         
         // Check collision for new position
-        const newTile = pixelToTile(newX, newY);
-        if (isTileWalkable(newTile.tileX, newTile.tileY)) {
+        const newTile = this.mapManager.pixelToTile(this.MAP_ID, newX, newY);
+        if (this.mapManager.isTileWalkable(this.MAP_ID, newTile.tileX, newTile.tileY)) {
             player.x = newX;
             player.y = newY;
         } else {

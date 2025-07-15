@@ -2,6 +2,7 @@ import { Scene } from "phaser";
 import { Client } from "colyseus.js";
 import { InputManager } from "../input/InputManager";
 import { PlayerController } from "../controllers/PlayerController";
+import { MapManager } from "../maps/MapManager";
 
 export class GameScene extends Scene {
     private client: Client;
@@ -33,11 +34,11 @@ export class GameScene extends Scene {
     private createWorld() {
         // Create the tilemap object
         console.log("Creating tilemap...");
-        const map = this.make.tilemap({ key: 'town' });
+        const map = this.make.tilemap({ key: 'large_town' });
         
         // Add the tileset to the map
         console.log("Adding tileset...");
-        const tileset = map.addTilesetImage('cute_fantasy', 'cute_fantasy', 16, 16);
+        const tileset = map.addTilesetImage('tileset', 'tileset', 16, 16);
         
         if (!tileset) {
             console.error("Failed to load tileset");
@@ -52,8 +53,16 @@ export class GameScene extends Scene {
         // Set up camera
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         
-        console.log("GameScene: Map loaded with available layers");
+        console.log("GameScene: Large map loaded with available layers");
         console.log("Available layers:", map.layers.map(layer => layer.name));
+        console.log(`Map dimensions: ${map.widthInPixels}x${map.heightInPixels} pixels (${map.width}x${map.height} tiles)`);
+        
+        // Get the MapManager to access collision data
+        const mapManager = MapManager.getInstance();
+        const mapData = mapManager.getMap('large_town');
+        if (mapData) {
+            console.log(`MapManager: Loaded map with ${mapData.width}x${mapData.height} tiles`);
+        }
     }
 
     private initializeControllers() {
