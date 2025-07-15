@@ -1,8 +1,8 @@
 # docker-compose.yml
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database with pgvector support
   postgres:
-    image: postgres:14-alpine
+    image: pgvector/pgvector:pg14
     restart: always
     environment:
       - POSTGRES_USER=heartwood_user

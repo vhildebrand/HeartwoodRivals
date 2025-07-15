@@ -1,6 +1,7 @@
 import { Room, Client } from "colyseus";
 import { GameState, Player } from "./schema";
 import { MapManager } from "../maps/MapManager";
+import { createClient } from 'redis';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -28,6 +29,8 @@ export class HeartwoodRoom extends Room<GameState> {
     private readonly MAP_ID = 'large_town';
     private gameLoopInterval: NodeJS.Timeout | null = null;
     private readonly GAME_LOOP_RATE = 60; // 60 FPS server updates
+    private redisClient: any; // Redis client for publishing player actions
+    private playerLastTilePositions: Map<string, { x: number; y: number }> = new Map();
 
     onJoin(client: Client, options: any) {
         console.log(`Player ${client.sessionId} joined the heartwood_room`);
@@ -79,11 +82,22 @@ export class HeartwoodRoom extends Room<GameState> {
         // Add player to state
         this.state.players.set(client.sessionId, player);
         
+        // Publish player join action for agent observation
+        this.publishPlayerAction({
+            player_id: client.sessionId,
+            action_type: 'join',
+            location: `${startTileX},${startTileY}`,
+            data: { name: player.name }
+        });
+        
         console.log(`Player ${player.name} spawned at tile (${startTileX}, ${startTileY}), pixel (${player.x}, ${player.y})`);
     }
 
     onCreate(options: any) {
         console.log("HeartwoodRoom created!", options);
+        
+        // Initialize Redis client for agent observations
+        this.initializeRedis();
         
         // Initialize MapManager and load the large map
         this.mapManager = MapManager.getInstance();
@@ -296,8 +310,69 @@ export class HeartwoodRoom extends Room<GameState> {
         // - Information display
     }
 
+    private async initializeRedis() {
+        try {
+            this.redisClient = createClient({
+                url: process.env.REDIS_URL || 'redis://redis:6379'
+            });
+            
+            await this.redisClient.connect();
+            console.log('✅ Redis connected in HeartwoodRoom - agent observations enabled');
+        } catch (error) {
+            console.error('❌ Redis connection failed:', error);
+            console.log('⚠️  Game will continue without agent observations');
+            this.redisClient = null;
+        }
+    }
+
+    private async publishPlayerAction(action: {
+        player_id: string;
+        action_type: string;
+        location: string;
+        target?: string;
+        data?: any;
+    }) {
+        if (!this.redisClient) {
+            // Silently skip if Redis is not available
+            return;
+        }
+        
+        try {
+            const actionData = {
+                ...action,
+                timestamp: new Date()
+            };
+            
+            await this.redisClient.publish('player_actions', JSON.stringify(actionData));
+        } catch (error) {
+            console.error('Error publishing player action:', error);
+            // Don't break the game if Redis fails
+        }
+    }
+
+    private publishPlayerMovement(playerId: string, tileX: number, tileY: number) {
+        // Publish movement event for agent observation system
+        this.publishPlayerAction({
+            player_id: playerId,
+            action_type: 'move',
+            location: `${tileX},${tileY}`
+        });
+    }
+
     onLeave(client: Client, consented: boolean) {
         console.log(`Player ${client.sessionId} left the heartwood_room`);
+        
+        const player = this.state.players.get(client.sessionId);
+        if (player) {
+            // Publish player leave action for agent observation
+            const tilePos = this.mapManager.pixelToTile(this.MAP_ID, player.x, player.y);
+            this.publishPlayerAction({
+                player_id: client.sessionId,
+                action_type: 'leave',
+                location: `${tilePos.tileX},${tilePos.tileY}`,
+                data: { name: player.name }
+            });
+        }
         
         // Remove player from state
         this.state.players.delete(client.sessionId);
@@ -348,9 +423,20 @@ export class HeartwoodRoom extends Room<GameState> {
         // Check collision
         const newTile = this.mapManager.pixelToTile(this.MAP_ID, newX, newY);
         if (this.mapManager.isTileWalkable(this.MAP_ID, newTile.tileX, newTile.tileY)) {
+            // Store previous position
+            const oldX = player.x;
+            const oldY = player.y;
+            
+            // Update player position
             player.x = newX;
             player.y = newY;
             player.lastUpdate = Date.now();
+            
+            // Check if player moved to a new tile and publish movement event
+            const oldTile = this.mapManager.pixelToTile(this.MAP_ID, oldX, oldY);
+            if (oldTile.tileX !== newTile.tileX || oldTile.tileY !== newTile.tileY) {
+                this.publishPlayerMovement(player.id, newTile.tileX, newTile.tileY);
+            }
         } else {
             // Stop movement on collision
             player.velocityX = 0;

@@ -105,8 +105,8 @@ How do you respond?`;
   private async logConversation(characterId: string, npcId: string, playerMessage: string, npcResponse: string) {
     try {
       await this.pool.query(
-        'INSERT INTO conversation_logs (character_id, npc_id, player_message, npc_response) VALUES ($1, $2, $3, $4)',
-        [characterId, npcId, playerMessage, npcResponse]
+        'INSERT INTO conversation_logs (initiator_type, initiator_id, recipient_type, recipient_id, message, response) VALUES ($1, $2, $3, $4, $5, $6)',
+        ['player', characterId, 'agent', npcId, playerMessage, npcResponse]
       );
     } catch (error) {
       console.error('Error logging conversation:', error);

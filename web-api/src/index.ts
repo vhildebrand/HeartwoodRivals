@@ -4,7 +4,10 @@ import dotenv from 'dotenv';
 import { createClient } from 'redis';
 import { Pool } from 'pg';
 import { npcRoutes } from './routes/npcRoutes';
+import { memoryRoutes } from './routes/memoryRoutes';
 import { LLMWorker } from './services/LLMWorker';
+import { AgentMemoryManager } from './services/AgentMemoryManager';
+import { AgentObservationSystem } from './services/AgentObservationSystem';
 import { loadAgents } from './utils/loadAgents';
 
 // Load environment variables
@@ -42,6 +45,15 @@ async function initializeConnections() {
     await redisClient.connect();
     console.log('✅ Redis connected successfully');
     
+    // Initialize Memory Manager
+    const memoryManager = new AgentMemoryManager(pool, redisClient);
+    console.log('✅ Agent Memory Manager initialized');
+    
+    // Initialize Observation System
+    const observationSystem = new AgentObservationSystem(pool, redisClient, memoryManager);
+    await observationSystem.initialize();
+    console.log('✅ Agent Observation System initialized');
+    
     // Initialize LLM Worker
     const llmWorker = new LLMWorker(pool, redisClient);
     await llmWorker.start();
@@ -58,6 +70,7 @@ async function initializeConnections() {
 
 // Routes
 app.use('/npc', npcRoutes(pool, redisClient));
+app.use('/memory', memoryRoutes(pool, redisClient));
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {

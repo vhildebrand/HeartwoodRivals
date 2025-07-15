@@ -1,4 +1,8 @@
 -- db/init.sql
+
+-- Enable pgvector extension for semantic similarity search
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -46,10 +50,10 @@ CREATE TABLE agent_memories (
     emotional_relevance INT DEFAULT 0, -- 1-10 scale
     tags TEXT[], -- For categorization
     related_agents TEXT[], -- Other agents involved
-    related_players UUID[], -- Players involved
+    related_players TEXT[], -- Players involved (supports both UUID and string IDs)
     location VARCHAR(100),
     timestamp TIMESTAMPTZ DEFAULT now(),
-    embedding_id VARCHAR(100) -- Reference to vector DB
+    embedding vector(1536) -- OpenAI embedding vector (1536 dimensions)
 );
 
 -- Agent Relationships (Agent-to-Agent)
@@ -154,3 +158,18 @@ CREATE TABLE agent_states (
     cognitive_load INT DEFAULT 0, -- How much they're thinking about
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Create indexes for efficient memory retrieval
+CREATE INDEX idx_agent_memories_agent_id ON agent_memories(agent_id);
+CREATE INDEX idx_agent_memories_timestamp ON agent_memories(timestamp);
+CREATE INDEX idx_agent_memories_importance ON agent_memories(importance_score);
+CREATE INDEX idx_agent_memories_type ON agent_memories(memory_type);
+
+-- Create vector similarity index for semantic search
+CREATE INDEX idx_agent_memories_embedding ON agent_memories 
+USING ivfflat (embedding vector_cosine_ops)
+WITH (lists = 100);
+
+-- Create composite index for efficient agent-specific queries
+CREATE INDEX idx_agent_memories_agent_time ON agent_memories(agent_id, timestamp DESC);
+CREATE INDEX idx_agent_memories_agent_importance ON agent_memories(agent_id, importance_score DESC);
