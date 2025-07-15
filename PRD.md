@@ -39,41 +39,41 @@ Critical
 
 E02
 
-Autonomous Agent System
+Agent Foundation: Memory & Planning
 
-The full generative agent architecture with memory streams, reflection, planning, and metacognition.
+The base agent architecture with memory streams, retrieval, and goal-oriented planning based on Generative Agents research.
 
 Critical
 
 E03
 
-Agent Memory & Reflection
+Agent Intellect: Reflection & Metacognition
 
-Systems for agent memory storage, retrieval, and reflection generation for emergent personality development.
+Systems for agents to generate high-level insights (reflection) and evaluate their own performance and strategies (metacognition).
 
 Critical
 
 E04
 
-Agent Scheduling & Coordination
+Agent Optimization & Affordability
 
-Dynamic scheduling system that manages agent routines, goals, and inter-agent coordination.
+Systems to reduce LLM costs, including caching routine behaviors (Lifestyle Policy) and compressing social context (Social Memory).
 
-Critical
+High
 
 E05
 
-Multiplayer & Social Infrastructure
+Agent Social Dynamics
 
-The framework that allows 8-16 players to interact in a shared persistent world with autonomous agents.
+Systems enabling autonomous agent-to-agent and player-agent interactions, relationships, and coordination.
 
 High
 
 E06
 
-Agent-Agent Interactions
+Multiplayer & Persistence
 
-Systems enabling natural conversations and relationships between autonomous agents.
+The framework that allows players to interact in a shared, persistent world that evolves even when they are offline.
 
 High
 
@@ -167,9 +167,9 @@ As an agent, I can adapt my behavior based on past experiences.
 
 Agent's personality and preferences evolve based on interactions and outcomes.
 
-E03: Agent Memory & Reflection
+E03: Agent Intellect: Reflection & Metacognition
 
-As a player, I want agents to remember our interactions and grow from their experiences.
+As a player, I want agents to learn from their experiences and get smarter over time.
 
 Story ID
 
@@ -179,21 +179,21 @@ Acceptance Criteria
 
 U3.1
 
-As an agent, I can store and retrieve memories of observations, interactions, and experiences.
+As an agent, I can periodically generate reflections about my recent experiences.
 
-Agent maintains a memory stream of events, searchable by semantic similarity and relevance.
+Agent analyzes recent memories to form insights about relationships, preferences, and patterns. These reflections are stored in the memory stream.
 
 U3.2
 
-As an agent, I can generate reflections about my experiences.
+As an agent, I can evaluate my own performance towards achieving a goal.
 
-Agent periodically analyzes memories to form insights about relationships, preferences, and patterns.
+Agent periodically asks itself "Am I succeeding?" and generates a self-assessment, storing it as a metacognitive memory.
 
 U3.3
 
-As an agent, I can use memories to inform current decisions.
+As an agent, if I am failing at a goal, I can change my strategy.
 
-Agent retrieves relevant memories when making decisions or responding to situations.
+A low performance evaluation triggers a metacognitive process where the agent generates new plans or modifies its core goals.
 
 U3.4
 
@@ -207,9 +207,9 @@ As a player, I can observe agents referencing past interactions in conversations
 
 Agent mentions previous conversations and shared experiences naturally in dialogue.
 
-E04: Agent Scheduling & Coordination
+E04: Agent Optimization & Affordability
 
-As a player, I want to see agents living coordinated lives that feel authentic and social.
+As a system, I need to manage the high cost of running many LLM-powered agents simultaneously.
 
 Story ID
 
@@ -219,33 +219,33 @@ Acceptance Criteria
 
 U4.1
 
-As an agent, I can coordinate activities with other agents.
+As a system, I can cache an agent's common daily routines to reduce LLM calls.
 
-Agent can plan and participate in group activities (meals, festivals, work projects).
+A successful action sequence for a routine (e.g., "make coffee") is stored as a "Lifestyle Policy." The next time, the agent executes the policy directly without calling the LLM.
 
 U4.2
 
-As an agent, I can adjust my schedule based on social opportunities.
+As a system, I can create compressed summaries of social context for conversations.
 
-Agent can interrupt routines for meaningful social interactions or emergent events.
+Before generating dialogue, the system creates a "Social Memory" summary (e.g., "Relationship: Friends, Feeling: Happy, Recent Events: Talked about the festival"). This is used in the prompt instead of many raw memories.
 
 U4.3
 
-As an agent, I can handle conflicts between my goals and social obligations.
+As a system, I can reduce LLM costs while maintaining agent intelligence.
 
-Agent makes decisions about priorities when multiple demands compete for attention.
+Common routines are cached and reused, social context is compressed, and repeated patterns are optimized without sacrificing agent authenticity.
 
 U4.4
 
-As a player, I can observe emergent social events and gatherings.
+As a system, I can scale to support larger agent populations cost-effectively.
 
-Agents spontaneously organize activities and events that create dynamic social situations.
+The affordability systems allow for more agents to run simultaneously within the same budget constraints.
 
 U4.5
 
-As an agent, I can maintain relationships through regular interaction.
+As a player, I cannot distinguish between cached and generated agent behaviors.
 
-Agent prioritizes spending time with other agents based on relationship strength and goals.
+Agent behaviors remain consistent and authentic regardless of whether they're using cached policies or fresh LLM generation.
 
 E05: Multiplayer & Social Infrastructure
 
@@ -401,7 +401,7 @@ Accessibility: Use clear, legible pixel fonts. Ensure color choices have suffici
 
 The game will be free-to-play to maximize audience reach.
 
-Primary: Sale of a "Starlight Pass" (Battle Pass) each season, offering exclusive cosmetic items (clothing, furniture) and convenience items that do not provide a competitive advantage in dating.
+Primary: Sale of a "Heartwood Pass" (Battle Pass) each season, offering exclusive cosmetic items (clothing, furniture) and convenience items that do not provide a competitive advantage in dating.
 
 Secondary: A premium currency used to purchase specific cosmetic items directly.
 

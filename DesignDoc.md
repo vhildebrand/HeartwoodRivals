@@ -4,74 +4,67 @@ Technical Design Document
 
 This document outlines the technical architecture and design for Project Heartwood Valley, a multiplayer 2D simulation game featuring fully autonomous generative agents as NPCs. Drawing from "Generative Agents: Interactive Simulacra of Human Behavior" and "Metacognition is all you need? Using Introspection in Generative Agents to Improve Goal-directed Behavior", this system implements true agentic behavior where NPCs maintain their own schedules, goals, memories, and can interact freely with both players and other NPCs in a persistent small town environment.
 
+The architecture integrates the foundational Memory-Reflection-Planning loop from Generative Agents, the strategic oversight of a Metacognition module, and the cost-saving optimizations of Lifestyle Policies and Social Memory from Affordable Generative Agents.
+
 2. System Architecture Overview
 
-The system is designed as a distributed application with seven primary services: the Client, the Game Server, a Web API Server, the Database Services, the LLM Service, the Agent Management System, and the Agent Memory & Planning System. The architecture supports autonomous agents that can perceive their environment, form memories, reflect on experiences, plan future actions, and interact with both players and other agents.
+The system is a set of microservices designed to handle the complex lifecycle of an autonomous agent. The Agent Management System acts as the central orchestrator.
 
 graph TD
     subgraph "Player's Browser"
         Client(Phaser 3 Game Client)
     end
 
-    subgraph "Cloud Infrastructure (e.g., AWS, DigitalOcean)"
-        subgraph "Game Server (Node.js)"
-            GameServer[Colyseus Server]
-        end
-        subgraph "Web Server (Node.js)"
-            WebApp[Web API / LLM Proxy]
-        end
-        subgraph "Agent Systems"
+    subgraph "Cloud Infrastructure"
+        GameServer[Colyseus Game Server]
+        WebApp[Web API / LLM Proxy]
+
+        subgraph "Agent Systems (Orchestrated by Agent Manager)"
             AgentManager[Agent Management System]
-            MemoryPlanning[Agent Memory & Planning]
-            Reflection[Agent Reflection System]
-            Metacognition[Agent Metacognition]
-            Scheduler[Agent Scheduling System]
-            InterAgent[Inter-Agent Communication]
+            MemorySystem[Memory & Retrieval System]
+            PlanningSystem[Planning System]
+            ReflectionSystem[Reflection System]
+            MetacognitionSystem[Metacognition System]
+            AffordabilitySystem[Affordability System]
         end
+
         subgraph "Database Services"
             Postgres[(PostgreSQL)]
             Redis[(Redis)]
-            VectorDB[(Vector Database)]
+            VectorDB[(Vector DB e.g., Pinecone)]
         end
     end
 
     subgraph "Third-Party Service"
-        LLM_API[LLM API <br/> e.g., OpenAI, Anthropic]
+        LLM_API[LLM API]
     end
 
     Client -- WebSocket --> GameServer
     Client -- HTTP/S --> WebApp
-    WebApp -- HTTP/S --> LLM_API
-    GameServer -- TCP --> Postgres
-    GameServer -- TCP --> Redis
-    WebApp -- TCP --> Postgres
-    WebApp -- TCP --> Redis
-    AgentManager -- TCP --> GameServer
-    AgentManager -- HTTP/S --> WebApp
-    MemoryPlanning -- TCP --> VectorDB
-    MemoryPlanning -- TCP --> Redis
-    Reflection -- HTTP/S --> LLM_API
-    Metacognition -- HTTP/S --> LLM_API
-    Scheduler -- TCP --> Redis
-    InterAgent -- TCP --> GameServer
+
+    AgentManager -- Manages --> MemorySystem
+    AgentManager -- Manages --> PlanningSystem
+    AgentManager -- Manages --> ReflectionSystem
+    AgentManager -- Manages --> MetacognitionSystem
+    AgentManager -- Manages --> AffordabilitySystem
+
+    PlanningSystem -- Uses --> MemorySystem
+    ReflectionSystem -- Uses --> MemorySystem
+    MetacognitionSystem -- Evaluates --> PlanningSystem
+    AffordabilitySystem -- Wraps --> PlanningSystem
+    AffordabilitySystem -- Wraps --> WebApp
+
+    MemorySystem -- R/W --> VectorDB
+    MemorySystem -- R/W --> Postgres
+    AffordabilitySystem -- R/W --> Redis
+
+    WebApp -- Calls --> LLM_API
 
 Client (Phaser 3): Renders the game and handles user input. Displays autonomous NPC behaviors and interactions.
 
 Game Server (Colyseus): Manages real-time multiplayer state, player positions, NPC positions, and authoritative game events via WebSockets. Coordinates agent actions in the game world.
 
 Web API (Node.js/Express): Handles non-real-time requests like authentication, inventory management, and acts as a secure proxy for all LLM API calls. Manages agent-to-agent communication requests.
-
-Agent Management System: Orchestrates all autonomous agents, maintaining their lifecycle, coordinating their interactions, and ensuring coherent behavior across the town.
-
-Agent Memory & Planning System: Implements the memory stream architecture from generative agents research, storing observations, reflections, and plans. Handles retrieval and synthesis of relevant memories for decision-making.
-
-Agent Reflection System: Generates high-level reflections about agent experiences, identifying patterns and insights that inform future behavior. Implements the reflection mechanism for emergent personality development.
-
-Agent Metacognition System: Provides agents with introspective capabilities to evaluate their own performance, adjust strategies, and improve goal-directed behavior based on outcomes.
-
-Agent Scheduling System: Manages daily schedules, routines, and dynamic goal-driven activities for each agent. Handles interruptions, social interactions, and adaptive planning.
-
-Inter-Agent Communication: Facilitates natural conversations and interactions between NPCs, enabling emergent social dynamics and collaborative behaviors.
 
 Databases:
 
@@ -83,7 +76,73 @@ Vector Database (e.g., Pinecone, Weaviate): Stores embeddings of agent memories 
 
 LLM Service: An external, third-party API providing the language model for agent reasoning, dialogue, and reflection.
 
-3. Client-Side Architecture (Phaser 3)
+3. Agent Systems Deep Dive
+
+3.1. Agent Management System (The Orchestrator)
+
+Responsibility: The main loop for all agents. It triggers other systems based on the game clock and agent states.
+
+Logic: At each significant time step, it queries for agents needing action. It calls the PlanningSystem to get the next action and sends the command to the GameServer for execution. It triggers the ReflectionSystem and MetacognitionSystem based on timers or events.
+
+3.2. Memory & Retrieval System
+
+Responsibility: Implements the agent's memory stream.
+
+Components:
+
+Observation Ingestion: Receives events from the game world (e.g., "Player entered room") and stores them.
+
+Embedding Service: On memory creation, generates a vector embedding and stores it in the VectorDB.
+
+Storage: Long-term memories (content, importance score) are stored in PostgreSQL. Embeddings are stored in the VectorDB.
+
+Retrieval Function: When queried with a context (e.g., "planning next action"), it fetches relevant memories by combining recency (from Postgres timestamp), importance (from Postgres score), and relevance (from VectorDB cosine similarity search).
+
+3.3. Planning & Reflection Systems
+
+PlanningSystem: Generates and decomposes goals into actionable steps, as described in Generative Agents. It queries the MemorySystem for context before prompting the LLM.
+
+ReflectionSystem: Triggered by the AgentManager (e.g., once per day). It queries the MemorySystem for recent memories and prompts the LLM to generate high-level insights, which are then stored back into memory.
+
+3.4. Metacognition System
+
+Responsibility: Strategic oversight.
+
+Trigger: Activated by the AgentManager when an agent's long-term plan shows little progress over time.
+
+Logic:
+
+Retrieves the agent's goal and a summary of its recent plans and outcomes from the MemorySystem.
+
+Prompts the LLM with a metacognitive question: "Given the goal to 'write a book', and the outcome of 'only writing one page in three days', is the current strategy effective? Propose three alternative strategies."
+
+The output is stored as a powerful metacognitive memory. The AgentManager then triggers the PlanningSystem to create a new plan, heavily weighting the new metacognitive memory.
+
+3.5. Affordability System (The Optimizer)
+
+Responsibility: Intercepts expensive operations and replaces them with cheaper alternatives.
+
+Components:
+
+Lifestyle Policy Cache:
+
+A HASH in Redis: lifestyle_policy:<agent_id>:<routine_name>.
+
+When the PlanningSystem requests a plan for a known routine (e.g., "make breakfast"), the AffordabilitySystem first checks Redis.
+
+If a policy exists, it returns the cached action sequence directly.
+
+If not, it allows the PlanningSystem to proceed. On successful completion, it stores the action sequence in Redis for next time.
+
+Social Memory Summarizer:
+
+When the WebApp receives a request for dialogue (/agent/interact), this module is called first.
+
+It retrieves the relationship status and a summary of recent events from PostgreSQL/Redis.
+
+It constructs a compressed context string. This string, rather than dozens of raw memories, is then used in the final prompt to the LLM.
+
+4. Client-Side Architecture (Phaser 3)
 
 The client is responsible for rendering the game world and capturing player input.
 
@@ -109,9 +168,9 @@ Player input (e.g., key presses for movement) will be sent to the server for val
 
 State Management: Client-side state (e.g., player inventory) will be a combination of data received from the server and local state. For simplicity, we will use plain JavaScript objects and custom event emitters before introducing a formal state management library.
 
-4. Server-Side Architecture
+5. Server-Side Architecture
 
-4.1. Game Server (Colyseus)
+5.1. Game Server (Colyseus)
 
 The Game Server handles the real-time multiplayer logic.
 
@@ -135,7 +194,7 @@ onMessage(): Handle incoming messages from clients (e.g., "move", "chat"). This 
 
 onLeave(): Remove the player from the state.
 
-4.2. Web API (Node.js / Express)
+5.2. Web API (Node.js / Express)
 
 This server handles all HTTP-based communication.
 
@@ -157,7 +216,7 @@ A separate worker process will consume jobs from this queue, construct the promp
 
 Middleware: All protected routes will use JWT middleware to authenticate the user.
 
-5. Generative Agent Architecture
+6. Generative Agent Architecture
 
 This system implements the full generative agent architecture as described in the research papers, creating truly autonomous NPCs with emergent behaviors.
 
@@ -268,9 +327,9 @@ Cost/Rate Limiting:
 - Adaptive detail levels based on situation importance
 - Caching of recent decisions and responses
 
-6. Database Schema
+7. Database Schema
 
-6.1. PostgreSQL
+7.1. PostgreSQL
 
 -- Users table
 CREATE TABLE users (
@@ -422,7 +481,20 @@ CREATE TABLE agent_states (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-6.2. Redis
+-- New table for storing learned routines
+CREATE TABLE agent_lifestyle_policies (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id VARCHAR(50) REFERENCES agents(id),
+    routine_name VARCHAR(100) NOT NULL, -- e.g., "make_breakfast", "commute_to_work"
+    action_sequence JSONB NOT NULL, -- Stores the array of successful actions
+    usage_count INT DEFAULT 1,
+    UNIQUE (agent_id, routine_name)
+);
+
+-- Add a field to agent_relationships for the summary
+ALTER TABLE agent_relationships ADD COLUMN social_summary TEXT;
+
+7.2. Redis
 
 Session Data: HASH - session:<user_id> -> { characterId: "...", ... }
 
@@ -456,9 +528,9 @@ Agent Processing Queue: LIST - agent:processing_queue -> Queue of agents needing
 
 Agent Metacognition Queue: LIST - agent:metacognition_queue -> Queue of agents needing metacognitive processing
 
-7. Key Data Flows
+8. Key Data Flows
 
-7.1. Player Movement
+8.1. Player Movement
 
 Client: User presses 'W'. Client sends room.send("move", "up").
 
@@ -470,7 +542,7 @@ All Clients: The colyseus.js SDK receives the state patch. The onStateChange lis
 
 Agent Management System: Observes player movement and updates agent memory streams with new observations.
 
-7.2. Agent Autonomous Behavior
+8.2. Agent Autonomous Behavior
 
 Agent Scheduling System: Checks current time against agent schedules and active plans.
 
@@ -488,7 +560,7 @@ Game Server: Updates agent positions and states in the world.
 
 All Clients: Receive agent state updates and display autonomous NPC behaviors.
 
-7.3. Agent-Agent Interactions
+8.3. Agent-Agent Interactions
 
 Agent A: Approaches Agent B based on social goals or scheduled activities.
 
@@ -506,7 +578,7 @@ Game Server: Broadcasts interaction states to all clients.
 
 All Clients: Display agent-to-agent conversation and behavioral changes.
 
-7.4. Agent Memory and Reflection
+8.4. Agent Memory and Reflection
 
 Agent Memory System: Continuously monitors for significant events, interactions, and observations.
 
@@ -520,7 +592,7 @@ Agent Memory System: Stores reflections and updates agent understanding.
 
 Agent Planning System: Adjusts future plans based on new reflections and insights.
 
-7.5. Agent Metacognitive Processing
+8.5. Agent Metacognitive Processing
 
 Agent Metacognition System: Monitors agent performance and goal achievement.
 
@@ -532,7 +604,7 @@ Agent Management System: Updates agent strategies and goal priorities.
 
 Agent Planning System: Modifies future planning based on metacognitive insights.
 
-7.6. Player-Agent Conversation
+8.6. Player-Agent Conversation
 
 Client: Player types "Hello Elara" and hits send. Client makes an authenticated POST /agent/interact call to the Web API.
 
@@ -552,7 +624,7 @@ Game Server: Sends the response back to the client and updates agent state.
 
 Client: Receives the message from Colyseus and displays the agent's response in the dialogue UI.
 
-7.7. Agent Scheduling and Coordination
+8.7. Agent Scheduling and Coordination
 
 Agent Scheduling System: Manages individual agent schedules and identifies conflicts.
 
@@ -566,7 +638,21 @@ Game Server: Updates agent positions and activities based on coordinated plans.
 
 All Clients: Display coordinated agent behaviors and group activities.
 
-8. Deployment & Operations (DevOps)
+8.8. Updated Data Flow Example: Agent Makes Breakfast
+
+Agent Manager: It's 8 AM. Triggers agent "Elara" to perform her "make breakfast" routine. It calls the PlanningSystem.
+
+Affordability System (Intercepts): Before the PlanningSystem calls the LLM, the AffordabilitySystem checks Redis for lifestyle_policy:elara:make_breakfast.
+
+Cache Hit: A policy exists! The system returns the cached action sequence: ["walk to kitchen", "open fridge", "get eggs", "cook on stove"].
+
+Agent Manager: Receives the plan without any LLM call and sends the actions to the GameServer for execution.
+
+Result: The agent makes breakfast with zero LLM cost.
+
+This integrated architecture provides a clear and robust path to building the highly intelligent, adaptive, and efficient agents you envision.
+
+9. Deployment & Operations (DevOps)
 
 Containerization: The entire stack (Web API, Game Server, Agent Systems, Databases) will be defined in a docker-compose.yml file for easy local development setup.
 
