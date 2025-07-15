@@ -20,54 +20,45 @@ export class PlayerController {
 
     public createAnimations() {
         try {
-            // Get the player texture to check available frames
-            const playerTexture = this.scene.textures.get('player');
-            const frameCount = playerTexture.frameTotal;
+            console.log("PlayerController: Creating animations for Player.png sprite");
             
-            console.log(`PlayerController: Player sprite has ${frameCount} frames available`);
-            
-            // Create animations with safe frame ranges
-            // Idle animation (frame 0)
+            // Row 1: Idle animation (frames 0-5)
             this.scene.anims.create({
                 key: 'idle',
-                frames: this.scene.anims.generateFrameNumbers('player', { start: 0, end: 0 }),
-                frameRate: 1,
+                frames: this.scene.anims.generateFrameNumbers('player', { start: 0, end: 5 }),
+                frameRate: 6,
                 repeat: -1
             });
             
-            // Walk down animation - use frame 0 if not enough frames
-            const walkDownFrames = frameCount > 3 ? { start: 1, end: 3 } : { start: 0, end: 0 };
-            this.scene.anims.create({
-                key: 'walk_down',
-                frames: this.scene.anims.generateFrameNumbers('player', walkDownFrames),
-                frameRate: 8,
-                repeat: -1
-            });
-            
-            // Walk up animation - fallback to frame 0 if not enough frames
-            const walkUpFrames = frameCount > 6 ? { start: 4, end: 6 } : { start: 0, end: 0 };
-            this.scene.anims.create({
-                key: 'walk_up',
-                frames: this.scene.anims.generateFrameNumbers('player', walkUpFrames),
-                frameRate: 8,
-                repeat: -1
-            });
-            
-            // Walk left animation - fallback to frame 0 if not enough frames  
-            const walkLeftFrames = frameCount > 9 ? { start: 7, end: 9 } : { start: 0, end: 0 };
-            this.scene.anims.create({
-                key: 'walk_left',
-                frames: this.scene.anims.generateFrameNumbers('player', walkLeftFrames),
-                frameRate: 8,
-                repeat: -1
-            });
-            
-            // Walk right animation - fallback to frame 0 if not enough frames
-            const walkRightFrames = frameCount > 12 ? { start: 10, end: 12 } : { start: 0, end: 0 };
+            // Row 2: Walk right animation (frames 6-11)
             this.scene.anims.create({
                 key: 'walk_right',
-                frames: this.scene.anims.generateFrameNumbers('player', walkRightFrames),
-                frameRate: 8,
+                frames: this.scene.anims.generateFrameNumbers('player', { start: 6, end: 11 }),
+                frameRate: 10,
+                repeat: -1
+            });
+            
+            // Row 3: Walk up animation (frames 12-17)
+            this.scene.anims.create({
+                key: 'walk_up',
+                frames: this.scene.anims.generateFrameNumbers('player', { start: 12, end: 17 }),
+                frameRate: 10,
+                repeat: -1
+            });
+            
+            // Row 4: Walk down animation (frames 18-23)
+            this.scene.anims.create({
+                key: 'walk_down',
+                frames: this.scene.anims.generateFrameNumbers('player', { start: 18, end: 23 }),
+                frameRate: 10,
+                repeat: -1
+            });
+            
+            // Walk left animation (using flipped walk right frames)
+            this.scene.anims.create({
+                key: 'walk_left',
+                frames: this.scene.anims.generateFrameNumbers('player', { start: 6, end: 11 }),
+                frameRate: 10,
                 repeat: -1
             });
             
@@ -120,11 +111,11 @@ export class PlayerController {
             
             console.log(`PlayerController: Created player ${sessionId} at (${playerData.x}, ${playerData.y})`);
             
-            // Highlight the current player's sprite
-            if (sessionId === this.myPlayerId) {
-                sprite.setTint(0x00ff00); // Green tint for current player
-                console.log("PlayerController: Current player highlighted in green");
-            }
+            // Optional: Highlight the current player's sprite (removed green tint)
+            // if (sessionId === this.myPlayerId) {
+            //     sprite.setTint(0x00ff00); // Green tint for current player
+            //     console.log("PlayerController: Current player highlighted in green");
+            // }
         } else {
             // Update existing player with smooth movement
             movementController!.setTargetPosition(playerData.x, playerData.y);
@@ -145,10 +136,22 @@ export class PlayerController {
         
         if (isMoving) {
             const animationKey = directionAnimations[direction];
-            if (animationKey && sprite.anims.currentAnim?.key !== animationKey) {
-                sprite.play(animationKey);
+            
+            // Handle sprite flipping for walk left
+            if (direction === 2) { // left
+                sprite.setFlipX(true);  // Flip horizontally for left movement
+                if (sprite.anims.currentAnim?.key !== 'walk_left') {
+                    sprite.play('walk_left');
+                }
+            } else {
+                sprite.setFlipX(false); // Reset flip for other directions
+                if (animationKey && sprite.anims.currentAnim?.key !== animationKey) {
+                    sprite.play(animationKey);
+                }
             }
         } else {
+            // Reset flip when idle
+            sprite.setFlipX(false);
             // Play idle animation if not moving
             if (sprite.anims.currentAnim?.key !== 'idle') {
                 sprite.play('idle');

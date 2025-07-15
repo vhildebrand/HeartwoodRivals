@@ -22,11 +22,15 @@ export class PreloaderScene extends Scene {
         // Load the proper tileset image
         this.load.image('tileset', 'assets/tileset.png');
         
-        // Load the user's spritesheet (spritesheet_test_01.png)
-        console.log("Loading player spritesheet: assets/spritesheet_test_01.png");
-        this.load.spritesheet('player', 'assets/spritesheet_test_01.png', {
-            frameWidth: 32,  // Adjusted to 32x32 based on typical sprite sizes
-            frameHeight: 32
+        // Load the user's spritesheet (Player.png)
+        console.log("Loading player spritesheet: assets/Player.png");
+        this.load.spritesheet('player', 'assets/Player.png', {
+            frameWidth: 32,   // 16x16 per animation frame
+            frameHeight: 32,  // 16x16 per animation frame
+            startFrame: 0,    // Start from first frame
+            endFrame: 23,     // Load all 24 frames (6 frames × 4 rows)
+            margin: 0,        // No margin around sprite sheet
+            spacing: 0        // No spacing between frames
         });
         
         // Load additional assets

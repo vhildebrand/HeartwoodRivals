@@ -15,8 +15,8 @@ const config: Types.Core.GameConfig = {
     physics: {
         default: "arcade",
         arcade: {
-            gravity: { y: 0 }, // No gravity for a top-down game
-            debug: true, // Set to false for production
+            gravity: { x: 0, y: 0 }, // No gravity for a top-down game
+            debug: false, // Set to false for production
         },
     },
     scene: [PreloaderScene, GameScene, UIScene], // The order scenes are loaded
