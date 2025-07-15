@@ -5,19 +5,21 @@ Draft
 
 1. Introduction & Vision
 
-Project Starlight Valley is a multiplayer, 2D pixel-art life and farming simulation game for web browsers, inspired by the aesthetics and core loops of games like Stardew Valley. Its revolutionary feature is a cast of non-player characters (NPCs) powered by large language models (LLMs), allowing for dynamic, unscripted, and evolving conversations.
+Project Heartwood Valley is a multiplayer, 2D pixel-art life and farming simulation game for web browsers that features the world's first fully autonomous generative agents as NPCs. Inspired by breakthrough research in "Generative Agents: Interactive Simulacra of Human Behavior" and "Metacognition is all you need? Using Introspection in Generative Agents to Improve Goal-directed Behavior", this game creates a living, breathing small town where NPCs have their own memories, schedules, goals, and relationships.
 
-The core vision is to create a living world where players not only collaborate to build a thriving community but also compete for the affection of truly intelligent and responsive characters. We are moving beyond static dialogue trees to foster genuine emotional connection and emergent social dynamics, creating a new genre of social simulation.
+The core vision is to create a persistent social simulation where autonomous agents live authentic lives - working, socializing, pursuing goals, and forming relationships with each other and players. These agents remember every interaction, reflect on their experiences, plan for the future, and adapt their behavior based on outcomes. Players enter this world as newcomers to a town that continues to exist and evolve even when they're not playing, creating unprecedented emergent storytelling and social dynamics.
 
 2. Target Audience
 
-Primary Audience (The Social Roleplayer): Ages 18-35. Fans of life simulation games (Stardew Valley, Animal Crossing, The Sims). They are drawn to character development, storytelling, and social interaction. They are intrigued by the promise of AI-driven characters and are looking for a deeper, more meaningful virtual world experience. They are active on platforms like Discord and Reddit.
+Primary Audience (The AI Enthusiast): Ages 22-40. Tech-savvy individuals fascinated by artificial intelligence, emergent behavior, and autonomous systems. They are drawn to witnessing and interacting with the first truly agentic NPCs in gaming. They want to explore the boundaries of AI behavior and be part of a groundbreaking social simulation experience. They are active on platforms like Discord, Reddit, and AI communities.
 
-Secondary Audience (The Competitive Strategist): Ages 20-40. Players who enjoy optimization, social strategy, and competitive game mechanics. They are motivated by leaderboards, achieving unique outcomes, and mastering game systems. They will be drawn to the challenge of "winning" the affection of the AI NPCs.
+Secondary Audience (The Social Simulation Lover): Ages 18-35. Fans of life simulation games (Stardew Valley, Animal Crossing, The Sims) who crave deeper, more meaningful social interactions. They are looking for authentic relationship-building experiences and emergent storytelling that goes beyond scripted content. They value character development, community building, and narrative depth.
+
+Tertiary Audience (The Competitive Strategist): Ages 20-40. Players who enjoy optimization, social strategy, and competitive game mechanics. They are motivated by understanding agent behavior patterns, achieving unique relationship outcomes, and mastering complex social systems. They will be drawn to the challenge of building meaningful relationships with autonomous agents.
 
 3. Core Features (Epics)
 
-This PRD breaks down the project into five main feature epics.
+This PRD breaks down the project into seven main feature epics.
 
 Epic ID
 
@@ -31,39 +33,55 @@ E01
 
 Core Gameplay & World Interaction
 
-Foundational single-player mechanics including movement, farming, crafting, and world interaction.
+Foundational mechanics including movement, farming, crafting, and world interaction in the persistent town.
 
 Critical
 
 E02
 
-LLM-Powered NPC System
+Autonomous Agent System
 
-The AI system that gives NPCs their unique personalities, memories, and conversational abilities.
+The full generative agent architecture with memory streams, reflection, planning, and metacognition.
 
 Critical
 
 E03
 
-Multiplayer & Social Infrastructure
+Agent Memory & Reflection
 
-The framework that allows 8-16 players to interact in a shared game instance.
+Systems for agent memory storage, retrieval, and reflection generation for emergent personality development.
 
 Critical
 
 E04
 
-Competitive Dating Mechanics
+Agent Scheduling & Coordination
 
-The systems that govern relationship building, tracking affection, and creating competition among players.
+Dynamic scheduling system that manages agent routines, goals, and inter-agent coordination.
 
-High
+Critical
 
 E05
 
+Multiplayer & Social Infrastructure
+
+The framework that allows 8-16 players to interact in a shared persistent world with autonomous agents.
+
+High
+
+E06
+
+Agent-Agent Interactions
+
+Systems enabling natural conversations and relationships between autonomous agents.
+
+High
+
+E07
+
 Player Progression & Customization
 
-Systems for character creation, skill development, and cosmetic customization.
+Systems for character creation, skill development, and meaningful progression within the agent community.
 
 Medium
 
@@ -71,7 +89,7 @@ Medium
 
 E01: Core Gameplay & World Interaction
 
-As a player, I want a familiar and satisfying core gameplay loop to ground my experience in the world.
+As a player, I want a familiar and satisfying core gameplay loop to ground my experience in the persistent world.
 
 Story ID
 
@@ -103,9 +121,15 @@ As a player, I can interact with world objects (e.g., open chests, read signs, c
 
 Pressing an action key near an object triggers an interaction.
 
-E02: LLM-Powered NPC System
+U1.5
 
-As a player, I want to interact with NPCs who feel alive, intelligent, and memorable.
+As a player, I can observe autonomous agents living their lives in the world.
+
+Agents move around the world, perform activities, and interact with each other without player intervention.
+
+E02: Autonomous Agent System
+
+As a player, I want to interact with agents who live authentic, autonomous lives with their own goals and personalities.
 
 Story ID
 
@@ -115,37 +139,37 @@ Acceptance Criteria
 
 U2.1
 
-As a player, I can initiate a conversation with an NPC by approaching them and pressing a key.
+As an agent, I can maintain my own daily schedule and routines.
 
-A dialogue UI opens. I can type my message into a text input field.
+Agent follows a personalized schedule (work, meals, social time) that can be interrupted by events or social interactions.
 
 U2.2
 
-As an NPC, I can generate a unique, in-character response to a player's message using an LLM.
+As an agent, I can form and pursue my own goals.
 
-The response should reflect my defined personality, mood, and the context of the conversation. Response time should be managed to feel natural (e.g., under 3-4 seconds).
+Agent can set personal goals (craft items, socialize, explore) and work towards them over time.
 
 U2.3
 
-As an NPC, I can remember key details from previous conversations with a specific player.
+As an agent, I can perceive and respond to my environment.
 
-The system saves a summary of past interactions. My future responses reference these memories (e.g., "You mentioned you liked fishing, did you catch anything today?").
+Agent observes other agents, players, and world events, storing these as memories that influence future behavior.
 
 U2.4
 
-As a system, I can provide each NPC with a unique "constitution" or base prompt.
+As an agent, I can initiate conversations and interactions with other agents.
 
-The prompt defines the NPC's name, backstory, personality traits, goals, and speech patterns. This prompt is the foundation for all their generated dialogue.
+Agent can approach other agents for social interaction based on goals, schedules, or emergent needs.
 
 U2.5
 
-As a player, I see a "typing..." indicator while the NPC is generating a response.
+As an agent, I can adapt my behavior based on past experiences.
 
-This manages my expectation for response time and makes the interaction feel more natural.
+Agent's personality and preferences evolve based on interactions and outcomes.
 
-E03: Multiplayer & Social Infrastructure
+E03: Agent Memory & Reflection
 
-As a player, I want to share the world with my friends and other players in real-time.
+As a player, I want agents to remember our interactions and grow from their experiences.
 
 Story ID
 
@@ -155,25 +179,37 @@ Acceptance Criteria
 
 U3.1
 
-As a player, I can join a game instance and see up to 15 other players moving in real-time.
+As an agent, I can store and retrieve memories of observations, interactions, and experiences.
 
-Player movements are synchronized with acceptable latency. Player usernames are visible above their characters.
+Agent maintains a memory stream of events, searchable by semantic similarity and relevance.
 
 U3.2
 
-As a player, I can communicate with other players via a global text chat.
+As an agent, I can generate reflections about my experiences.
 
-A chat window is available. Messages are broadcast to all players in the instance.
+Agent periodically analyzes memories to form insights about relationships, preferences, and patterns.
 
 U3.3
 
-As a system, the server acts as the authoritative source of truth for all game states.
+As an agent, I can use memories to inform current decisions.
 
-Player actions are validated by the server to prevent cheating.
+Agent retrieves relevant memories when making decisions or responding to situations.
 
-E04: Competitive Dating Mechanics
+U3.4
 
-As a player, I want to build relationships with NPCs and see how my efforts compare to other players.
+As an agent, I can form opinions and preferences based on accumulated experiences.
+
+Agent develops likes, dislikes, and preferences that influence future behavior.
+
+U3.5
+
+As a player, I can observe agents referencing past interactions in conversations.
+
+Agent mentions previous conversations and shared experiences naturally in dialogue.
+
+E04: Agent Scheduling & Coordination
+
+As a player, I want to see agents living coordinated lives that feel authentic and social.
 
 Story ID
 
@@ -183,43 +219,173 @@ Acceptance Criteria
 
 U4.1
 
-As a system, I can track each player's relationship score (Affection) with each NPC.
+As an agent, I can coordinate activities with other agents.
 
-Affection is a numerical value stored in the database. Positive interactions (e.g., thoughtful dialogue, giving liked gifts) increase the score.
+Agent can plan and participate in group activities (meals, festivals, work projects).
 
 U4.2
 
-As an NPC, my dialogue and behavior towards a player changes based on their Affection score.
+As an agent, I can adjust my schedule based on social opportunities.
 
-At low affection, I am distant. At high affection, I am friendly, share secrets, and offer unique quests.
+Agent can interrupt routines for meaningful social interactions or emergent events.
 
 U4.3
 
-As a player, I can give an item from my inventory to an NPC as a gift.
+As an agent, I can handle conflicts between my goals and social obligations.
 
-NPCs will have programmed preferences, and the LLM will generate a response based on whether they like the gift.
+Agent makes decisions about priorities when multiple demands compete for attention.
 
 U4.4
 
-As a player, I can view a social leaderboard that shows which players have the highest Affection with each NPC.
+As a player, I can observe emergent social events and gatherings.
 
-This creates a clear competitive element and social hub.
+Agents spontaneously organize activities and events that create dynamic social situations.
+
+U4.5
+
+As an agent, I can maintain relationships through regular interaction.
+
+Agent prioritizes spending time with other agents based on relationship strength and goals.
+
+E05: Multiplayer & Social Infrastructure
+
+As a player, I want to share the persistent world with other players and observe agent behaviors together.
+
+Story ID
+
+User Story
+
+Acceptance Criteria
+
+U5.1
+
+As a player, I can join a game instance and see up to 15 other players moving in real-time.
+
+Player movements are synchronized with acceptable latency. Player usernames are visible above their characters.
+
+U5.2
+
+As a player, I can communicate with other players via a global text chat.
+
+A chat window is available. Messages are broadcast to all players in the instance.
+
+U5.3
+
+As a system, the server acts as the authoritative source of truth for all game states.
+
+Player actions are validated by the server to prevent cheating.
+
+U5.4
+
+As a player, I can observe autonomous agents interacting with each other and other players.
+
+Agent-agent interactions are visible to all players in the instance, creating shared emergent experiences.
+
+U5.5
+
+As a player, I can see the persistent world continuing to evolve when I'm not playing.
+
+Agents continue their lives, form relationships, and create events that persist between player sessions.
+
+E06: Agent-Agent Interactions
+
+As a player, I want to witness authentic social dynamics between autonomous agents.
+
+Story ID
+
+User Story
+
+Acceptance Criteria
+
+U6.1
+
+As an agent, I can initiate conversations with other agents based on my goals and social needs.
+
+Agent approaches other agents for conversation, collaboration, or to fulfill social goals.
+
+U6.2
+
+As an agent, I can form and maintain relationships with other agents.
+
+Agent develops friendships, rivalries, and working relationships that influence future interactions.
+
+U6.3
+
+As an agent, I can coordinate activities with other agents.
+
+Agents can plan and execute group activities like shared meals, festivals, or work projects.
+
+U6.4
+
+As an agent, I can have conflicts and resolve them through interaction.
+
+Agents can disagree, compete for resources, and work through conflicts naturally.
+
+U6.5
+
+As a player, I can observe complex social dynamics emerging from agent interactions.
+
+Agent relationships create emergent stories, alliances, and social hierarchies that players can witness.
+
+E07: Player Progression & Customization
+
+As a player, I want to develop my character and build meaningful relationships within the agent community.
+
+Story ID
+
+User Story
+
+Acceptance Criteria
+
+U7.1
+
+As a player, I can create a unique character with customizable appearance and background.
+
+Character creator allows appearance customization and background selection that influences agent interactions.
+
+U7.2
+
+As a player, I can develop skills that are recognized by agents.
+
+Skill progression in farming, crafting, or social abilities affects how agents perceive and interact with me.
+
+U7.3
+
+As a player, I can build deep relationships with agents over time.
+
+Agent relationships develop through consistent interaction, shared experiences, and mutual understanding.
+
+U7.4
+
+As a player, I can influence the town's development through my actions and relationships.
+
+Player actions and agent relationships can lead to town improvements, new events, or community changes.
+
+U7.5
+
+As a player, I can discover unique storylines that emerge from my specific interactions with agents.
+
+Each player's experience creates unique narrative paths based on their relationships and choices.
 
 5. Technology Stack & Architecture
 
-Frontend Engine: Phaser 3 (utilizing its PixiJS renderer).
+Frontend Engine: Phaser 3 (utilizing its PixiJS renderer) for rich 2D graphics and smooth agent animations.
 
-Backend Framework: Node.js with Colyseus for multiplayer state management and room handling.
+Backend Framework: Node.js with Colyseus for multiplayer state management and real-time agent coordination.
 
-AI/LLM Integration: Server-side API calls to a foundational model (e.g., OpenAI's GPT-4o, Anthropic's Claude 3 Sonnet) for its balance of capability and speed.
+AI/LLM Integration: Server-side API calls to foundational models (OpenAI's GPT-4o, Anthropic's Claude 3 Sonnet) for agent reasoning, dialogue, reflection, and metacognition.
+
+Agent Systems: Custom Node.js services for agent management, memory processing, reflection generation, and inter-agent coordination.
 
 Database:
 
-Primary: PostgreSQL for structured data (player accounts, inventory, core progression).
+Primary: PostgreSQL for structured data (player accounts, agent profiles, long-term memories, relationships).
 
-Cache/Real-time: Redis for managing session data and real-time leaderboards.
+Vector Database: Pinecone or Weaviate for semantic memory storage and retrieval.
 
-Deployment: Docker containers hosted on a cloud platform like AWS or DigitalOcean.
+Cache/Real-time: Redis for agent states, active plans, real-time coordination, and memory caching.
+
+Deployment: Docker containers hosted on a cloud platform like AWS or DigitalOcean with auto-scaling for agent processing.
 
 6. Non-Functional Requirements
 
