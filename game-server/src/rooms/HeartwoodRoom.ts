@@ -58,6 +58,18 @@ export class HeartwoodRoom extends Room<GameState> {
             this.handlePlayerMovement(client, message);
         });
 
+        this.onMessage("move_start", (client: Client, message: { direction: string }) => {
+            this.handlePlayerMoveStart(client, message);
+        });
+
+        this.onMessage("move_stop", (client: Client, message: { direction: string }) => {
+            this.handlePlayerMoveStop(client, message);
+        });
+
+        this.onMessage("move_continuous", (client: Client, message: { directions: string[] }) => {
+            this.handlePlayerMoveContinuous(client, message);
+        });
+
         this.onMessage("click", (client: Client, message: any) => {
             this.handlePlayerClick(client, message);
         });
@@ -76,7 +88,7 @@ export class HeartwoodRoom extends Room<GameState> {
             console.warn(`Received message from unknown player: ${client.sessionId}`);
             return;
         }
-
+    
         const { direction } = message;
         
         // Validate direction
@@ -95,23 +107,143 @@ export class HeartwoodRoom extends Room<GameState> {
         
         // Check if the new position is walkable
         if (isTileWalkable(newTile.tileX, newTile.tileY)) {
-            // Update player position
+            // Update player position and velocity for smooth movement
             player.x = newX;
             player.y = newY;
+            player.velocityX = delta.x;
+            player.velocityY = delta.y;
             player.direction = DIRECTIONS[direction as keyof typeof DIRECTIONS];
             player.isMoving = true;
             player.lastUpdate = Date.now();
             
-            // Log successful movement
+            // Set velocity to 0 after a short time to stop movement
+            setTimeout(() => {
+                if (player) {
+                    player.velocityX = 0;
+                    player.velocityY = 0;
+                    player.isMoving = false;
+                }
+            }, 200); // Adjust timing as needed
+            
             console.log(`Player ${player.name} moved to tile (${newTile.tileX}, ${newTile.tileY}), pixel (${newX}, ${newY})`);
         } else {
-            // Log blocked movement
             console.log(`Player ${player.name} movement blocked at tile (${newTile.tileX}, ${newTile.tileY})`);
             
             // Update direction even if movement is blocked
             player.direction = DIRECTIONS[direction as keyof typeof DIRECTIONS];
             player.isMoving = false;
+            player.velocityX = 0;
+            player.velocityY = 0;
             player.lastUpdate = Date.now();
+        }
+    }
+
+    private handlePlayerMoveStart(client: Client, message: { direction: string }) {
+        const player = this.state.players.get(client.sessionId);
+        
+        if (!player) {
+            console.warn(`Move start from unknown player: ${client.sessionId}`);
+            return;
+        }
+
+        const { direction } = message;
+        
+        // Validate direction
+        if (!MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS]) {
+            console.warn(`Invalid direction received: ${direction}`);
+            return;
+        }
+
+        // Set velocity for continuous movement
+        const delta = MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS];
+        const moveSpeed = 2; // Pixels per frame - adjust as needed
+        
+        player.velocityX = (delta.x / Math.abs(delta.x || 1)) * moveSpeed;
+        player.velocityY = (delta.y / Math.abs(delta.y || 1)) * moveSpeed;
+        player.direction = DIRECTIONS[direction as keyof typeof DIRECTIONS];
+        player.isMoving = true;
+        player.lastUpdate = Date.now();
+        
+        console.log(`Player ${player.name} started moving ${direction} with velocity (${player.velocityX}, ${player.velocityY})`);
+    }
+
+    private handlePlayerMoveStop(client: Client, message: { direction: string }) {
+        const player = this.state.players.get(client.sessionId);
+        
+        if (!player) {
+            console.warn(`Move stop from unknown player: ${client.sessionId}`);
+            return;
+        }
+
+        // Stop movement
+        player.velocityX = 0;
+        player.velocityY = 0;
+        player.isMoving = false;
+        player.lastUpdate = Date.now();
+        
+        console.log(`Player ${player.name} stopped moving`);
+    }
+
+    private handlePlayerMoveContinuous(client: Client, message: { directions: string[] }) {
+        const player = this.state.players.get(client.sessionId);
+        
+        if (!player) {
+            console.warn(`Continuous move from unknown player: ${client.sessionId}`);
+            return;
+        }
+
+        const { directions } = message;
+        
+        if (directions.length === 0) {
+            // No directions, stop movement
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.isMoving = false;
+            return;
+        }
+
+        // Calculate combined velocity from all active directions
+        let combinedVelocityX = 0;
+        let combinedVelocityY = 0;
+        let lastDirection = 0;
+        const moveSpeed = 2; // Pixels per frame
+        
+        directions.forEach(direction => {
+            const delta = MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS];
+            if (delta) {
+                combinedVelocityX += (delta.x / Math.abs(delta.x || 1)) * moveSpeed;
+                combinedVelocityY += (delta.y / Math.abs(delta.y || 1)) * moveSpeed;
+                lastDirection = DIRECTIONS[direction as keyof typeof DIRECTIONS];
+            }
+        });
+
+        // Normalize diagonal movement
+        if (Math.abs(combinedVelocityX) > 0 && Math.abs(combinedVelocityY) > 0) {
+            combinedVelocityX *= 0.707; // 1/sqrt(2) for diagonal movement
+            combinedVelocityY *= 0.707;
+        }
+
+        // Update player with continuous movement
+        player.velocityX = combinedVelocityX;
+        player.velocityY = combinedVelocityY;
+        player.direction = lastDirection;
+        player.isMoving = true;
+        player.lastUpdate = Date.now();
+
+        // Move the player smoothly
+        const newX = player.x + combinedVelocityX;
+        const newY = player.y + combinedVelocityY;
+        
+        // Check collision for new position
+        const newTile = pixelToTile(newX, newY);
+        if (isTileWalkable(newTile.tileX, newTile.tileY)) {
+            player.x = newX;
+            player.y = newY;
+        } else {
+            // Stop movement if collision
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.isMoving = false;
         }
     }
 
