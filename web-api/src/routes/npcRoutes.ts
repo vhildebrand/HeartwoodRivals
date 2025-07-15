@@ -48,25 +48,25 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
       // Set rate limit
       await redisClient.setEx(rateLimitKey, 5, 'limited');
 
-      // Verify NPC exists
-      const npcResult = await pool.query(
-        'SELECT id, name, constitution FROM npcs WHERE id = $1',
+      // Verify Agent exists
+      const agentResult = await pool.query(
+        'SELECT id, name, constitution FROM agents WHERE id = $1',
         [npcId]
       );
 
-      if (npcResult.rows.length === 0) {
+      if (agentResult.rows.length === 0) {
         return res.status(404).json({
-          error: 'NPC not found'
+          error: 'Agent not found'
         });
       }
 
-      const npc = npcResult.rows[0];
+      const agent = agentResult.rows[0];
 
       // Create conversation job
       const jobData = {
         npcId,
-        npcName: npc.name,
-        constitution: npc.constitution,
+        npcName: agent.name,
+        constitution: agent.constitution,
         characterId: dummyCharacterId,
         playerMessage: message.trim(),
         timestamp: Date.now()
@@ -128,11 +128,11 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
     }
   });
 
-  // GET /npc/list - Get all available NPCs
+  // GET /npc/list - Get all available Agents
   router.get('/list', async (req, res) => {
     try {
       const result = await pool.query(
-        'SELECT id, name, x_position, y_position FROM npcs ORDER BY name'
+        'SELECT a.id, a.name, s.current_x as x_position, s.current_y as y_position FROM agents a LEFT JOIN agent_states s ON a.id = s.agent_id ORDER BY a.name'
       );
 
       res.json({
@@ -140,7 +140,7 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
       });
 
     } catch (error) {
-      console.error('Error fetching NPCs:', error);
+      console.error('Error fetching Agents:', error);
       res.status(500).json({
         error: 'Internal server error'
       });

@@ -1,0 +1,16 @@
+{
+  "name": "heartwood-db-loader",
+  "version": "1.0.0",
+  "description": "Database loader for Heartwood Valley agents",
+  "main": "load_agents.js",
+  "scripts": {
+    "start": "node load_agents.js",
+    "load": "node load_agents.js"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
+  "keywords": ["heartwood", "agents", "database"],
+  "author": "",
+  "license": "ISC"
+} 

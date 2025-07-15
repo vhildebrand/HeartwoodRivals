@@ -5,6 +5,7 @@ import { createClient } from 'redis';
 import { Pool } from 'pg';
 import { npcRoutes } from './routes/npcRoutes';
 import { LLMWorker } from './services/LLMWorker';
+import { loadAgents } from './utils/loadAgents';
 
 // Load environment variables
 dotenv.config();
@@ -45,6 +46,9 @@ async function initializeConnections() {
     const llmWorker = new LLMWorker(pool, redisClient);
     await llmWorker.start();
     console.log('✅ LLM Worker started successfully');
+    
+    // Load agents from JSON files
+    await loadAgents(pool);
     
   } catch (error) {
     console.error('❌ Failed to initialize connections:', error);

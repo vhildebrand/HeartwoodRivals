@@ -31,6 +31,7 @@ services:
       - '3000:3000' # Expose API on port 3000
     volumes:
       - ./web-api:/usr/src/app
+      - ./db/agents:/usr/src/app/agents
     depends_on:
       - postgres
       - redis
