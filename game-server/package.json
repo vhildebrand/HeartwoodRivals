@@ -13,6 +13,7 @@
   "type": "commonjs",
   "dependencies": {
     "@colyseus/schema": "^3.0.42",
+    "@colyseus/ws-transport": "^0.16.4",
     "colyseus": "^0.16.4",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
