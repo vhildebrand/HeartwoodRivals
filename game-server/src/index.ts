@@ -5,15 +5,18 @@ import { HeartwoodRoom } from "./rooms/HeartwoodRoom";
 
 const port = Number(process.env.PORT) || 2567;
 
+const httpServer = createServer();
+
 const gameServer = new Server({
     transport: new WebSocketTransport({
-        server: createServer()
+        server: httpServer
     })
 });
 
 // Register the heartwood_room
 gameServer.define('heartwood_room', HeartwoodRoom);
 
-gameServer.listen(port);
-
-console.log(`Game Server running on port ${port}!`);
+// Listen on all interfaces (0.0.0.0) so it's accessible from outside the container
+httpServer.listen(port, '0.0.0.0', () => {
+    console.log(`Game Server running on port ${port}!`);
+});

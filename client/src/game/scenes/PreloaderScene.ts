@@ -25,9 +25,10 @@ export class PreloaderScene extends Scene {
         this.load.image('water_middle', 'assets/Water_Middle.png');
         
         // Load the user's spritesheet (spritesheet_test_01.png)
+        console.log("Loading player spritesheet: assets/spritesheet_test_01.png");
         this.load.spritesheet('player', 'assets/spritesheet_test_01.png', {
-            frameWidth: 16,  // Assuming 16x16 frames, adjust if needed
-            frameHeight: 16
+            frameWidth: 32,  // Adjusted to 32x32 based on typical sprite sizes
+            frameHeight: 32
         });
         
         // Load additional assets
