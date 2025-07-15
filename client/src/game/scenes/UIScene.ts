@@ -1,7 +1,10 @@
 // client/src/scenes/UIScene.ts
 import { Scene } from "phaser";
+import { DialogueManager } from "../ui/DialogueManager";
 
 export class UIScene extends Scene {
+    private dialogueManager: DialogueManager | null = null;
+
     constructor() {
         super("UIScene");
     }
@@ -17,6 +20,22 @@ export class UIScene extends Scene {
             color: "#fff",
         });
 
+        // Initialize dialogue manager
+        this.dialogueManager = new DialogueManager(this);
+
+        // Listen for dialogue events from GameScene
+        this.game.events.on('openDialogue', (npcId: string, npcName: string) => {
+            this.dialogueManager?.openDialogue(npcId, npcName);
+        });
+
+        this.game.events.on('closeDialogue', () => {
+            this.dialogueManager?.closeDialogue();
+        });
+
         console.log("UIScene: Created and running in parallel.");
+    }
+
+    getDialogueManager(): DialogueManager | null {
+        return this.dialogueManager;
     }
 }

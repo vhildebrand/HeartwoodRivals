@@ -18,6 +18,10 @@ export class GameScene extends Scene {
     private lastInputSent: number = 0;
     private inputSendRate: number = 100; // Send input every 100ms (10 times per second)
     private pendingInputs: string[] = [];
+    
+    // NPC system
+    private npcs: Map<string, { sprite: Phaser.GameObjects.Sprite, name: string, x: number, y: number }> = new Map();
+    private interactionIndicator: Phaser.GameObjects.Text | null = null;
 
     constructor() {
         super("GameScene");
@@ -31,6 +35,9 @@ export class GameScene extends Scene {
         
         // Initialize controllers
         this.initializeControllers();
+        
+        // Create NPCs
+        this.createNPCs();
         
         // Connect to server
         this.connectToServer();
@@ -94,7 +101,100 @@ export class GameScene extends Scene {
             onRightClick: (clickData: any) => this.handleRightClick(clickData)
         });
         
+        // Add E key handler for NPC interaction
+        this.input.keyboard?.addKey('E').on('down', () => {
+            this.handleInteraction();
+        });
+        
         console.log("GameScene: Controllers initialized");
+    }
+
+    private async createNPCs() {
+        try {
+            // Fetch NPCs from the web API
+            const response = await fetch('http://localhost:3000/npc/list');
+            if (!response.ok) {
+                console.error('Failed to fetch NPCs from API');
+                return;
+            }
+            
+            const data = await response.json();
+            const npcs = data.npcs || [];
+            
+            // Create sprites for each NPC
+            for (const npc of npcs) {
+                const npcSprite = this.add.sprite(npc.x_position * 16, npc.y_position * 16, 'player');
+                npcSprite.setScale(1);
+                npcSprite.setDepth(10);
+                npcSprite.setTint(0x00ff00); // Green tint to distinguish from players
+                
+                // Create animations for NPC (idle animation)
+                npcSprite.play('idle_down');
+                
+                // Store NPC data
+                this.npcs.set(npc.id, {
+                    sprite: npcSprite,
+                    name: npc.name,
+                    x: npc.x_position,
+                    y: npc.y_position
+                });
+                
+                console.log(`Created NPC: ${npc.name} at (${npc.x_position}, ${npc.y_position})`);
+            }
+            
+            // Create interaction indicator
+            this.interactionIndicator = this.add.text(0, 0, 'Press E to talk', {
+                fontSize: '12px',
+                color: '#FFD700',
+                backgroundColor: '#000000',
+                padding: { x: 4, y: 2 }
+            });
+            this.interactionIndicator.setDepth(1000);
+            this.interactionIndicator.setVisible(false);
+            
+            console.log(`Created ${npcs.length} NPCs`);
+        } catch (error) {
+            console.error('Error creating NPCs:', error);
+        }
+    }
+
+    private handleInteraction() {
+        if (!this.myPlayerId) return;
+        
+        const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
+        if (!mySprite) return;
+        
+        // Check if dialogue is already open
+        const uiScene = this.scene.get('UIScene') as any;
+        if (uiScene && uiScene.getDialogueManager()?.isDialogueActive()) {
+            return;
+        }
+        
+        // Check if player is near any NPC
+        const nearbyNpc = this.getNearbyNPC(mySprite.x, mySprite.y);
+        if (nearbyNpc) {
+            console.log(`Opening dialogue with ${nearbyNpc.name}`);
+            this.game.events.emit('openDialogue', nearbyNpc.id, nearbyNpc.name);
+        }
+    }
+
+    private getNearbyNPC(playerX: number, playerY: number): { id: string, name: string } | null {
+        const interactionDistance = 32; // 2 tiles
+        
+        for (const [npcId, npcData] of this.npcs) {
+            const npcX = npcData.sprite.x;
+            const npcY = npcData.sprite.y;
+            
+            const distance = Math.sqrt(
+                Math.pow(playerX - npcX, 2) + Math.pow(playerY - npcY, 2)
+            );
+            
+            if (distance <= interactionDistance) {
+                return { id: npcId, name: npcData.name };
+            }
+        }
+        
+        return null;
     }
 
     private handleMove(direction: string) {
@@ -250,9 +350,35 @@ export class GameScene extends Scene {
         this.inputManager.update();
         this.playerController.update(delta);
         
+        // Update interaction indicator
+        this.updateInteractionIndicator();
+        
         // Occasional logging
         if (Math.random() < 0.001) {
             console.log("Game update loop is running with smooth movement");
+        }
+    }
+
+    private updateInteractionIndicator() {
+        if (!this.myPlayerId || !this.interactionIndicator) return;
+        
+        const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
+        if (!mySprite) return;
+        
+        const nearbyNpc = this.getNearbyNPC(mySprite.x, mySprite.y);
+        
+        if (nearbyNpc) {
+            // Show interaction indicator above the NPC
+            const npcData = this.npcs.get(nearbyNpc.id);
+            if (npcData) {
+                this.interactionIndicator.setPosition(
+                    npcData.sprite.x - 40, 
+                    npcData.sprite.y - 30
+                );
+                this.interactionIndicator.setVisible(true);
+            }
+        } else {
+            this.interactionIndicator.setVisible(false);
         }
     }
 
