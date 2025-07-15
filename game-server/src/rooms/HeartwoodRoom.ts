@@ -14,11 +14,12 @@ const DIRECTIONS = {
 
 // Movement deltas for each direction
 const TILE_SIZE = 16;
+const MOVEMENT_SPEED = 20; // 5x faster than before (was 2, now 10)
 const MOVEMENT_DELTAS = {
-    up: { x: 0, y: -TILE_SIZE },
-    down: { x: 0, y: TILE_SIZE },
-    left: { x: -TILE_SIZE, y: 0 },
-    right: { x: TILE_SIZE, y: 0 }
+    up: { x: 0, y: -MOVEMENT_SPEED },
+    down: { x: 0, y: MOVEMENT_SPEED },
+    left: { x: -MOVEMENT_SPEED, y: 0 },
+    right: { x: MOVEMENT_SPEED, y: 0 }
 };
 
 export class HeartwoodRoom extends Room<GameState> {
@@ -228,7 +229,7 @@ export class HeartwoodRoom extends Room<GameState> {
 
         // Set velocity for continuous movement
         const delta = MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS];
-        const moveSpeed = 2; // Pixels per frame - adjust as needed
+        const moveSpeed = MOVEMENT_SPEED; // Use the same speed as discrete movement
         
         player.velocityX = (delta.x / Math.abs(delta.x || 1)) * moveSpeed;
         player.velocityY = (delta.y / Math.abs(delta.y || 1)) * moveSpeed;
@@ -278,7 +279,7 @@ export class HeartwoodRoom extends Room<GameState> {
         let combinedVelocityX = 0;
         let combinedVelocityY = 0;
         let lastDirection = 0;
-        const moveSpeed = 2; // Pixels per frame
+        const moveSpeed = MOVEMENT_SPEED; // Use the same speed as discrete movement
         
         directions.forEach(direction => {
             const delta = MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS];
