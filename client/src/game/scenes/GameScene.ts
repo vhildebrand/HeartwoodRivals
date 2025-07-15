@@ -54,7 +54,7 @@ export class GameScene extends Scene {
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         
         // Set camera zoom and smoothing
-        this.cameras.main.setZoom(1);
+        this.cameras.main.setZoom(2.5); // Zoom in 2x
         this.cameras.main.setLerp(0.1, 0.1); // Smooth camera movement
         
         // Set the camera viewport to the game size

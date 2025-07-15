@@ -7,11 +7,15 @@ import { UIScene } from "./scenes/UIScene";
 // Define the game configuration
 const config: Types.Core.GameConfig = {
     type: Phaser.AUTO, // Automatically choose WebGL or Canvas
-    width: 1024,
-    height: 768,
+    width: 1600, // Increased width to show more map
+    height: 1200, // Increased height to show more map
     parent: "game-container", // The ID of the div in index.html
     backgroundColor: "#1a1a1a",
     pixelArt: true, // Crucial for a crisp pixel-art look
+    scale: {
+        mode: Phaser.Scale.FIT, // Scale to fit the container
+        autoCenter: Phaser.Scale.CENTER_BOTH, // Center the game
+    },
     physics: {
         default: "arcade",
         arcade: {
