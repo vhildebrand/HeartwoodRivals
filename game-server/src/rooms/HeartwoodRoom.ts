@@ -14,18 +14,20 @@ const DIRECTIONS = {
 
 // Movement deltas for each direction
 const TILE_SIZE = 16;
-const MOVEMENT_SPEED = 20; // 5x faster than before (was 2, now 10)
+const MOVEMENT_SPEED = 120; // pixels per second (increased from 20)
 const MOVEMENT_DELTAS = {
-    up: { x: 0, y: -MOVEMENT_SPEED },
-    down: { x: 0, y: MOVEMENT_SPEED },
-    left: { x: -MOVEMENT_SPEED, y: 0 },
-    right: { x: MOVEMENT_SPEED, y: 0 }
+    up: { x: 0, y: -1 },
+    down: { x: 0, y: 1 },
+    left: { x: -1, y: 0 },
+    right: { x: 1, y: 0 }
 };
 
 export class HeartwoodRoom extends Room<GameState> {
     maxClients = 10;
     private mapManager!: MapManager;
     private readonly MAP_ID = 'large_town';
+    private gameLoopInterval: NodeJS.Timeout | null = null;
+    private readonly GAME_LOOP_RATE = 60; // 60 FPS server updates
 
     onJoin(client: Client, options: any) {
         console.log(`Player ${client.sessionId} joined the heartwood_room`);
@@ -99,21 +101,26 @@ export class HeartwoodRoom extends Room<GameState> {
             this.state.tileSize = mapData.tileWidth;
         }
         
-        // Register message handlers
+        // Register unified input message handler
+        this.onMessage("player_input", (client: Client, message: { directions: string[], type: string, timestamp: number }) => {
+            this.handlePlayerInput(client, message);
+        });
+
+        // Legacy message handlers (for backward compatibility)
         this.onMessage("move", (client: Client, message: { direction: string }) => {
-            this.handlePlayerMovement(client, message);
+            this.handlePlayerInput(client, { directions: [message.direction], type: 'discrete', timestamp: Date.now() });
         });
 
         this.onMessage("move_start", (client: Client, message: { direction: string }) => {
-            this.handlePlayerMoveStart(client, message);
+            this.handlePlayerInput(client, { directions: [message.direction], type: 'start', timestamp: Date.now() });
         });
 
         this.onMessage("move_stop", (client: Client, message: { direction: string }) => {
-            this.handlePlayerMoveStop(client, message);
+            this.handlePlayerInput(client, { directions: [], type: 'stop', timestamp: Date.now() });
         });
 
         this.onMessage("move_continuous", (client: Client, message: { directions: string[] }) => {
-            this.handlePlayerMoveContinuous(client, message);
+            this.handlePlayerInput(client, { directions: message.directions, type: 'continuous', timestamp: Date.now() });
         });
 
         this.onMessage("click", (client: Client, message: any) => {
@@ -123,6 +130,9 @@ export class HeartwoodRoom extends Room<GameState> {
         this.onMessage("rightclick", (client: Client, message: any) => {
             this.handlePlayerRightClick(client, message);
         });
+        
+        // Start the game loop
+        this.startGameLoop();
         
         console.log("HeartwoodRoom: GameState initialized");
     }
@@ -146,80 +156,36 @@ export class HeartwoodRoom extends Room<GameState> {
         }
     }
 
-    private handlePlayerMovement(client: Client, message: { direction: string }) {
+    private handlePlayerInput(client: Client, message: { directions: string[], type: string, timestamp: number }) {
         const player = this.state.players.get(client.sessionId);
         
         if (!player) {
-            console.warn(`Received message from unknown player: ${client.sessionId}`);
+            console.warn(`Received input from unknown player: ${client.sessionId}`);
             return;
         }
-    
-        const { direction } = message;
-        
-        // Validate direction
-        if (!MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS]) {
-            console.warn(`Invalid direction received: ${direction}`);
-            return;
-        }
-        
-        // Calculate potential new position
-        const delta = MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS];
-        const newX = player.x + delta.x;
-        const newY = player.y + delta.y;
-        
-        // First check if the new position is within map bounds
-        if (!this.mapManager.isPixelInBounds(this.MAP_ID, newX, newY)) {
-            console.log(`Player ${player.name} attempted to move out of bounds to pixel (${newX}, ${newY})`);
-            player.direction = DIRECTIONS[direction as keyof typeof DIRECTIONS];
-            player.isMoving = false;
-            return;
-        }
-        
-        // Convert to tile coordinates for collision checking
-        const newTile = this.mapManager.pixelToTile(this.MAP_ID, newX, newY);
-        
-        // Check if the new position is walkable
-        if (this.mapManager.isTileWalkable(this.MAP_ID, newTile.tileX, newTile.tileY)) {
-            // Update player position and velocity for smooth movement
-            player.x = newX;
-            player.y = newY;
-            player.velocityX = delta.x;
-            player.velocityY = delta.y;
-            player.direction = DIRECTIONS[direction as keyof typeof DIRECTIONS];
-            player.isMoving = true;
-            player.lastUpdate = Date.now();
-            
-            // Set velocity to 0 after a short time to stop movement
-            setTimeout(() => {
-                if (player) {
-                    player.velocityX = 0;
-                    player.velocityY = 0;
-                    player.isMoving = false;
-                }
-            }, 200); // Adjust timing as needed
-            
-            console.log(`Player ${player.name} moved to tile (${newTile.tileX}, ${newTile.tileY}), pixel (${newX}, ${newY})`);
-        } else {
-            console.log(`Player ${player.name} movement blocked at tile (${newTile.tileX}, ${newTile.tileY})`);
-            
-            // Update direction even if movement is blocked
-            player.direction = DIRECTIONS[direction as keyof typeof DIRECTIONS];
-            player.isMoving = false;
-            player.velocityX = 0;
-            player.velocityY = 0;
-            player.lastUpdate = Date.now();
+
+        const { directions, type } = message;
+
+        switch (type) {
+            case 'discrete':
+            case 'start':
+                this.handleMovementStart(player, directions);
+                break;
+            case 'stop':
+                this.handleMovementStop(player);
+                break;
+            case 'continuous':
+                this.handleMovementContinuous(player, directions);
+                break;
+            default:
+                console.warn(`Unknown input type: ${type}`);
         }
     }
 
-    private handlePlayerMoveStart(client: Client, message: { direction: string }) {
-        const player = this.state.players.get(client.sessionId);
-        
-        if (!player) {
-            console.warn(`Move start from unknown player: ${client.sessionId}`);
-            return;
-        }
+    private handleMovementStart(player: Player, directions: string[]) {
+        if (directions.length === 0) return;
 
-        const { direction } = message;
+        const direction = directions[0]; // Take first direction for single-direction start
         
         // Validate direction
         if (!MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS]) {
@@ -227,12 +193,10 @@ export class HeartwoodRoom extends Room<GameState> {
             return;
         }
 
-        // Set velocity for continuous movement
+        // Set velocity for movement
         const delta = MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS];
-        const moveSpeed = MOVEMENT_SPEED; // Use the same speed as discrete movement
-        
-        player.velocityX = (delta.x / Math.abs(delta.x || 1)) * moveSpeed;
-        player.velocityY = (delta.y / Math.abs(delta.y || 1)) * moveSpeed;
+        player.velocityX = delta.x * MOVEMENT_SPEED;
+        player.velocityY = delta.y * MOVEMENT_SPEED;
         player.direction = DIRECTIONS[direction as keyof typeof DIRECTIONS];
         player.isMoving = true;
         player.lastUpdate = Date.now();
@@ -240,15 +204,7 @@ export class HeartwoodRoom extends Room<GameState> {
         console.log(`Player ${player.name} started moving ${direction} with velocity (${player.velocityX}, ${player.velocityY})`);
     }
 
-    private handlePlayerMoveStop(client: Client, message: { direction: string }) {
-        const player = this.state.players.get(client.sessionId);
-        
-        if (!player) {
-            console.warn(`Move stop from unknown player: ${client.sessionId}`);
-            return;
-        }
-
-        // Stop movement
+    private handleMovementStop(player: Player) {
         player.velocityX = 0;
         player.velocityY = 0;
         player.isMoving = false;
@@ -257,21 +213,9 @@ export class HeartwoodRoom extends Room<GameState> {
         console.log(`Player ${player.name} stopped moving`);
     }
 
-    private handlePlayerMoveContinuous(client: Client, message: { directions: string[] }) {
-        const player = this.state.players.get(client.sessionId);
-        
-        if (!player) {
-            console.warn(`Continuous move from unknown player: ${client.sessionId}`);
-            return;
-        }
-
-        const { directions } = message;
-        
+    private handleMovementContinuous(player: Player, directions: string[]) {
         if (directions.length === 0) {
-            // No directions, stop movement
-            player.velocityX = 0;
-            player.velocityY = 0;
-            player.isMoving = false;
+            this.handleMovementStop(player);
             return;
         }
 
@@ -279,20 +223,19 @@ export class HeartwoodRoom extends Room<GameState> {
         let combinedVelocityX = 0;
         let combinedVelocityY = 0;
         let lastDirection = 0;
-        const moveSpeed = MOVEMENT_SPEED; // Use the same speed as discrete movement
         
         directions.forEach(direction => {
             const delta = MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS];
             if (delta) {
-                combinedVelocityX += (delta.x / Math.abs(delta.x || 1)) * moveSpeed;
-                combinedVelocityY += (delta.y / Math.abs(delta.y || 1)) * moveSpeed;
+                combinedVelocityX += delta.x * MOVEMENT_SPEED;
+                combinedVelocityY += delta.y * MOVEMENT_SPEED;
                 lastDirection = DIRECTIONS[direction as keyof typeof DIRECTIONS];
             }
         });
 
         // Normalize diagonal movement
         if (Math.abs(combinedVelocityX) > 0 && Math.abs(combinedVelocityY) > 0) {
-            combinedVelocityX *= 0.707; // 1/sqrt(2) for diagonal movement
+            combinedVelocityX *= 0.707;
             combinedVelocityY *= 0.707;
         }
 
@@ -302,32 +245,11 @@ export class HeartwoodRoom extends Room<GameState> {
         player.direction = lastDirection;
         player.isMoving = true;
         player.lastUpdate = Date.now();
-
-        // Move the player smoothly
-        const newX = player.x + combinedVelocityX;
-        const newY = player.y + combinedVelocityY;
         
-        // First check if the new position is within map bounds
-        if (!this.mapManager.isPixelInBounds(this.MAP_ID, newX, newY)) {
-            console.log(`Player ${player.name} attempted continuous movement out of bounds to pixel (${newX}, ${newY})`);
-            player.velocityX = 0;
-            player.velocityY = 0;
-            player.isMoving = false;
-            return;
-        }
-        
-        // Check collision for new position
-        const newTile = this.mapManager.pixelToTile(this.MAP_ID, newX, newY);
-        if (this.mapManager.isTileWalkable(this.MAP_ID, newTile.tileX, newTile.tileY)) {
-            player.x = newX;
-            player.y = newY;
-        } else {
-            // Stop movement if collision
-            player.velocityX = 0;
-            player.velocityY = 0;
-            player.isMoving = false;
-        }
+        console.log(`Player ${player.name} continuous movement: velocities (${player.velocityX}, ${player.velocityY})`);
     }
+
+    // Legacy methods removed - now handled by unified handlePlayerInput system
 
     private handlePlayerClick(client: Client, message: any) {
         const player = this.state.players.get(client.sessionId);
@@ -381,7 +303,67 @@ export class HeartwoodRoom extends Room<GameState> {
         this.state.players.delete(client.sessionId);
     }
 
+    private startGameLoop() {
+        const deltaTime = 1000 / this.GAME_LOOP_RATE; // 16.67ms for 60 FPS
+        
+        this.gameLoopInterval = setInterval(() => {
+            this.updateGameState(deltaTime);
+        }, deltaTime);
+        
+        console.log(`Game loop started at ${this.GAME_LOOP_RATE} FPS`);
+    }
+
+    private updateGameState(deltaTime: number) {
+        // Update all players
+        this.state.players.forEach((player, sessionId) => {
+            this.updatePlayerPhysics(player, deltaTime);
+        });
+        
+        // Update game timestamp
+        this.state.timestamp = Date.now();
+    }
+
+    private updatePlayerPhysics(player: Player, deltaTime: number) {
+        if (!player.isMoving || (player.velocityX === 0 && player.velocityY === 0)) {
+            return;
+        }
+
+        // Calculate movement delta based on velocity and time
+        const deltaSeconds = deltaTime / 1000;
+        const deltaX = player.velocityX * deltaSeconds;
+        const deltaY = player.velocityY * deltaSeconds;
+        
+        // Calculate new position
+        const newX = player.x + deltaX;
+        const newY = player.y + deltaY;
+        
+        // Check bounds
+        if (!this.mapManager.isPixelInBounds(this.MAP_ID, newX, newY)) {
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.isMoving = false;
+            return;
+        }
+        
+        // Check collision
+        const newTile = this.mapManager.pixelToTile(this.MAP_ID, newX, newY);
+        if (this.mapManager.isTileWalkable(this.MAP_ID, newTile.tileX, newTile.tileY)) {
+            player.x = newX;
+            player.y = newY;
+            player.lastUpdate = Date.now();
+        } else {
+            // Stop movement on collision
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.isMoving = false;
+        }
+    }
+
     onDispose() {
-        console.log("HeartwoodRoom disposed");
+        if (this.gameLoopInterval) {
+            clearInterval(this.gameLoopInterval);
+            this.gameLoopInterval = null;
+        }
+        console.log("HeartwoodRoom: Game loop stopped");
     }
 } 

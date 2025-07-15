@@ -13,6 +13,11 @@ export class GameScene extends Scene {
     // New architecture components
     private inputManager: InputManager;
     private playerController: PlayerController;
+    
+    // Fixed-rate input sampling
+    private lastInputSent: number = 0;
+    private inputSendRate: number = 100; // Send input every 100ms (10 times per second)
+    private pendingInputs: string[] = [];
 
     constructor() {
         super("GameScene");
@@ -54,8 +59,8 @@ export class GameScene extends Scene {
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         
         // Set camera zoom and smoothing
-        this.cameras.main.setZoom(2.5); // Zoom in 2x
-        this.cameras.main.setLerp(0.1, 0.1); // Smooth camera movement
+        this.cameras.main.setZoom(3); // Zoom in 3x
+        this.cameras.main.setLerp(0.05, 0.05); // Reduced camera smoothing for better responsiveness
         
         // Set the camera viewport to the game size
         this.cameras.main.setViewport(0, 0, this.cameras.main.width, this.cameras.main.height);
@@ -93,33 +98,55 @@ export class GameScene extends Scene {
     }
 
     private handleMove(direction: string) {
-        if (this.room) {
-            this.room.send('move', { direction });
-            console.log(`[GAME] Sent move command: ${direction}`);
-        }
+        // Legacy support - convert to new input system
+        this.handleInput([direction], 'discrete');
     }
 
     private handleMoveStart(direction: string) {
-        if (this.room) {
-            this.room.send('move_start', { direction });
-            console.log(`[GAME] Started moving: ${direction}`);
-        }
+        // Legacy support - convert to new input system
+        this.handleInput([direction], 'start');
     }
 
     private handleMoveStop(direction: string) {
-        if (this.room) {
-            this.room.send('move_stop', { direction });
-            console.log(`[GAME] Stopped moving: ${direction}`);
-        }
+        // Legacy support - convert to new input system
+        this.handleInput([], 'stop');
     }
 
     private handleMoveContinuous(directions: string[]) {
-        if (this.room && directions.length > 0) {
-            // Send continuous movement every few frames to avoid spam
-            if (Math.random() < 0.1) { // 10% chance per frame = ~6 times per second at 60fps
-                this.room.send('move_continuous', { directions });
-                console.log(`[GAME] Continuous movement: ${directions.join(', ')}`);
+        // Legacy support - convert to new input system
+        this.handleInput(directions, 'continuous');
+    }
+
+    private handleInput(directions: string[], inputType: 'discrete' | 'start' | 'stop' | 'continuous') {
+        if (!this.room) return;
+
+        // Send unified input message at fixed rate
+        if (inputType === 'continuous' && directions.length > 0) {
+            this.pendingInputs = [...directions];
+            
+            const now = Date.now();
+            if (now - this.lastInputSent >= this.inputSendRate) {
+                this.room.send('player_input', { 
+                    directions: this.pendingInputs,
+                    type: 'continuous',
+                    timestamp: now
+                });
+                this.lastInputSent = now;
+                console.log(`[GAME] Continuous input: ${this.pendingInputs.join(', ')}`);
             }
+        } else {
+            // Send immediate input for discrete actions
+            this.room.send('player_input', { 
+                directions: directions,
+                type: inputType,
+                timestamp: Date.now()
+            });
+            
+            if (inputType === 'stop') {
+                this.pendingInputs = [];
+            }
+            
+            console.log(`[GAME] ${inputType} input: ${directions.join(', ')}`);
         }
     }
 
@@ -214,11 +241,13 @@ export class GameScene extends Scene {
         if (this.myPlayerId) {
             const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
             if (mySprite) {
-                // Make the camera follow the current player smoothly
-                this.cameras.main.startFollow(mySprite, true, 0.1, 0.1);
+                // Make the camera follow the current player more responsively
+                this.cameras.main.startFollow(mySprite, true, 0.2, 0.2);
             }
         }
     }
+
+    // Client-side prediction methods removed for stability - server-side optimizations provide sufficient performance
 
     update(time: number, delta: number) {
         // Update all controllers

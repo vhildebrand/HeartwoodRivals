@@ -40,10 +40,15 @@ export class MapManager {
     private static instance: MapManager;
     private maps: Map<string, MapData> = new Map();
     private collisionMaps: Map<string, number[][]> = new Map();
+    
+    // Collision cache to avoid repeated lookups
+    private collisionCache: Map<string, Map<string, boolean>> = new Map();
+    private cacheHits: number = 0;
+    private cacheMisses: number = 0;
 
     private constructor() {}
 
-    static getInstance(): MapManager {
+    public static getInstance(): MapManager {
         if (!MapManager.instance) {
             MapManager.instance = new MapManager();
         }
@@ -90,6 +95,10 @@ export class MapManager {
 
         this.maps.set(mapId, mapData);
         this.generateCollisionMap(mapId);
+        
+        // Initialize collision cache for this map
+        this.collisionCache.set(mapId, new Map());
+        
         return mapData;
     }
 
@@ -149,29 +158,99 @@ export class MapManager {
     }
 
     /**
-     * Get collision map
-     */
-    getCollisionMap(mapId: string): number[][] | undefined {
-        return this.collisionMaps.get(mapId);
-    }
-
-    /**
-     * Check if a tile position is walkable
+     * Check if a tile position is walkable with caching
      */
     isTileWalkable(mapId: string, x: number, y: number): boolean {
+        const cacheKey = `${x},${y}`;
+        const mapCache = this.collisionCache.get(mapId);
+        
+        if (mapCache && mapCache.has(cacheKey)) {
+            this.cacheHits++;
+            return mapCache.get(cacheKey)!;
+        }
+
+        this.cacheMisses++;
         const collisionMap = this.collisionMaps.get(mapId);
         const mapData = this.maps.get(mapId);
         
-        if (!collisionMap || !mapData) return false;
+        if (!collisionMap || !mapData) {
+            if (mapCache) mapCache.set(cacheKey, false);
+            return false;
+        }
 
         // Check bounds - ensure within map boundaries
         if (x < 0 || x >= mapData.width || y < 0 || y >= mapData.height) {
-            console.warn(`MapManager: Tile out of bounds: (${x}, ${y}), map size: ${mapData.width}x${mapData.height}`);
+            if (mapCache) mapCache.set(cacheKey, false);
             return false;
         }
 
         // Check collision map
-        return collisionMap[y][x] === 0;
+        const isWalkable = collisionMap[y][x] === 0;
+        if (mapCache) mapCache.set(cacheKey, isWalkable);
+        
+        return isWalkable;
+    }
+
+    /**
+     * Batch check multiple tiles for walkability (optimized for path finding)
+     */
+    areMultipleTilesWalkable(mapId: string, tiles: Array<{x: number, y: number}>): boolean[] {
+        const results: boolean[] = [];
+        const mapCache = this.collisionCache.get(mapId);
+        const collisionMap = this.collisionMaps.get(mapId);
+        const mapData = this.maps.get(mapId);
+        
+        if (!collisionMap || !mapData) {
+            return tiles.map(() => false);
+        }
+
+        tiles.forEach(tile => {
+            const cacheKey = `${tile.x},${tile.y}`;
+            
+            if (mapCache && mapCache.has(cacheKey)) {
+                this.cacheHits++;
+                results.push(mapCache.get(cacheKey)!);
+            } else {
+                this.cacheMisses++;
+                
+                // Check bounds
+                if (tile.x < 0 || tile.x >= mapData.width || tile.y < 0 || tile.y >= mapData.height) {
+                    results.push(false);
+                    if (mapCache) mapCache.set(cacheKey, false);
+                } else {
+                    const isWalkable = collisionMap[tile.y][tile.x] === 0;
+                    results.push(isWalkable);
+                    if (mapCache) mapCache.set(cacheKey, isWalkable);
+                }
+            }
+        });
+
+        return results;
+    }
+
+    /**
+     * Get cache statistics
+     */
+    getCacheStats(): { hits: number, misses: number, hitRate: number } {
+        const total = this.cacheHits + this.cacheMisses;
+        return {
+            hits: this.cacheHits,
+            misses: this.cacheMisses,
+            hitRate: total > 0 ? (this.cacheHits / total) * 100 : 0
+        };
+    }
+
+    /**
+     * Clear collision cache (useful for debugging or memory management)
+     */
+    clearCollisionCache(mapId?: string): void {
+        if (mapId) {
+            this.collisionCache.get(mapId)?.clear();
+        } else {
+            this.collisionCache.clear();
+        }
+        this.cacheHits = 0;
+        this.cacheMisses = 0;
     }
 
     /**
