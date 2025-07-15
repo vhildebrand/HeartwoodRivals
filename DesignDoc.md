@@ -2,7 +2,7 @@ Technical Design Document
 
 1. Introduction
 
-This document outlines the technical architecture and design for Project Starlight Valley, a multiplayer 2D simulation game with LLM-powered NPCs. It serves as a guide for the development team, detailing the system components, their interactions, data models, and implementation strategies required to fulfill the specifications laid out in the Product Requirements Document (PRD).
+This document outlines the technical architecture and design for Project Heartwood Valley, a multiplayer 2D simulation game with LLM-powered NPCs. It serves as a guide for the development team, detailing the system components, their interactions, data models, and implementation strategies required to fulfill the specifications laid out in the Product Requirements Document (PRD).
 
 2. System Architecture Overview
 
@@ -92,7 +92,7 @@ State Schema: The room's state will be defined using @colyseus/schema for automa
 
 class Player extends Schema { @type("string") name: string; @type("number") x: number; @type("number") y: number; }
 class NPC extends Schema { @type("string") characterId: string; @type("number") x: number; @type.("number") y: number; }
-class StarlightRoomState extends Schema { @type({ map: Player }) players = new MapSchema<Player>(); @type({ map: NPC }) npcs = new MapSchema<NPC>(); }
+class HeartwoodRoomState extends Schema { @type({ map: Player }) players = new MapSchema<Player>(); @type({ map: NPC }) npcs = new MapSchema<NPC>(); }
 
 Lifecycle Hooks:
 

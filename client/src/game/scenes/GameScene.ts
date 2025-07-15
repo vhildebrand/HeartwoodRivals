@@ -98,22 +98,18 @@ export class GameScene extends Scene {
     }
 
     private handleMove(direction: string) {
-        // Legacy support - convert to new input system
         this.handleInput([direction], 'discrete');
     }
 
     private handleMoveStart(direction: string) {
-        // Legacy support - convert to new input system
         this.handleInput([direction], 'start');
     }
 
     private handleMoveStop(direction: string) {
-        // Legacy support - convert to new input system
         this.handleInput([], 'stop');
     }
 
     private handleMoveContinuous(directions: string[]) {
-        // Legacy support - convert to new input system
         this.handleInput(directions, 'continuous');
     }
 
