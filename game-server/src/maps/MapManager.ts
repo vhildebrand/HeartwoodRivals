@@ -164,13 +164,43 @@ export class MapManager {
         
         if (!collisionMap || !mapData) return false;
 
-        // Check bounds
+        // Check bounds - ensure within map boundaries
         if (x < 0 || x >= mapData.width || y < 0 || y >= mapData.height) {
+            console.warn(`MapManager: Tile out of bounds: (${x}, ${y}), map size: ${mapData.width}x${mapData.height}`);
             return false;
         }
 
         // Check collision map
         return collisionMap[y][x] === 0;
+    }
+
+    /**
+     * Check if a pixel position is within map bounds
+     */
+    isPixelInBounds(mapId: string, pixelX: number, pixelY: number): boolean {
+        const mapData = this.maps.get(mapId);
+        if (!mapData) return false;
+
+        const mapPixelWidth = mapData.width * mapData.tileWidth;
+        const mapPixelHeight = mapData.height * mapData.tileHeight;
+
+        return pixelX >= 0 && pixelX < mapPixelWidth && pixelY >= 0 && pixelY < mapPixelHeight;
+    }
+
+    /**
+     * Clamp pixel coordinates to map bounds
+     */
+    clampPixelToBounds(mapId: string, pixelX: number, pixelY: number): { pixelX: number; pixelY: number } {
+        const mapData = this.maps.get(mapId);
+        if (!mapData) return { pixelX: 0, pixelY: 0 };
+
+        const mapPixelWidth = mapData.width * mapData.tileWidth;
+        const mapPixelHeight = mapData.height * mapData.tileHeight;
+
+        return {
+            pixelX: Math.max(0, Math.min(pixelX, mapPixelWidth - 1)),
+            pixelY: Math.max(0, Math.min(pixelY, mapPixelHeight - 1))
+        };
     }
 
     /**

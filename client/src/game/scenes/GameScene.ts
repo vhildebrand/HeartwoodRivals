@@ -50,12 +50,20 @@ export class GameScene extends Scene {
         this.wallsLayer = map.createLayer('Walls', tileset);
         const aboveLayer = map.createLayer('Above', tileset);
         
-        // Set up camera
+        // Set up camera with proper bounds
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+        
+        // Set camera zoom and smoothing
+        this.cameras.main.setZoom(1);
+        this.cameras.main.setLerp(0.1, 0.1); // Smooth camera movement
+        
+        // Set the camera viewport to the game size
+        this.cameras.main.setViewport(0, 0, this.cameras.main.width, this.cameras.main.height);
         
         console.log("GameScene: Large map loaded with available layers");
         console.log("Available layers:", map.layers.map(layer => layer.name));
         console.log(`Map dimensions: ${map.widthInPixels}x${map.heightInPixels} pixels (${map.width}x${map.height} tiles)`);
+        console.log(`Camera bounds: ${this.cameras.main.getBounds()}`);
         
         // Get the MapManager to access collision data
         const mapManager = MapManager.getInstance();
@@ -196,6 +204,19 @@ export class GameScene extends Scene {
                     this.playerController.removePlayer(sessionId);
                 }
             });
+            
+            // Update camera to follow current player
+            this.updateCameraFollow();
+        }
+    }
+
+    private updateCameraFollow() {
+        if (this.myPlayerId) {
+            const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
+            if (mySprite) {
+                // Make the camera follow the current player smoothly
+                this.cameras.main.startFollow(mySprite, true, 0.1, 0.1);
+            }
         }
     }
 

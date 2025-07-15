@@ -37,10 +37,38 @@ export class HeartwoodRoom extends Room<GameState> {
         // Set starting position (center of map, safe area)
         const startTileX = 50; // Center of 100-tile wide map
         const startTileY = 10;  // Safe area in upper portion
-        const startPixel = this.mapManager.tileToPixel(this.MAP_ID, startTileX, startTileY);
         
-        player.x = startPixel.pixelX;
-        player.y = startPixel.pixelY;
+        // Ensure starting position is valid
+        if (!this.mapManager.isTileWalkable(this.MAP_ID, startTileX, startTileY)) {
+            console.warn(`Starting position (${startTileX}, ${startTileY}) is not walkable, finding alternative...`);
+            // Try to find a nearby walkable position
+            let foundValidPosition = false;
+            for (let radius = 1; radius <= 10 && !foundValidPosition; radius++) {
+                for (let dx = -radius; dx <= radius && !foundValidPosition; dx++) {
+                    for (let dy = -radius; dy <= radius && !foundValidPosition; dy++) {
+                        const testX = startTileX + dx;
+                        const testY = startTileY + dy;
+                        if (this.mapManager.isTileWalkable(this.MAP_ID, testX, testY)) {
+                            foundValidPosition = true;
+                            const safePixel = this.mapManager.tileToPixel(this.MAP_ID, testX, testY);
+                            player.x = safePixel.pixelX;
+                            player.y = safePixel.pixelY;
+                            console.log(`Found safe spawn position at tile (${testX}, ${testY})`);
+                        }
+                    }
+                }
+            }
+            
+            if (!foundValidPosition) {
+                console.error('Could not find valid spawn position, using default');
+                player.x = 50 * 16; // Default fallback
+                player.y = 10 * 16;
+            }
+        } else {
+            const startPixel = this.mapManager.tileToPixel(this.MAP_ID, startTileX, startTileY);
+            player.x = startPixel.pixelX;
+            player.y = startPixel.pixelY;
+        }
         player.direction = DIRECTIONS.down;
         player.isMoving = false;
         player.lastUpdate = Date.now();
@@ -137,6 +165,14 @@ export class HeartwoodRoom extends Room<GameState> {
         const delta = MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS];
         const newX = player.x + delta.x;
         const newY = player.y + delta.y;
+        
+        // First check if the new position is within map bounds
+        if (!this.mapManager.isPixelInBounds(this.MAP_ID, newX, newY)) {
+            console.log(`Player ${player.name} attempted to move out of bounds to pixel (${newX}, ${newY})`);
+            player.direction = DIRECTIONS[direction as keyof typeof DIRECTIONS];
+            player.isMoving = false;
+            return;
+        }
         
         // Convert to tile coordinates for collision checking
         const newTile = this.mapManager.pixelToTile(this.MAP_ID, newX, newY);
@@ -269,6 +305,15 @@ export class HeartwoodRoom extends Room<GameState> {
         // Move the player smoothly
         const newX = player.x + combinedVelocityX;
         const newY = player.y + combinedVelocityY;
+        
+        // First check if the new position is within map bounds
+        if (!this.mapManager.isPixelInBounds(this.MAP_ID, newX, newY)) {
+            console.log(`Player ${player.name} attempted continuous movement out of bounds to pixel (${newX}, ${newY})`);
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.isMoving = false;
+            return;
+        }
         
         // Check collision for new position
         const newTile = this.mapManager.pixelToTile(this.MAP_ID, newX, newY);
