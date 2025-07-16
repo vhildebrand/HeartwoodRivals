@@ -1,0 +1,16 @@
+{
+  "name": "heartwood-map-tools",
+  "version": "1.0.0",
+  "description": "Map generation tools for Heartwood Valley",
+  "main": "generateMap.js",
+  "scripts": {
+    "generate": "node generateMap.js generate",
+    "validate": "node generateMap.js validate",
+    "help": "echo 'Available commands: npm run generate, npm run validate'"
+  },
+  "bin": {
+    "generate-map": "./generateMap.js"
+  },
+  "author": "Heartwood Valley Team",
+  "license": "MIT"
+} 

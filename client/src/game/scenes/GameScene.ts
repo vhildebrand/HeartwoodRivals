@@ -22,6 +22,9 @@ export class GameScene extends Scene {
     // NPC system
     private npcs: Map<string, { sprite: Phaser.GameObjects.Sprite, name: string, x: number, y: number }> = new Map();
     private interactionIndicator: Phaser.GameObjects.Text | null = null;
+    
+    // Building labels
+    private buildingLabels: Phaser.GameObjects.Text[] = [];
 
     constructor() {
         super("GameScene");
@@ -38,6 +41,9 @@ export class GameScene extends Scene {
         
         // Create NPCs
         this.createNPCs();
+        
+        // Create building labels
+        this.createBuildingLabels();
         
         // Connect to server
         this.connectToServer();
@@ -155,6 +161,58 @@ export class GameScene extends Scene {
             console.log(`Created ${npcs.length} NPCs`);
         } catch (error) {
             console.error('Error creating NPCs:', error);
+        }
+    }
+
+    private createBuildingLabels() {
+        try {
+            // Get the locations data that was loaded in PreloaderScene
+            const locationsData = this.cache.json.get('beacon_bay_locations');
+            if (!locationsData) {
+                console.error('Failed to load beacon_bay_locations.json');
+                return;
+            }
+            
+            // Create labels for each building
+            Object.entries(locationsData).forEach(([key, location]: [string, any]) => {
+                if (key === 'water_areas') return; // Skip water areas
+                
+                if (location.name && location.x !== undefined && location.y !== undefined && 
+                    location.width !== undefined && location.height !== undefined) {
+                    
+                    // Calculate center position of the building
+                    const centerX = (location.x + location.width / 2) * 16; // Convert to pixels
+                    const centerY = (location.y + location.height / 2) * 16; // Convert to pixels
+                    
+                    // Create text label
+                    const label = this.add.text(centerX, centerY, location.name, {
+                        fontSize: '12px',
+                        color: '#FFFFFF',
+                        backgroundColor: '#000000',
+                        padding: { x: 4, y: 2 },
+                        stroke: '#000000',
+                        strokeThickness: 2
+                    });
+                    
+                    // Center the text origin
+                    label.setOrigin(0.5, 0.5);
+                    
+                    // Set depth to appear above buildings but below UI
+                    label.setDepth(100);
+                    
+                    // Make labels scale with camera zoom
+                    label.setScrollFactor(1);
+                    
+                    // Store label reference
+                    this.buildingLabels.push(label);
+                    
+                    console.log(`Created label for ${location.name} at (${centerX}, ${centerY})`);
+                }
+            });
+            
+            console.log(`Created ${this.buildingLabels.length} building labels`);
+        } catch (error) {
+            console.error('Error creating building labels:', error);
         }
     }
 
@@ -386,6 +444,10 @@ export class GameScene extends Scene {
         // Clean up controllers
         this.inputManager?.destroy();
         this.playerController?.destroy();
+        
+        // Clean up building labels
+        this.buildingLabels.forEach(label => label.destroy());
+        this.buildingLabels = [];
         
         // Clean up Colyseus connection
         if (this.room) {

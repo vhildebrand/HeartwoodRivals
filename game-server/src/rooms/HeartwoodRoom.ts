@@ -15,7 +15,7 @@ const DIRECTIONS = {
 
 // Movement deltas for each direction
 const TILE_SIZE = 16;
-const MOVEMENT_SPEED = 120; // pixels per second (increased from 20)
+const MOVEMENT_SPEED = 1200; // pixels per second (increased from 20)
 const MOVEMENT_DELTAS = {
     up: { x: 0, y: -1 },
     down: { x: 0, y: 1 },

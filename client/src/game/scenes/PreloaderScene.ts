@@ -36,6 +36,9 @@ export class PreloaderScene extends Scene {
         // Load additional assets
         this.load.image('bg', 'assets/bg.png');
         this.load.image('logo', 'assets/logo.png');
+        
+        // Load the beacon bay locations data
+        this.load.json('beacon_bay_locations', 'assets/beacon_bay_locations.json');
     }
 
     create() {
