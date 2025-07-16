@@ -4,12 +4,14 @@ import { MovementController } from "./MovementController";
 export class PlayerController {
     private scene: Scene;
     private sprites: Map<string, Phaser.Physics.Arcade.Sprite>;
+    private nameLabels: Map<string, Phaser.GameObjects.Text>;
     private movementControllers: Map<string, MovementController>;
     private myPlayerId: string | null = null;
 
     constructor(scene: Scene) {
         this.scene = scene;
         this.sprites = new Map();
+        this.nameLabels = new Map();
         this.movementControllers = new Map();
         console.log("PlayerController: Initialized");
     }
@@ -78,6 +80,7 @@ export class PlayerController {
 
     public updatePlayer(sessionId: string, playerData: any) {
         let sprite = this.sprites.get(sessionId);
+        let nameLabel = this.nameLabels.get(sessionId);
         let movementController = this.movementControllers.get(sessionId);
         
         if (!sprite) {
@@ -98,6 +101,16 @@ export class PlayerController {
                 sprite.body.setSize(12, 12);
             }
             
+            // Create name label above player
+            nameLabel = this.scene.add.text(playerData.x, playerData.y - 20, playerData.name || sessionId, {
+                fontSize: '10px',
+                color: '#FFFFFF',
+                backgroundColor: '#000000',
+                padding: { x: 3, y: 1 }
+            });
+            nameLabel.setOrigin(0.5, 0.5);
+            nameLabel.setDepth(15);
+            
             // Create movement controller
             movementController = new MovementController(this.scene);
             movementController.setPosition(playerData.x, playerData.y);
@@ -107,6 +120,7 @@ export class PlayerController {
             
             // Store components
             this.sprites.set(sessionId, sprite);
+            this.nameLabels.set(sessionId, nameLabel);
             this.movementControllers.set(sessionId, movementController);
             
             console.log(`PlayerController: Created player ${sessionId} at (${playerData.x}, ${playerData.y})`);
@@ -161,22 +175,35 @@ export class PlayerController {
 
     public removePlayer(sessionId: string) {
         const sprite = this.sprites.get(sessionId);
+        const nameLabel = this.nameLabels.get(sessionId);
+        
         if (sprite) {
             sprite.destroy();
             this.sprites.delete(sessionId);
-            this.movementControllers.delete(sessionId);
-            console.log(`PlayerController: Removed player ${sessionId}`);
         }
+        
+        if (nameLabel) {
+            nameLabel.destroy();
+            this.nameLabels.delete(sessionId);
+        }
+        
+        this.movementControllers.delete(sessionId);
+        console.log(`PlayerController: Removed player ${sessionId}`);
     }
 
     public update(deltaTime: number) {
-        // Update all movement controllers and sync sprites
+        // Update all movement controllers and sync sprites and name labels
         this.movementControllers.forEach((controller, sessionId) => {
             const newPosition = controller.update(deltaTime);
             const sprite = this.sprites.get(sessionId);
+            const nameLabel = this.nameLabels.get(sessionId);
             
             if (sprite) {
                 sprite.setPosition(newPosition.x, newPosition.y);
+            }
+            
+            if (nameLabel) {
+                nameLabel.setPosition(newPosition.x, newPosition.y - 20);
             }
         });
     }
@@ -190,9 +217,11 @@ export class PlayerController {
     }
 
     public destroy() {
-        // Clean up all sprites and controllers
+        // Clean up all sprites, name labels, and controllers
         this.sprites.forEach((sprite) => sprite.destroy());
+        this.nameLabels.forEach((nameLabel) => nameLabel.destroy());
         this.sprites.clear();
+        this.nameLabels.clear();
         this.movementControllers.clear();
         console.log("PlayerController: Destroyed");
     }

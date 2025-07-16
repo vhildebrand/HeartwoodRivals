@@ -59,6 +59,76 @@
     "tileId": 11,
     "description": "Public library and information center"
   },
+  "lighthouse": {
+    "x": 280,
+    "y": 280,
+    "name": "Lighthouse",
+    "width": 8,
+    "height": 8,
+    "type": "maritime",
+    "tileId": 11,
+    "description": "Beacon guiding ships safely to harbor"
+  },
+  "church": {
+    "x": 185,
+    "y": 50,
+    "name": "Church",
+    "width": 16,
+    "height": 20,
+    "type": "civic",
+    "tileId": 11,
+    "description": "Community place of worship and gathering"
+  },
+  "school": {
+    "x": 205,
+    "y": 50,
+    "name": "School",
+    "width": 18,
+    "height": 14,
+    "type": "civic",
+    "tileId": 11,
+    "description": "Educational institution for local children"
+  },
+  "town_square": {
+    "x": 120,
+    "y": 80,
+    "name": "Town Square",
+    "width": 20,
+    "height": 15,
+    "type": "civic",
+    "tileId": 11,
+    "description": "Central gathering place with fountain"
+  },
+  "blacksmith_shop": {
+    "x": 145,
+    "y": 80,
+    "name": "Blacksmith Shop",
+    "width": 12,
+    "height": 10,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Metalworking and tool repair services"
+  },
+  "general_store": {
+    "x": 160,
+    "y": 80,
+    "name": "General Store",
+    "width": 14,
+    "height": 12,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Supplies, goods, and everyday necessities"
+  },
+  "bakery": {
+    "x": 105,
+    "y": 99,
+    "name": "Bakery",
+    "width": 10,
+    "height": 8,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Fresh bread and pastries daily"
+  },
   "cafe": {
     "x": 116,
     "y": 99,
@@ -68,6 +138,16 @@
     "type": "commercial",
     "tileId": 11,
     "description": "Cozy coffee shop and social gathering place"
+  },
+  "tavern": {
+    "x": 175,
+    "y": 99,
+    "name": "Salty Sailor Tavern",
+    "width": 16,
+    "height": 12,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Local tavern and inn for travelers"
   },
   "gym": {
     "x": 132,
@@ -98,6 +178,206 @@
     "type": "commercial",
     "tileId": 11,
     "description": "Fresh meat and specialty cuts"
+  },
+  "fish_market": {
+    "x": 90,
+    "y": 260,
+    "name": "Fish Market",
+    "width": 16,
+    "height": 10,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Fresh catches from local fishermen"
+  },
+  "apothecary": {
+    "x": 195,
+    "y": 99,
+    "name": "Apothecary",
+    "width": 10,
+    "height": 8,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Herbs, medicines, and healing supplies"
+  },
+  "tailor_shop": {
+    "x": 105,
+    "y": 115,
+    "name": "Tailor Shop",
+    "width": 12,
+    "height": 8,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Custom clothing and fabric goods"
+  },
+  "woodworker_shop": {
+    "x": 120,
+    "y": 115,
+    "name": "Woodworker Shop",
+    "width": 14,
+    "height": 10,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Furniture and wooden crafts"
+  },
+  "shipyard": {
+    "x": 200,
+    "y": 260,
+    "name": "Shipyard",
+    "width": 30,
+    "height": 20,
+    "type": "maritime",
+    "tileId": 11,
+    "description": "Boat building and repair facility"
+  },
+  "warehouse": {
+    "x": 240,
+    "y": 260,
+    "name": "Warehouse",
+    "width": 20,
+    "height": 15,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Storage for goods and supplies"
+  },
+  "stables": {
+    "x": 60,
+    "y": 25,
+    "name": "Stables",
+    "width": 18,
+    "height": 12,
+    "type": "agricultural",
+    "tileId": 11,
+    "description": "Horse care and riding services"
+  },
+  "windmill": {
+    "x": 80,
+    "y": 25,
+    "name": "Windmill",
+    "width": 10,
+    "height": 10,
+    "type": "agricultural",
+    "tileId": 11,
+    "description": "Grain processing facility"
+  },
+  "watchtower": {
+    "x": 260,
+    "y": 10,
+    "name": "Watchtower",
+    "width": 8,
+    "height": 8,
+    "type": "civic",
+    "tileId": 11,
+    "description": "Coastal observation post"
+  },
+  "farmers_market": {
+    "x": 80,
+    "y": 120,
+    "name": "Farmers Market",
+    "width": 20,
+    "height": 15,
+    "type": "commercial",
+    "tileId": 11,
+    "description": "Fresh produce and local goods"
+  },
+  "house_1": {
+    "x": 60,
+    "y": 80,
+    "name": "Cottage",
+    "width": 8,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Cozy residential cottage"
+  },
+  "house_2": {
+    "x": 70,
+    "y": 80,
+    "name": "Cottage",
+    "width": 8,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Cozy residential cottage"
+  },
+  "house_3": {
+    "x": 80,
+    "y": 80,
+    "name": "Cottage",
+    "width": 8,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Cozy residential cottage"
+  },
+  "house_4": {
+    "x": 90,
+    "y": 80,
+    "name": "Cottage",
+    "width": 8,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Cozy residential cottage"
+  },
+  "house_5": {
+    "x": 200,
+    "y": 120,
+    "name": "Cottage",
+    "width": 8,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Cozy residential cottage"
+  },
+  "house_6": {
+    "x": 210,
+    "y": 120,
+    "name": "Cottage",
+    "width": 8,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Cozy residential cottage"
+  },
+  "house_7": {
+    "x": 220,
+    "y": 120,
+    "name": "Cottage",
+    "width": 8,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Cozy residential cottage"
+  },
+  "house_8": {
+    "x": 230,
+    "y": 120,
+    "name": "Cottage",
+    "width": 8,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Cozy residential cottage"
+  },
+  "coastal_houses_1": {
+    "x": 20,
+    "y": 260,
+    "name": "Coastal Cottage",
+    "width": 10,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Seaside residential cottage"
+  },
+  "coastal_houses_2": {
+    "x": 32,
+    "y": 260,
+    "name": "Coastal Cottage",
+    "width": 10,
+    "height": 8,
+    "type": "residential",
+    "tileId": 11,
+    "description": "Seaside residential cottage"
   },
   "apartments": {
     "x": 100,
@@ -178,6 +458,26 @@
     "type": "agricultural",
     "tileId": 11,
     "description": "Farm storage and livestock shelter"
+  },
+  "crop_fields": {
+    "x": 10,
+    "y": 40,
+    "name": "Crop Fields",
+    "width": 40,
+    "height": 30,
+    "type": "agricultural",
+    "tileId": 10,
+    "description": "Fertile farmland for growing crops"
+  },
+  "orchard": {
+    "x": 10,
+    "y": 75,
+    "name": "Orchard",
+    "width": 25,
+    "height": 20,
+    "type": "agricultural",
+    "tileId": 10,
+    "description": "Fruit trees and seasonal harvests"
   },
   "mad_science_lab": {
     "x": 262,

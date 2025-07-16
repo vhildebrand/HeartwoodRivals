@@ -20,7 +20,7 @@ export class GameScene extends Scene {
     private pendingInputs: string[] = [];
     
     // NPC system
-    private npcs: Map<string, { sprite: Phaser.GameObjects.Sprite, name: string, x: number, y: number }> = new Map();
+    private npcs: Map<string, { sprite: Phaser.GameObjects.Sprite, nameLabel: Phaser.GameObjects.Text, name: string, x: number, y: number }> = new Map();
     private interactionIndicator: Phaser.GameObjects.Text | null = null;
     
     // Building labels
@@ -72,7 +72,7 @@ export class GameScene extends Scene {
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         
         // Set camera zoom and smoothing
-        this.cameras.main.setZoom(1); // Zoom in 3x
+        this.cameras.main.setZoom(2); // Zoom in 3x
         this.cameras.main.setLerp(0.25, 0.25); // Reduced camera smoothing for better responsiveness
         
         // Set the camera viewport to the game size
@@ -137,9 +137,20 @@ export class GameScene extends Scene {
                 // Create animations for NPC (idle animation)
                 npcSprite.play('idle_down');
                 
+                // Create name label above NPC
+                const nameLabel = this.add.text(npc.x_position * 16, npc.y_position * 16 - 20, npc.name, {
+                    fontSize: '10px',
+                    color: '#FFFFFF',
+                    backgroundColor: '#000000',
+                    padding: { x: 3, y: 1 }
+                });
+                nameLabel.setOrigin(0.5, 0.5);
+                nameLabel.setDepth(15);
+                
                 // Store NPC data
                 this.npcs.set(npc.id, {
                     sprite: npcSprite,
+                    nameLabel: nameLabel,
                     name: npc.name,
                     x: npc.x_position,
                     y: npc.y_position
@@ -180,12 +191,12 @@ export class GameScene extends Scene {
                 if (location.name && location.x !== undefined && location.y !== undefined && 
                     location.width !== undefined && location.height !== undefined) {
                     
-                    // Calculate center position of the building
-                    const centerX = (location.x + location.width / 2) * 16; // Convert to pixels
-                    const centerY = (location.y + location.height / 2) * 16; // Convert to pixels
+                    // Calculate position near the top of the building
+                    const centerX = (location.x + location.width / 2) * 16; // Convert to pixels (still centered horizontally)
+                    const topY = (location.y + 2) * 16; // Convert to pixels (2 tiles from top edge)
                     
                     // Create text label
-                    const label = this.add.text(centerX, centerY, location.name, {
+                    const label = this.add.text(centerX, topY, location.name, {
                         fontSize: '12px',
                         color: '#FFFFFF',
                         backgroundColor: '#000000',
@@ -206,7 +217,7 @@ export class GameScene extends Scene {
                     // Store label reference
                     this.buildingLabels.push(label);
                     
-                    console.log(`Created label for ${location.name} at (${centerX}, ${centerY})`);
+                    console.log(`Created label for ${location.name} at (${centerX}, ${topY})`);
                 }
             });
             
@@ -448,6 +459,18 @@ export class GameScene extends Scene {
         // Clean up building labels
         this.buildingLabels.forEach(label => label.destroy());
         this.buildingLabels = [];
+        
+        // Clean up NPCs and their name labels
+        this.npcs.forEach(npc => {
+            npc.sprite.destroy();
+            npc.nameLabel.destroy();
+        });
+        this.npcs.clear();
+        
+        // Clean up interaction indicator
+        if (this.interactionIndicator) {
+            this.interactionIndicator.destroy();
+        }
         
         // Clean up Colyseus connection
         if (this.room) {
