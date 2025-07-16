@@ -279,7 +279,15 @@ export class MetacognitionProcessor {
         return null;
       }
 
-      return this.parseMetacognitionResponse(agent.id, response);
+      // Parse and validate the response
+      const metacognitionResult = this.parseMetacognitionResponse(response);
+      
+      if (metacognitionResult) {
+        metacognitionResult.agent_id = agent.id;
+        return metacognitionResult;
+      }
+      
+      return null;
     } catch (error) {
       console.error('❌ [METACOGNITION] Error generating metacognitive evaluation:', error);
       return null;
@@ -311,7 +319,14 @@ export class MetacognitionProcessor {
         return null;
       }
 
-      return this.parseMetacognitionResponse(agent.id, response);
+      const metacognitionResult = this.parseMetacognitionResponse(response);
+      
+      if (metacognitionResult) {
+        metacognitionResult.agent_id = agent.id;
+        return metacognitionResult;
+      }
+      
+      return null;
     } catch (error) {
       console.error('❌ [URGENT METACOGNITION] Error generating urgent metacognitive evaluation:', error);
       return null;
@@ -400,7 +415,7 @@ Respond with ONLY the JSON object, no additional text.`;
     const planTexts = performanceData.plans.map((p: any) => `- Goal: ${p.goal} (Status: ${p.status})`).join('\n');
     const reflectionTexts = performanceData.reflections.map((r: any) => `- ${r.content}`).join('\n');
 
-    return `You are ${agent.name}, facing an URGENT SITUATION that requires immediate metacognitive evaluation and potential schedule changes.
+    return `You are ${agent.name}, facing a HIGH PRIORITY SITUATION that requires immediate metacognitive evaluation and potential schedule changes.
 
 YOUR IDENTITY:
 ${agent.constitution}
@@ -412,7 +427,7 @@ Secondary Goals: ${agent.secondary_goals ? agent.secondary_goals.join(', ') : 'N
 CURRENT SCHEDULE:
 ${JSON.stringify(agent.schedule, null, 2)}
 
-🚨 URGENT SITUATION 🚨
+🚨 HIGH PRIORITY SITUATION 🚨
 - URGENCY LEVEL: ${urgency_level}/10
 - REASON: ${urgency_reason}
 - PLAYER MESSAGE: "${player_message}"
@@ -427,71 +442,104 @@ ${planTexts}
 === RECENT REFLECTIONS ===
 ${reflectionTexts}
 
-URGENT METACOGNITIVE EVALUATION TASK:
-This is an urgent situation requiring immediate attention. Based on your role, responsibilities, and the situation described:
+IMMEDIATE ACTION EVALUATION TASK:
+This is a high priority situation requiring immediate attention. Based on your role, responsibilities, personality, and interests:
 
 1. Does this situation require you to drop your current activities and respond immediately?
 2. What specific actions should you take RIGHT NOW?
 3. How should you modify your schedule to address this urgent situation?
 4. What are the immediate next steps you need to take?
 
-CRITICAL: If this situation is truly urgent and relevant to your role and responsibilities, you MUST suggest immediate schedule modifications. For example:
+CRITICAL: If this situation is truly urgent/exciting and relevant to your role, interests, or desires, you MUST suggest immediate schedule modifications. Examples:
 - A doctor hearing about a medical emergency should immediately go to help
 - A fire chief hearing about a fire should immediately respond
 - A police officer hearing about a crime should immediately investigate
+- Someone hearing their favorite performer is nearby should immediately go see them
+- Someone hearing an old friend is in town should immediately go visit them
+- Someone hearing about a special opportunity should immediately pursue it
 
-Focus on IMMEDIATE ACTION based on your professional duties and the urgency of the situation.
+Focus on IMMEDIATE ACTION based on your professional duties AND personal interests/desires.
 
-AVAILABLE EMERGENCY ACTIVITIES:
+AVAILABLE ACTIVITIES:
 - "emergency_response" - For medical emergencies (doctors, nurses, medical staff)
 - "fire_response" - For fire emergencies (fire chief, firefighters)
 - "police_response" - For criminal emergencies (police officers)
+- "social" - For meeting friends, attending performances, social gatherings
+- "visit" - For visiting specific people or places
 - "patrol" - For general security/safety concerns
 - "medical_work" - For medical situations at your workplace
+- "entertainment" - For attending performances, shows, events
+- "personal_time" - For pursuing personal interests and hobbies
 
-Choose the appropriate emergency activity based on your profession and the type of emergency.
+Choose the appropriate activity based on your profession and the type of situation. Use "social", "visit", or "entertainment" for non-emergency situations you're excited about.
 
 Respond in the following JSON format:
 {
-  "performance_evaluation": "Assessment of how this urgent situation relates to your role and responsibilities",
-  "strategy_adjustments": ["Immediate strategy changes needed for this urgent situation"],
-  "goal_modifications": ["Any urgent goal modifications needed"],
+  "performance_evaluation": "Assessment of how this situation relates to your role, interests, and desires",
+  "strategy_adjustments": ["Immediate strategy changes needed for this situation"],
+  "goal_modifications": ["Any goal modifications needed"],
   "schedule_modifications": [
     {
       "time": "NOW",
-      "activity": "emergency_response",
+      "activity": "appropriate_activity",
       "description": "specific immediate action to take",
-      "reason": "urgent situation requiring immediate professional response",
+      "reason": "urgent/exciting situation requiring immediate response",
       "priority": 10
     }
   ],
-  "self_awareness_notes": "Recognition of the urgency and your professional duty to respond",
+  "self_awareness_notes": "Recognition of the urgency/excitement and your response to it",
   "importance_score": 10
 }
 
-IMPORTANT: If this situation is urgent and relevant to your professional role, you MUST include schedule modifications with high priority (9-10) and immediate timing.
-
-Respond with ONLY the JSON object, no additional text.`;
+IMPORTANT: If this situation is urgent/exciting and relevant to your role OR personal interests, you MUST include schedule modifications with high priority (6-10) and immediate timing.`;
   }
 
   /**
-   * Parse metacognitive response from LLM
+   * Parse and validate metacognitive response
    */
-  private parseMetacognitionResponse(agent_id: string, response: string): MetacognitionResult | null {
+  private parseMetacognitionResponse(response: string): MetacognitionResult | null {
     try {
-      const parsed = JSON.parse(response);
-
+      // Clean up the response by removing markdown code blocks
+      let cleanResponse = response.trim();
+      
+      // Remove ```json and ``` markers if present
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '');
+      }
+      if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '');
+      }
+      if (cleanResponse.endsWith('```')) {
+        cleanResponse = cleanResponse.replace(/\s*```$/, '');
+      }
+      
+      const parsed = JSON.parse(cleanResponse);
+      
+      // Validate required fields
+      if (!parsed.performance_evaluation || !parsed.strategy_adjustments || !parsed.schedule_modifications) {
+        console.error('❌ [METACOGNITION] Invalid metacognitive response format - missing required fields');
+        return null;
+      }
+      
+      // Ensure schedule_modifications is an array
+      if (!Array.isArray(parsed.schedule_modifications)) {
+        console.error('❌ [METACOGNITION] Invalid schedule_modifications format - expected array');
+        return null;
+      }
+      
       return {
-        agent_id,
-        performance_evaluation: parsed.performance_evaluation || '',
+        agent_id: '', // Will be set by caller
+        performance_evaluation: parsed.performance_evaluation,
         strategy_adjustments: parsed.strategy_adjustments || [],
         goal_modifications: parsed.goal_modifications || [],
         schedule_modifications: parsed.schedule_modifications || [],
         self_awareness_notes: parsed.self_awareness_notes || '',
-        importance_score: parsed.importance_score || 7
+        importance_score: parsed.importance_score || 8
       };
+      
     } catch (error) {
       console.error('❌ [METACOGNITION] Error parsing metacognitive response:', error);
+      console.error('❌ [METACOGNITION] Raw response:', response);
       return null;
     }
   }

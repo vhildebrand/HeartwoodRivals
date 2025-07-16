@@ -235,6 +235,34 @@ export class ActivityManifest {
       description: 'Emergency response to criminal situations'
     });
 
+    // === IMMEDIATE ACTION ACTIVITIES ===
+    this.addActivity('social', {
+      activityType: ActivityType.GOTO_LOCATION,
+      locationTags: ['social', 'entertainment', 'meeting'],
+      duration: Duration.UNTIL_INTERRUPTED,
+      priority: 8,
+      interruptible: false,
+      description: 'Immediate social interaction or gathering'
+    });
+
+    this.addActivity('visit', {
+      activityType: ActivityType.GOTO_LOCATION,
+      locationTags: ['social', 'meeting', 'home'],
+      duration: Duration.UNTIL_INTERRUPTED,
+      priority: 8,
+      interruptible: false,
+      description: 'Immediate visit to a person or place'
+    });
+
+    this.addActivity('entertainment', {
+      activityType: ActivityType.GOTO_LOCATION,
+      locationTags: ['entertainment', 'music', 'performance'],
+      duration: Duration.UNTIL_INTERRUPTED,
+      priority: 8,
+      interruptible: false,
+      description: 'Immediate attendance at entertainment event'
+    });
+
     this.addActivity('library_work', {
       activityType: ActivityType.STATIONARY,
       locationTags: ['library', 'books'],

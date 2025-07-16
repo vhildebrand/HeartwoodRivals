@@ -517,14 +517,14 @@ export class Activity {
   }
 
   /**
-   * Get activity state
+   * Get the current state of this activity
    */
   public getState(): ActivityState {
     return this.state;
   }
 
   /**
-   * Get activity context
+   * Get the activity context
    */
   public getContext(): ActivityContext {
     return this.context;

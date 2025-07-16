@@ -786,7 +786,7 @@ export class HeartwoodRoom extends Room<GameState> {
             return;
         }
 
-        // Process emergency schedule reload queue every 2 seconds
+        // Process emergency schedule reload queue more frequently for better responsiveness
         const processQueue = async () => {
             try {
                 const queuedItem = await this.redisClient.brPop('schedule_reload_queue', 0.1);
@@ -800,9 +800,9 @@ export class HeartwoodRoom extends Room<GameState> {
             }
         };
 
-        // Start processing queue every 2 seconds
-        setInterval(processQueue, 2000);
-        console.log('✅ [EMERGENCY] Emergency schedule processor started');
+        // Process queue every 500ms for better responsiveness
+        setInterval(processQueue, 500);
+        console.log('✅ [EMERGENCY] Emergency schedule processor started (checking every 500ms)');
     }
 
     private async triggerDailyPlanning() {

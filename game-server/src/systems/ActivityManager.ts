@@ -57,6 +57,12 @@ export class ActivityManager {
     if (!this.currentActivity && this.activityQueue.length > 0) {
       this.processNextActivity();
     }
+    
+    // Update agent schema with current status for debug display
+    const currentStatus = this.getStatus();
+    if (this.agent.schema.currentActivity !== currentStatus) {
+      this.agent.schema.currentActivity = currentStatus;
+    }
   }
 
   /**
@@ -250,8 +256,22 @@ export class ActivityManager {
   public getStatus(): string {
     if (this.currentActivity) {
       const activity = this.currentActivity;
+      const activityName = activity.getContext().activityName;
+      const state = activity.getState();
       const progress = Math.round(activity.getProgress() * 100);
-      return `${activity.getContext().activityName} (${progress}%)`;
+      
+      // Show destination when moving to a location
+      if (state === 'MOVING_TO_LOCATION') {
+        const targetLocation = activity.getContext().targetLocation;
+        if (targetLocation) {
+          return `Moving to ${targetLocation.displayName}`;
+        } else {
+          return `Moving to location`;
+        }
+      }
+      
+      // Show current activity with progress
+      return `${activityName} (${progress}%)`;
     }
     
     if (this.activityQueue.length > 0) {

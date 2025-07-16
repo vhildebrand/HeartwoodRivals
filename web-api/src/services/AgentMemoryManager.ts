@@ -1110,7 +1110,7 @@ Your reflection:`;
   private async triggerMetacognitionCheck(agent_id: string, importance_score: number): Promise<void> {
     try {
       // Check if this is an urgent event that bypasses daily limits
-      const isUrgentEvent = importance_score >= 9;
+      const isUrgentEvent = importance_score >= 6;
       
       if (!isUrgentEvent) {
         // Check daily metacognition count (cost optimization)

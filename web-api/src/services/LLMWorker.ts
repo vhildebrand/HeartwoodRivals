@@ -81,7 +81,7 @@ export class LLMWorker {
       await this.storeConversationMemory(npcId, characterId, playerMessage, npcResponse);
 
       // If high urgency, trigger immediate metacognitive evaluation
-      if (urgencyLevel >= 8) {
+      if (urgencyLevel >= 6) {
         console.log(`🚨 HIGH URGENCY DETECTED: ${npcName} - Level ${urgencyLevel} - "${urgencyReason}"`);
         await this.triggerUrgentMetacognition(npcId, urgencyLevel, playerMessage, urgencyReason);
       }
@@ -171,7 +171,23 @@ Based on your memories above, how do you respond?
 URGENCY ASSESSMENT: After your response, assess how urgently this situation requires your immediate attention and action based on your character's role and responsibilities. Consider:
 - Does this require dropping everything and acting immediately?
 - Is this an emergency situation that affects you or others?
+- Is this something you REALLY want to do or are excited about? (old friend in town, favorite performer, special opportunity)
 - Should you change your plans for today based on this information?
+- Does this align with your personal interests and desires?
+
+Use this urgency scale:
+- 10: Life-threatening emergency requiring immediate action
+- 9: Urgent emergency or crisis situation
+- 8: Very urgent professional duty or emergency
+- 7: Something you REALLY want to do (favorite performer, old friend, special opportunity)
+- 6: Important opportunity or something you're excited about
+- 5: Moderately important, can wait a few hours
+- 4: Routine matter, can wait until later today
+- 3: Low priority, can wait until tomorrow
+- 2: Very low priority
+- 1: No urgency at all
+
+Remember: You can drop everything for things you're truly excited about, not just emergencies!
 
 Format your response as:
 DIALOGUE: [your character's response]
