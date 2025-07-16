@@ -208,6 +208,33 @@ export class ActivityManifest {
       description: 'Medical practice and patient care'
     });
 
+    this.addActivity('emergency_response', {
+      activityType: ActivityType.GOTO_LOCATION,
+      locationTags: ['emergency', 'medical', 'urgent'],
+      duration: Duration.UNTIL_INTERRUPTED,
+      priority: 10,
+      interruptible: false,
+      description: 'Emergency response to urgent medical situations'
+    });
+
+    this.addActivity('fire_response', {
+      activityType: ActivityType.GOTO_LOCATION,
+      locationTags: ['emergency', 'fire', 'urgent'],
+      duration: Duration.UNTIL_INTERRUPTED,
+      priority: 10,
+      interruptible: false,
+      description: 'Emergency response to fire emergencies'
+    });
+
+    this.addActivity('police_response', {
+      activityType: ActivityType.GOTO_LOCATION,
+      locationTags: ['emergency', 'crime', 'urgent'],
+      duration: Duration.UNTIL_INTERRUPTED,
+      priority: 10,
+      interruptible: false,
+      description: 'Emergency response to criminal situations'
+    });
+
     this.addActivity('library_work', {
       activityType: ActivityType.STATIONARY,
       locationTags: ['library', 'books'],

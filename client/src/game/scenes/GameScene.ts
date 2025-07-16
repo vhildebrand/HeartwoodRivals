@@ -180,13 +180,13 @@ export class GameScene extends Scene {
             this.advanceTime(-1);
         });
         
-        this.input.keyboard?.addKey('T').on('down', () => {
+        this.input.keyboard?.addKey('ZERO').on('down', () => {
             this.toggleSpeed();
         });
         
         console.log("GameScene: Controllers initialized");
         console.log("🎮 Controls: WASD to move, E to interact, Q to zoom out, Z to zoom in");
-        console.log("🕐 Time: 1-6 to set time, +/- to advance time, T to toggle speed");
+        console.log("🕐 Time: 1-6 to set time, +/- to advance time, R to toggle speed");
     }
 
     private setGameTime(time: string) {
@@ -289,7 +289,7 @@ export class GameScene extends Scene {
             'Time Controls:\n' +
             '1-6: Set time (06:00, 09:00, 12:00, 15:00, 18:00, 21:00)\n' +
             '+/-: Advance time by ±1 hour\n' +
-            'T: Toggle speed (1x, 10x, 60x)',
+            'R: Toggle speed (1x, 10x, 60x)',
             {
                 fontSize: '12px',
                 color: '#CCCCCC',

@@ -106,16 +106,30 @@ export class Activity {
       // Determine target location based on activity type
       let targetLocation: LocationEntry | null = null;
       
-      if (this.manifest.targetLocationId) {
-        // Specific location ID provided
-        targetLocation = this.locationRegistry.getLocation(this.manifest.targetLocationId);
-      } else if (this.manifest.locationTags) {
-        // Find location by tags
-        targetLocation = this.locationRegistry.findLocationForActivity(
-          this.context.activityName,
-          this.manifest.locationTags,
-          { x: this.context.agent.schema.x, y: this.context.agent.schema.y }
-        );
+      // Check for emergency location override first
+      if (this.context.parameters?.emergencyLocation) {
+        console.log(`🚨 [ACTIVITY] Emergency location override: ${this.context.parameters.emergencyLocation}`);
+        targetLocation = this.locationRegistry.getLocation(this.context.parameters.emergencyLocation);
+        if (targetLocation) {
+          console.log(`🚨 [ACTIVITY] Found emergency location: ${targetLocation.displayName} at (${targetLocation.x}, ${targetLocation.y})`);
+        } else {
+          console.error(`❌ [ACTIVITY] Emergency location not found: ${this.context.parameters.emergencyLocation}`);
+        }
+      }
+      
+      // Fall back to normal location selection if emergency location not found
+      if (!targetLocation) {
+        if (this.manifest.targetLocationId) {
+          // Specific location ID provided
+          targetLocation = this.locationRegistry.getLocation(this.manifest.targetLocationId);
+        } else if (this.manifest.locationTags) {
+          // Find location by tags
+          targetLocation = this.locationRegistry.findLocationForActivity(
+            this.context.activityName,
+            this.manifest.locationTags,
+            { x: this.context.agent.schema.x, y: this.context.agent.schema.y }
+          );
+        }
       }
       
       if (!targetLocation && this.manifest.activityType !== ActivityType.ROUTINE_MOVEMENT) {
@@ -124,20 +138,20 @@ export class Activity {
         return;
       }
       
-             this.context.targetLocation = targetLocation || undefined;
-       
-       // Transition based on activity type
-       switch (this.manifest.activityType) {
-         case ActivityType.STATIONARY:
-         case ActivityType.ADMINISTRATION:
-         case ActivityType.GOTO_LOCATION:
-           if (targetLocation) {
-             this.transitionToState(ActivityState.MOVING_TO_LOCATION);
-           } else {
-             this.transitionToState(ActivityState.FAILED);
-           }
-           break;
-          
+      this.context.targetLocation = targetLocation || undefined;
+      
+      // Transition based on activity type
+      switch (this.manifest.activityType) {
+        case ActivityType.STATIONARY:
+        case ActivityType.ADMINISTRATION:
+        case ActivityType.GOTO_LOCATION:
+          if (targetLocation) {
+            this.transitionToState(ActivityState.MOVING_TO_LOCATION);
+          } else {
+            this.transitionToState(ActivityState.FAILED);
+          }
+          break;
+         
         case ActivityType.ROUTINE_MOVEMENT:
           this.setupRoutineMovement();
           this.transitionToState(ActivityState.ROUTINE_MOVEMENT);

@@ -117,12 +117,30 @@ export class PlanExecutor {
         !this.wasActionExecutedToday(agentId, action)
       );
       
+      // Check for emergency actions that should execute immediately regardless of time
+      const emergencyActions = actions.filter(action => 
+        action.priority >= 10 && 
+        !this.wasActionExecutedToday(agentId, action) &&
+        (action.time === 'NOW' || this.gameTime.isTime(action.time))
+      );
+      
+      // Combine regular and emergency actions
+      const allActionsToExecute = [...actionsToExecute, ...emergencyActions];
+      
       // Sort by priority (higher priority first)
-      actionsToExecute.sort((a, b) => b.priority - a.priority);
+      allActionsToExecute.sort((a, b) => b.priority - a.priority);
       
       // Execute the highest priority action
-      if (actionsToExecute.length > 0) {
-        await this.executeAction(agent, actionsToExecute[0]);
+      if (allActionsToExecute.length > 0) {
+        const actionToExecute = allActionsToExecute[0];
+        
+        // For emergency actions, force interruption of current activities
+        if (actionToExecute.priority >= 10) {
+          console.log(`🚨 [EMERGENCY] Executing emergency action for ${agent.data.name}: "${actionToExecute.action}" (priority: ${actionToExecute.priority})`);
+          await this.executeEmergencyAction(agent, actionToExecute);
+        } else {
+          await this.executeAction(agent, actionToExecute);
+        }
       }
     }
   }
@@ -167,6 +185,61 @@ export class PlanExecutor {
       return {
         success: false,
         message: `Error executing action: ${error}`
+      };
+    }
+  }
+
+  /**
+   * Execute an emergency action that forces interruption of current activities
+   */
+  public async executeEmergencyAction(agent: SpawnedAgent, action: ScheduledAction): Promise<ActionResult> {
+    console.log(`🚨 [EMERGENCY] Executing emergency action for ${agent.data.name}: "${action.action}" (priority: ${action.priority})`);
+    
+    if (action.location) {
+      console.log(`🚨 [EMERGENCY] Emergency location: ${action.location}`);
+    }
+    
+    try {
+      // Force interruption of current activity regardless of agent availability
+      if (agent.activityManager.getCurrentActivity()) {
+        console.log(`🚨 [EMERGENCY] Interrupting current activity for ${agent.data.name}`);
+        agent.activityManager.completeCurrentActivity();
+      }
+      
+      // Use the activity manager with forced interruption
+      const activityResult = agent.activityManager.requestActivity({
+        activityName: action.action,
+        priority: action.priority,
+        interruptCurrent: true, // Force interruption
+        parameters: { 
+          scheduledTime: action.time,
+          emergency: true,
+          reason: `Emergency action: ${action.action}`,
+          emergencyLocation: action.location // Pass emergency location
+        }
+      });
+      
+      if (activityResult.success) {
+        // Record execution
+        this.recordActionExecution(agent.data.id, action);
+        
+        console.log(`✅ [EMERGENCY] ${agent.data.name} emergency activity started: "${action.action}"`);
+        
+        return {
+          success: true,
+          message: `Emergency activity started: ${action.action}`,
+          newState: AgentState.WORKING,
+          duration: action.duration
+        };
+      } else {
+        console.log(`❌ [EMERGENCY] ${agent.data.name} failed to start emergency activity: "${action.action}"`);
+        return activityResult;
+      }
+    } catch (error) {
+      console.error(`❌ [EMERGENCY] Error executing emergency action for ${agent.data.name}:`, error);
+      return {
+        success: false,
+        message: `Error executing emergency action: ${error}`
       };
     }
   }
@@ -318,27 +391,30 @@ export class PlanExecutor {
   /**
    * Parse generated schedule into ScheduledAction format
    */
-  private parseGeneratedSchedule(agentId: string, schedule: { [time: string]: string | { activity: string; description: string } }, priority: number): ScheduledAction[] {
+  private parseGeneratedSchedule(agentId: string, schedule: { [time: string]: string | { activity: string; description: string; location?: string } }, priority: number): ScheduledAction[] {
     const actions: ScheduledAction[] = [];
     
     for (const [time, activityData] of Object.entries(schedule)) {
       let activity: string;
       let description: string;
+      let location: string | undefined;
       
       // Handle both old format (string) and new format (object)
       if (typeof activityData === 'string') {
         activity = activityData;
         description = activityData;
+        location = this.extractLocationFromAction(description);
       } else {
         activity = activityData.activity;
         description = activityData.description;
+        location = activityData.location || this.extractLocationFromAction(description);
       }
       
       actions.push({
         agentId,
         time,
         action: activity,
-        location: this.extractLocationFromAction(description),
+        location,
         duration: this.estimateActionDuration(description),
         priority: priority + 1 // Generated plans have higher priority than static ones
       });
@@ -372,18 +448,87 @@ export class PlanExecutor {
   }
 
   /**
+   * Reload schedules for a specific agent (useful for emergency plans)
+   */
+  public async reloadAgentSchedule(agentId: string, agents: Map<string, SpawnedAgent>): Promise<void> {
+    const agent = agents.get(agentId);
+    if (!agent) {
+      console.error(`❌ [SCHEDULE] Agent ${agentId} not found for schedule reload`);
+      return;
+    }
+
+    console.log(`📅 Reloading schedule for agent ${agent.data.name}...`);
+    
+    // Clear existing schedule for this agent
+    this.scheduledActions.delete(agentId);
+    
+    // Load fresh schedule
+    const staticSchedule = this.parseAgentSchedule(agent);
+    const generatedSchedule = await this.loadGeneratedPlan(agentId);
+    
+    const finalSchedule = generatedSchedule.length > 0 
+      ? this.combineSchedules(staticSchedule, generatedSchedule)
+      : staticSchedule;
+    
+    if (finalSchedule.length > 0) {
+      this.scheduledActions.set(agentId, finalSchedule);
+      console.log(`✅ [SCHEDULE] Reloaded ${finalSchedule.length} actions for ${agent.data.name}`);
+      
+      // Check for immediate emergency actions
+      const emergencyActions = finalSchedule.filter(action => 
+        action.priority >= 10 && 
+        (action.time === 'NOW' || this.gameTime.isTime(action.time))
+      );
+      
+      if (emergencyActions.length > 0) {
+        console.log(`🚨 [EMERGENCY] Found ${emergencyActions.length} emergency actions for ${agent.data.name}`);
+        // Execute the highest priority emergency action immediately
+        const highestPriorityAction = emergencyActions.sort((a, b) => b.priority - a.priority)[0];
+        await this.executeEmergencyAction(agent, highestPriorityAction);
+      }
+    }
+  }
+
+  /**
    * Extract location from action description
    */
   private extractLocationFromAction(action: string): string | undefined {
-    const locationKeywords = [
-      'shop', 'store', 'tavern', 'home', 'field', 'harbor', 'market',
-      'church', 'school', 'hospital', 'library', 'gym', 'cafe', 'bakery'
+    const actionLower = action.toLowerCase();
+    
+    // Location patterns to match
+    const locationPatterns = [
+      { patterns: ['dj stage', 'dj', 'stage'], locationId: 'dj_stage' },
+      { patterns: ['hospital', 'medical'], locationId: 'hospital' },
+      { patterns: ['fire station', 'fire'], locationId: 'fire_station' },
+      { patterns: ['police station', 'police'], locationId: 'police_station' },
+      { patterns: ['town hall', 'hall'], locationId: 'town_hall' },
+      { patterns: ['school', 'education'], locationId: 'school' },
+      { patterns: ['church', 'chapel'], locationId: 'church' },
+      { patterns: ['tavern', 'pub'], locationId: 'tavern' },
+      { patterns: ['blacksmith', 'forge'], locationId: 'blacksmith_shop' },
+      { patterns: ['bakery', 'bread'], locationId: 'bakery' },
+      { patterns: ['lighthouse', 'beacon'], locationId: 'lighthouse' },
+      { patterns: ['harbor', 'dock', 'pier'], locationId: 'fishing_dock' },
+      { patterns: ['market', 'farmers'], locationId: 'farmers_market' },
+      { patterns: ['gym', 'fitness'], locationId: 'gym' },
+      { patterns: ['library', 'books'], locationId: 'library' },
+      { patterns: ['cafe', 'coffee'], locationId: 'cafe' },
+      { patterns: ['beach', 'shore'], locationId: 'beach' },
+      { patterns: ['barn', 'stable'], locationId: 'barn' },
+      { patterns: ['windmill', 'mill'], locationId: 'windmill' },
+      { patterns: ['mansion', 'estate'], locationId: 'mansion' },
+      { patterns: ['general store', 'store'], locationId: 'general_store' },
+      { patterns: ['apothecary', 'pharmacy'], locationId: 'apothecary' },
+      { patterns: ['tailor', 'sewing'], locationId: 'tailor_shop' },
+      { patterns: ['woodworker', 'carpenter'], locationId: 'woodworker_shop' }
     ];
     
-    const actionLower = action.toLowerCase();
-    for (const keyword of locationKeywords) {
-      if (actionLower.includes(keyword)) {
-        return keyword;
+    // Check each pattern
+    for (const locationPattern of locationPatterns) {
+      for (const pattern of locationPattern.patterns) {
+        if (actionLower.includes(pattern)) {
+          return locationPattern.locationId;
+        }
       }
     }
     

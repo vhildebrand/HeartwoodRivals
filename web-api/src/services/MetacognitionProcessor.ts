@@ -19,6 +19,7 @@ interface ScheduleModification {
   description: string;
   reason: string;
   priority: number;
+  location?: string; // Add location field
 }
 
 export class MetacognitionProcessor {
@@ -49,7 +50,16 @@ export class MetacognitionProcessor {
     this.isProcessing = true;
     console.log('🧠 [METACOGNITION] Starting metacognitive processing');
 
-    // Process metacognitive queue every 30 seconds
+    // Process urgent queue immediately every 5 seconds
+    setInterval(async () => {
+      try {
+        await this.processNextUrgentMetacognition();
+      } catch (error) {
+        console.error('❌ [METACOGNITION] Error in urgent processing loop:', error);
+      }
+    }, 5000);
+
+    // Process regular metacognitive queue every 30 seconds
     setInterval(async () => {
       try {
         await this.processNextMetacognition();
@@ -79,6 +89,25 @@ export class MetacognitionProcessor {
   }
 
   /**
+   * Process the next urgent metacognitive evaluation from the urgent queue
+   */
+  private async processNextUrgentMetacognition(): Promise<void> {
+    try {
+      const queuedItem = await this.redisClient.brPop('metacognition_urgent_queue', 0.1);
+      if (!queuedItem) {
+        return; // No items in urgent queue
+      }
+
+      const { agent_id, trigger_reason, urgency_level, urgency_reason, player_message, immediate } = JSON.parse(queuedItem.element);
+      console.log(`🚨 [URGENT METACOGNITION] Processing urgent evaluation for ${agent_id} (urgency: ${urgency_level}, reason: ${urgency_reason})`);
+
+      await this.evaluateUrgentSituation(agent_id, trigger_reason, urgency_level, urgency_reason, player_message);
+    } catch (error) {
+      console.error('❌ [METACOGNITION] Error processing urgent metacognitive evaluation:', error);
+    }
+  }
+
+  /**
    * Manually trigger metacognitive evaluation for an agent
    */
   public async triggerMetacognition(agent_id: string, trigger_reason: string = 'manual'): Promise<void> {
@@ -90,6 +119,48 @@ export class MetacognitionProcessor {
 
     await this.redisClient.lPush('metacognition_queue', queueItem);
     console.log(`🧠 [METACOGNITION] Queued metacognitive evaluation for ${agent_id}`);
+  }
+
+  /**
+   * Evaluate urgent situation and generate immediate response
+   */
+  public async evaluateUrgentSituation(agent_id: string, trigger_reason: string, urgency_level: number, urgency_reason: string, player_message: string): Promise<void> {
+    try {
+      console.log(`🚨 [URGENT METACOGNITION] Evaluating urgent situation for ${agent_id} (urgency: ${urgency_level})`);
+
+      // Get agent information
+      const agentResult = await this.pool.query(
+        'SELECT id, name, constitution, primary_goal, secondary_goals, schedule, current_plans FROM agents WHERE id = $1',
+        [agent_id]
+      );
+
+      if (agentResult.rows.length === 0) {
+        console.error(`❌ [URGENT METACOGNITION] Agent ${agent_id} not found`);
+        return;
+      }
+
+      const agent = agentResult.rows[0];
+
+      // Get recent performance data
+      const performanceData = await this.getPerformanceData(agent_id);
+
+      // Generate urgent metacognitive evaluation
+      const metacognitionResult = await this.generateUrgentMetacognition(agent, performanceData, urgency_level, urgency_reason, player_message);
+
+      if (metacognitionResult) {
+        // Store metacognitive insights
+        await this.storeMetacognition(metacognitionResult);
+
+        // Apply schedule modifications with emergency priority
+        if (metacognitionResult.schedule_modifications.length > 0) {
+          await this.applyEmergencyScheduleModifications(agent_id, metacognitionResult.schedule_modifications);
+        }
+
+        console.log(`✅ [URGENT METACOGNITION] Generated urgent metacognitive response for ${agent.name} (urgency: ${urgency_level})`);
+      }
+    } catch (error) {
+      console.error(`❌ [URGENT METACOGNITION] Error evaluating urgent situation for ${agent_id}:`, error);
+    }
   }
 
   /**
@@ -216,6 +287,38 @@ export class MetacognitionProcessor {
   }
 
   /**
+   * Generate urgent metacognitive evaluation using LLM
+   */
+  private async generateUrgentMetacognition(agent: any, performanceData: any, urgency_level: number, urgency_reason: string, player_message: string): Promise<MetacognitionResult | null> {
+    try {
+      const prompt = this.constructUrgentMetacognitionPrompt(agent, performanceData, urgency_level, urgency_reason, player_message);
+
+      const completion = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: prompt
+          }
+        ],
+        max_tokens: 800,
+        temperature: 0.7,
+      });
+
+      const response = completion.choices[0]?.message?.content?.trim();
+      if (!response) {
+        console.error('❌ [URGENT METACOGNITION] Empty response from OpenAI');
+        return null;
+      }
+
+      return this.parseMetacognitionResponse(agent.id, response);
+    } catch (error) {
+      console.error('❌ [URGENT METACOGNITION] Error generating urgent metacognitive evaluation:', error);
+      return null;
+    }
+  }
+
+  /**
    * Construct metacognitive evaluation prompt
    */
   private constructMetacognitionPrompt(agent: any, performanceData: any, trigger_reason: string): string {
@@ -285,6 +388,88 @@ Respond in the following JSON format:
 }
 
 Only suggest schedule modifications if you have compelling reasons based on your recent experiences. Each modification should directly support your goals.
+
+Respond with ONLY the JSON object, no additional text.`;
+  }
+
+  /**
+   * Construct urgent metacognitive evaluation prompt
+   */
+  private constructUrgentMetacognitionPrompt(agent: any, performanceData: any, urgency_level: number, urgency_reason: string, player_message: string): string {
+    const memoryTexts = performanceData.memories.map((m: any) => `- ${m.content}`).join('\n');
+    const planTexts = performanceData.plans.map((p: any) => `- Goal: ${p.goal} (Status: ${p.status})`).join('\n');
+    const reflectionTexts = performanceData.reflections.map((r: any) => `- ${r.content}`).join('\n');
+
+    return `You are ${agent.name}, facing an URGENT SITUATION that requires immediate metacognitive evaluation and potential schedule changes.
+
+YOUR IDENTITY:
+${agent.constitution}
+
+YOUR GOALS:
+Primary Goal: ${agent.primary_goal}
+Secondary Goals: ${agent.secondary_goals ? agent.secondary_goals.join(', ') : 'None'}
+
+CURRENT SCHEDULE:
+${JSON.stringify(agent.schedule, null, 2)}
+
+🚨 URGENT SITUATION 🚨
+- URGENCY LEVEL: ${urgency_level}/10
+- REASON: ${urgency_reason}
+- PLAYER MESSAGE: "${player_message}"
+
+RECENT PERFORMANCE DATA:
+=== RECENT MEMORIES ===
+${memoryTexts}
+
+=== RECENT PLANS ===
+${planTexts}
+
+=== RECENT REFLECTIONS ===
+${reflectionTexts}
+
+URGENT METACOGNITIVE EVALUATION TASK:
+This is an urgent situation requiring immediate attention. Based on your role, responsibilities, and the situation described:
+
+1. Does this situation require you to drop your current activities and respond immediately?
+2. What specific actions should you take RIGHT NOW?
+3. How should you modify your schedule to address this urgent situation?
+4. What are the immediate next steps you need to take?
+
+CRITICAL: If this situation is truly urgent and relevant to your role and responsibilities, you MUST suggest immediate schedule modifications. For example:
+- A doctor hearing about a medical emergency should immediately go to help
+- A fire chief hearing about a fire should immediately respond
+- A police officer hearing about a crime should immediately investigate
+
+Focus on IMMEDIATE ACTION based on your professional duties and the urgency of the situation.
+
+AVAILABLE EMERGENCY ACTIVITIES:
+- "emergency_response" - For medical emergencies (doctors, nurses, medical staff)
+- "fire_response" - For fire emergencies (fire chief, firefighters)
+- "police_response" - For criminal emergencies (police officers)
+- "patrol" - For general security/safety concerns
+- "medical_work" - For medical situations at your workplace
+
+Choose the appropriate emergency activity based on your profession and the type of emergency.
+
+Respond in the following JSON format:
+{
+  "performance_evaluation": "Assessment of how this urgent situation relates to your role and responsibilities",
+  "strategy_adjustments": ["Immediate strategy changes needed for this urgent situation"],
+  "goal_modifications": ["Any urgent goal modifications needed"],
+  "schedule_modifications": [
+    {
+      "time": "NOW",
+      "activity": "emergency_response",
+      "description": "specific immediate action to take",
+      "reason": "urgent situation requiring immediate professional response",
+      "priority": 10
+    }
+  ],
+  "self_awareness_notes": "Recognition of the urgency and your professional duty to respond",
+  "importance_score": 10
+}
+
+IMPORTANT: If this situation is urgent and relevant to your professional role, you MUST include schedule modifications with high priority (9-10) and immediate timing.
 
 Respond with ONLY the JSON object, no additional text.`;
   }
@@ -379,6 +564,141 @@ Respond with ONLY the JSON object, no additional text.`;
       console.log(`✅ [SCHEDULE] Applied schedule modifications for ${agent_id}`);
     } catch (error) {
       console.error('❌ [SCHEDULE] Error applying schedule modifications:', error);
+    }
+  }
+
+  /**
+   * Parse emergency location from description
+   */
+  private parseEmergencyLocation(description: string): string | null {
+    const locationPatterns = [
+      /at the (.+?)(?:\s|$)/i,
+      /at (.+?)(?:\s|$)/i,
+      /in the (.+?)(?:\s|$)/i,
+      /in (.+?)(?:\s|$)/i,
+      /near the (.+?)(?:\s|$)/i,
+      /near (.+?)(?:\s|$)/i,
+      /by the (.+?)(?:\s|$)/i,
+      /by (.+?)(?:\s|$)/i
+    ];
+
+    for (const pattern of locationPatterns) {
+      const match = description.match(pattern);
+      if (match) {
+        let locationName = match[1].trim();
+        
+        // Clean up common suffixes and convert to location ID format
+        locationName = locationName.replace(/\s+/g, '_').toLowerCase();
+        
+        // Handle common location mappings
+        const locationMappings: { [key: string]: string } = {
+          'dj_stage': 'dj_stage',
+          'dj': 'dj_stage',
+          'stage': 'dj_stage',
+          'hospital': 'hospital',
+          'fire_station': 'fire_station',
+          'police_station': 'police_station',
+          'town_hall': 'town_hall',
+          'school': 'school',
+          'church': 'church',
+          'tavern': 'tavern',
+          'blacksmith': 'blacksmith_shop',
+          'bakery': 'bakery',
+          'lighthouse': 'lighthouse',
+          'harbor': 'fishing_dock',
+          'dock': 'fishing_dock',
+          'market': 'farmers_market',
+          'gym': 'gym',
+          'library': 'library',
+          'cafe': 'cafe',
+          'beach': 'beach',
+          'barn': 'barn',
+          'windmill': 'windmill',
+          'mansion': 'mansion'
+        };
+        
+        return locationMappings[locationName] || locationName;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Apply emergency schedule modifications with highest priority
+   */
+  private async applyEmergencyScheduleModifications(agent_id: string, modifications: ScheduleModification[]): Promise<void> {
+    try {
+      console.log(`🚨 [EMERGENCY SCHEDULE] Applying ${modifications.length} emergency schedule modifications for ${agent_id}`);
+
+      for (const modification of modifications) {
+        console.log(`🚨 [EMERGENCY SCHEDULE] ${agent_id} - ${modification.time}: ${modification.activity} - ${modification.description}`);
+        console.log(`🚨 [EMERGENCY REASON] ${modification.reason}`);
+
+        // Parse location from description
+        const emergencyLocation = this.parseEmergencyLocation(modification.description);
+        if (emergencyLocation) {
+          console.log(`🚨 [EMERGENCY LOCATION] Parsed location: ${emergencyLocation}`);
+          modification.location = emergencyLocation;
+        }
+
+        // Create emergency plan with maximum priority
+        const planData = {
+          plan_date: `day_${new Date().getDate()}`,
+          schedule: {
+            [modification.time]: {
+              activity: modification.activity,
+              description: modification.description,
+              location: modification.location // Include location in plan data
+            }
+          },
+          reasoning: modification.reason,
+          modification_type: 'emergency',
+          urgency_level: 'maximum'
+        };
+
+        // Format as PostgreSQL array (array of strings)
+        const planSteps = [JSON.stringify(planData)];
+
+        await this.pool.query(
+          `INSERT INTO agent_plans (
+            agent_id, goal, plan_steps, status, priority, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+          [
+            agent_id,
+            `EMERGENCY: ${modification.description}`,
+            planSteps, // Pass as array directly
+            'active',
+            Math.max(10, modification.priority) // Ensure at least priority 10 for emergencies
+          ]
+        );
+      }
+
+      console.log(`✅ [EMERGENCY SCHEDULE] Applied emergency schedule modifications for ${agent_id}`);
+      
+      // Trigger immediate schedule reload for the agent
+      await this.triggerScheduleReload(agent_id);
+    } catch (error) {
+      console.error('❌ [EMERGENCY SCHEDULE] Error applying emergency schedule modifications:', error);
+    }
+  }
+
+  /**
+   * Trigger immediate schedule reload for an agent (notifies game server)
+   */
+  private async triggerScheduleReload(agent_id: string): Promise<void> {
+    try {
+      // Queue a schedule reload notification
+      const reloadNotification = JSON.stringify({
+        type: 'emergency_schedule_reload',
+        agent_id,
+        timestamp: Date.now()
+      });
+
+      await this.redisClient.lPush('schedule_reload_queue', reloadNotification);
+      console.log(`📅 [SCHEDULE RELOAD] Queued emergency schedule reload for ${agent_id}`);
+    } catch (error) {
+      console.error('❌ [SCHEDULE RELOAD] Error triggering schedule reload:', error);
     }
   }
 

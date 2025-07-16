@@ -458,7 +458,10 @@ export class HeartwoodRoom extends Room<GameState> {
                 }
             });
             
-            console.log('✅ Subscribed to plan generation requests');
+            // Start processing emergency schedule reload queue
+            this.startEmergencyScheduleProcessor();
+            
+            console.log('✅ Subscribed to plan generation and emergency schedule reload requests');
         } catch (error) {
             console.error('❌ Redis connection failed:', error);
             console.log('⚠️  Game will continue without agent observations');
@@ -689,12 +692,13 @@ export class HeartwoodRoom extends Room<GameState> {
             agent.activityManager.update();
         }
         
-        // Process scheduled actions (less frequently to avoid performance issues)
-        if (Math.random() < 0.01) { // 1% chance per frame (~once per second at 60fps)
+        // Process scheduled actions more frequently for responsiveness
+        // Process every 10 frames (~6 times per second at 60fps) for better responsiveness
+        if (Math.random() < 0.16) { // 16% chance per frame (~10 times per second at 60fps)
             this.planExecutor.processScheduledActions(this.agents);
             
             // Log NPC status occasionally
-            if (Math.random() < 0.1) { // 10% of the time we process actions
+            if (Math.random() < 0.05) { // 5% of the time we process actions
                 const activeAgents = Array.from(this.agents.values());
                 if (activeAgents.length > 0) {
                     const randomAgent = activeAgents[Math.floor(Math.random() * activeAgents.length)];
@@ -751,6 +755,54 @@ export class HeartwoodRoom extends Room<GameState> {
         } catch (error) {
             console.error(`❌ [DEBUG] Error in manual plan generation:`, error);
         }
+    }
+
+    private async handleEmergencyScheduleReload(reloadRequest: { type: string; agent_id: string; timestamp: number }) {
+        try {
+            const agent = this.agents.get(reloadRequest.agent_id);
+            if (!agent) {
+                console.error(`❌ [EMERGENCY] Agent ${reloadRequest.agent_id} not found for emergency reload`);
+                return;
+            }
+            
+            if (this.planExecutor) {
+                console.log(`🚨 [EMERGENCY] Processing emergency schedule reload for ${agent.data.name}`);
+                
+                // Reload the agent's schedule - this will automatically execute emergency actions
+                await this.planExecutor.reloadAgentSchedule(reloadRequest.agent_id, this.agents);
+                
+                console.log(`✅ [EMERGENCY] Emergency schedule reload completed for ${agent.data.name}`);
+            } else {
+                console.error(`❌ [EMERGENCY] Plan executor not initialized`);
+            }
+        } catch (error) {
+            console.error(`❌ [EMERGENCY] Error in emergency schedule reload:`, error);
+        }
+    }
+
+    private async startEmergencyScheduleProcessor() {
+        if (!this.redisClient) {
+            console.error('❌ [EMERGENCY] Redis client not available for emergency schedule processing');
+            return;
+        }
+
+        // Process emergency schedule reload queue every 2 seconds
+        const processQueue = async () => {
+            try {
+                const queuedItem = await this.redisClient.brPop('schedule_reload_queue', 0.1);
+                if (queuedItem) {
+                    const reloadRequest = JSON.parse(queuedItem.element);
+                    console.log(`🚨 [EMERGENCY] Processing schedule reload request for ${reloadRequest.agent_id}`);
+                    await this.handleEmergencyScheduleReload(reloadRequest);
+                }
+            } catch (error) {
+                console.error('❌ [EMERGENCY] Error processing emergency schedule queue:', error);
+            }
+        };
+
+        // Start processing queue every 2 seconds
+        setInterval(processQueue, 2000);
+        console.log('✅ [EMERGENCY] Emergency schedule processor started');
     }
 
     private async triggerDailyPlanning() {
