@@ -104,6 +104,12 @@ export class AgentMemoryManager {
       // Trigger reflection if needed
       await this.checkReflectionTrigger(memory.agent_id);
       
+      // Trigger metacognitive evaluation if needed (for high-importance memories)
+      // Limited to once per day to save API costs, except for urgent events (importance 9+)
+      if (memory.importance_score >= 8) {
+        await this.triggerMetacognitionCheck(memory.agent_id, memory.importance_score);
+      }
+      
       console.log(`✅ Stored memory ${memoryId} for ${memory.agent_id}: "${memory.content.substring(0, 50)}..."`);
       
       return memoryId;
@@ -418,9 +424,30 @@ export class AgentMemoryManager {
   /**
    * Check if agent needs reflection based on cumulative importance scores
    * Following the Stanford paper approach: trigger when cumulative importance exceeds threshold
+   * LIMITED TO 3 REFLECTIONS PER DAY to optimize API costs
    */
   private async checkReflectionTrigger(agent_id: string): Promise<void> {
     try {
+      // Check daily reflection count first (cost optimization)
+      const today = new Date();
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      
+      const todayReflectionsResult = await this.pool.query(
+        `SELECT COUNT(*) as reflection_count
+         FROM agent_memories 
+         WHERE agent_id = $1 AND memory_type = 'reflection'
+         AND timestamp >= $2`,
+        [agent_id, todayStart]
+      );
+      
+      const todayReflectionCount = parseInt(todayReflectionsResult.rows[0]?.reflection_count || '0');
+      const MAX_REFLECTIONS_PER_DAY = 3;
+      
+      if (todayReflectionCount >= MAX_REFLECTIONS_PER_DAY) {
+        console.log(`⏰ [REFLECTION] ${agent_id} - Daily reflection limit reached (${todayReflectionCount}/${MAX_REFLECTIONS_PER_DAY})`);
+        return; // Skip reflection to save API costs
+      }
+      
       // Get the last reflection time for this agent
       const lastReflectionResult = await this.pool.query(
         `SELECT MAX(timestamp) as last_reflection 
@@ -451,7 +478,7 @@ export class AgentMemoryManager {
       // Also ensure minimum number of memories (avoid reflecting on too little data)
       const MIN_MEMORIES_FOR_REFLECTION = 5;
       
-      console.log(`💭 [REFLECTION] ${agent_id} - Cumulative importance: ${cumulativeImportance}, Memory count: ${memoryCount}`);
+      console.log(`💭 [REFLECTION] ${agent_id} - Cumulative importance: ${cumulativeImportance}, Memory count: ${memoryCount}, Today's reflections: ${todayReflectionCount}/${MAX_REFLECTIONS_PER_DAY}`);
       
       if (cumulativeImportance >= REFLECTION_THRESHOLD && memoryCount >= MIN_MEMORIES_FOR_REFLECTION) {
         console.log(`🔄 [REFLECTION] Triggering reflection for ${agent_id} (importance: ${cumulativeImportance})`);
@@ -1072,6 +1099,53 @@ Your reflection:`;
     } catch (error) {
       console.error('Error getting player name:', error);
       return `Player_${characterId.substring(0, 8)}`;
+    }
+  }
+
+  /**
+   * Trigger metacognitive evaluation check (delegates to MetacognitionProcessor)
+   * This is a lightweight trigger that queues metacognitive evaluation
+   * LIMITED TO 1 PER DAY to optimize API costs, except for urgent events (importance 9+)
+   */
+  private async triggerMetacognitionCheck(agent_id: string, importance_score: number): Promise<void> {
+    try {
+      // Check if this is an urgent event that bypasses daily limits
+      const isUrgentEvent = importance_score >= 9;
+      
+      if (!isUrgentEvent) {
+        // Check daily metacognition count (cost optimization)
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        
+        const todayMetacognitionResult = await this.pool.query(
+          `SELECT COUNT(*) as metacognition_count
+           FROM agent_metacognition 
+           WHERE agent_id = $1 
+           AND created_at >= $2`,
+          [agent_id, todayStart]
+        );
+        
+        const todayMetacognitionCount = parseInt(todayMetacognitionResult.rows[0]?.metacognition_count || '0');
+        const MAX_METACOGNITION_PER_DAY = 1;
+        
+        if (todayMetacognitionCount >= MAX_METACOGNITION_PER_DAY) {
+          console.log(`⏰ [METACOGNITION] ${agent_id} - Daily metacognition limit reached (${todayMetacognitionCount}/${MAX_METACOGNITION_PER_DAY}), skipping non-urgent event`);
+          return; // Skip metacognition to save API costs
+        }
+      }
+      
+      // Queue metacognitive evaluation using Redis
+      const queueItem = JSON.stringify({
+        agent_id,
+        trigger_reason: isUrgentEvent ? 'urgent_event' : 'high_importance_memory',
+        importance_score,
+        timestamp: Date.now()
+      });
+
+      await this.redisClient.lPush('metacognition_queue', queueItem);
+      console.log(`🧠 [MEMORY->METACOGNITION] Queued metacognitive check for ${agent_id} (importance: ${importance_score}, urgent: ${isUrgentEvent})`);
+    } catch (error) {
+      console.error(`❌ [MEMORY->METACOGNITION] Error queuing metacognitive check:`, error);
     }
   }
 

@@ -13,10 +13,14 @@ export class UIScene extends Scene {
     // Debug panel
     private debugPanel: Phaser.GameObjects.Container | null = null;
     private debugPanelVisible: boolean = false;
-    private npcList: any[] = [];
     private debugPanelBackground: Phaser.GameObjects.Rectangle | null = null;
     private debugPanelTitle: Phaser.GameObjects.Text | null = null;
     private debugPanelContent: Phaser.GameObjects.Container | null = null;
+    private autoRefreshTimer: Phaser.Time.TimerEvent | null = null;
+    
+    // Real-time NPC data from game server
+    private realtimeNPCData: Map<string, any> = new Map();
+    private locationsData: any = null;
 
     constructor() {
         super("UIScene");
@@ -24,6 +28,9 @@ export class UIScene extends Scene {
 
     create() {
         console.log("🎮 [UI] UIScene created and initializing...");
+        
+        // Load locations data for mapping coordinates to building names
+        this.loadLocationsData();
         
         // Add a semi-transparent rectangle at the top for a UI bar
         this.add.rectangle(0, 0, this.cameras.main.width, 50, 0x000000, 0.5)
@@ -91,8 +98,13 @@ export class UIScene extends Scene {
             this.updateClockDisplay(gameState);
         });
 
-        // Load NPC list for debug panel
-        this.loadNPCList();
+        // Listen for real-time NPC data from GameScene
+        this.game.events.on('npcDataUpdate', (npcData: Map<string, any>) => {
+            this.realtimeNPCData = npcData;
+            if (this.debugPanelVisible) {
+                this.refreshNPCList();
+            }
+        });
 
         console.log("🎮 [UI] UIScene created and running in parallel with clock display");
     }
@@ -111,18 +123,74 @@ export class UIScene extends Scene {
         return this.dialogueManager;
     }
 
+    private loadLocationsData() {
+        // Load locations data from cache (should be loaded in PreloaderScene)
+        this.locationsData = this.cache.json.get('beacon_bay_locations');
+        if (!this.locationsData) {
+            console.error('❌ [UI] Failed to load beacon_bay_locations.json');
+        } else {
+            console.log('✅ [UI] Loaded locations data for coordinate mapping');
+        }
+    }
+
+    private mapCoordinatesToLocation(x: number, y: number): string {
+        if (!this.locationsData) {
+            return `(${x}, ${y})`;
+        }
+
+        // Find the location that contains these coordinates
+        for (const [locationKey, locationData] of Object.entries(this.locationsData)) {
+            if (locationKey === 'water_areas') continue;
+            
+            const location = locationData as any;
+            if (location.x !== undefined && location.y !== undefined && 
+                location.width !== undefined && location.height !== undefined) {
+                
+                // Check if coordinates are within this location's bounds
+                if (x >= location.x && x <= location.x + location.width &&
+                    y >= location.y && y <= location.y + location.height) {
+                    return location.name || locationKey;
+                }
+            }
+        }
+
+        // If no exact location found, find the closest one
+        let closestLocation = null;
+        let closestDistance = Infinity;
+
+        for (const [locationKey, locationData] of Object.entries(this.locationsData)) {
+            if (locationKey === 'water_areas') continue;
+            
+            const location = locationData as any;
+            if (location.x !== undefined && location.y !== undefined) {
+                const centerX = location.x + (location.width || 0) / 2;
+                const centerY = location.y + (location.height || 0) / 2;
+                const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                
+                if (distance < closestDistance && distance < 20) { // Within 20 tiles
+                    closestDistance = distance;
+                    closestLocation = location.name || locationKey;
+                }
+            }
+        }
+
+        return closestLocation || `(${x}, ${y})`;
+    }
+
     private createDebugPanel() {
-        // Create debug panel container
-        this.debugPanel = this.add.container(this.cameras.main.width - 350, 60);
+        // Create debug panel container (made wider and taller)
+        this.debugPanel = this.add.container(this.cameras.main.width - 450, 60);
         
-        // Background
-        this.debugPanelBackground = this.add.rectangle(0, 0, 340, 400, 0x000000, 0.8);
+        // Background (made wider and taller)
+        this.debugPanelBackground = this.add.rectangle(0, 0, 440, 500, 0x000000, 0.8);
         this.debugPanelBackground.setOrigin(0, 0);
+        this.debugPanelBackground.setStrokeStyle(2, 0x444444);
         
         // Title
-        this.debugPanelTitle = this.add.text(10, 10, "Debug Panel - NPC Planning", {
+        this.debugPanelTitle = this.add.text(10, 10, "Debug Panel - Character Status", {
             fontSize: "16px",
-            color: "#FFFFFF"
+            color: "#FFFFFF",
+            fontStyle: "bold"
         });
         
         // Content container
@@ -143,19 +211,22 @@ export class UIScene extends Scene {
         
         if (this.debugPanelVisible) {
             this.refreshNPCList();
+            // No need for auto-refresh timer since we get updates from GameScene
+        } else {
+            // Clean up any existing timer
+            this.stopAutoRefresh();
         }
     }
 
-    private async loadNPCList() {
-        try {
-            const response = await fetch('http://localhost:3000/npc/list');
-            if (response.ok) {
-                const data = await response.json();
-                this.npcList = data.agents || [];
-                console.log(`📋 [UI] Loaded ${this.npcList.length} NPCs for debug panel`);
-            }
-        } catch (error) {
-            console.error('Error loading NPC list:', error);
+    private startAutoRefresh() {
+        // No longer needed - we get updates from GameScene when data changes
+        // Keep method for backward compatibility but make it do nothing
+    }
+
+    private stopAutoRefresh() {
+        if (this.autoRefreshTimer) {
+            this.autoRefreshTimer.destroy();
+            this.autoRefreshTimer = null;
         }
     }
 
@@ -165,47 +236,74 @@ export class UIScene extends Scene {
         // Clear existing content
         this.debugPanelContent.removeAll(true);
         
-        // Add instruction text
-        const instructionText = this.add.text(10, 10, "Click to generate plan for NPC:", {
-            fontSize: "12px",
+        // Add header
+        const headerText = this.add.text(10, 10, "Real-time Character Status:", {
+            fontSize: "14px",
+            color: "#CCCCCC",
+            fontStyle: "bold"
+        });
+        this.debugPanelContent?.add(headerText);
+        
+        // Add data source indicator
+        const dataSourceText = this.add.text(10, 30, "📡 Source: Game Server (Real-time)", {
+            fontSize: "10px",
+            color: "#00FF00"
+        });
+        this.debugPanelContent?.add(dataSourceText);
+        
+        // Add update method indicator
+        const updateMethodText = this.add.text(10, 45, "🔄 Updates: Event-driven (when data changes)", {
+            fontSize: "10px",
+            color: "#888888"
+        });
+        this.debugPanelContent?.add(updateMethodText);
+        
+        // Add separator
+        const separator = this.add.text(10, 60, "─".repeat(50), {
+            fontSize: "10px",
+            color: "#444444"
+        });
+        this.debugPanelContent?.add(separator);
+        
+        // Convert real-time NPC data to array for display
+        const npcArray = Array.from(this.realtimeNPCData.values());
+        
+        // Add NPC status list
+        npcArray.forEach((npc, index) => {
+            const yPos = 80 + (index * 35); // More space for two lines
+            
+            // NPC name
+            const npcNameText = this.add.text(10, yPos, `${npc.name}`, {
+                fontSize: "12px",
+                color: "#FFD700",
+                fontStyle: "bold"
+            });
+            this.debugPanelContent?.add(npcNameText);
+            
+            // Location (map coordinates to building name)
+            const locationName = this.mapCoordinatesToLocation(npc.x, npc.y);
+            const locationText = this.add.text(10, yPos + 12, `📍 ${locationName}`, {
+                fontSize: "10px",
+                color: "#87CEEB"
+            });
+            this.debugPanelContent?.add(locationText);
+            
+            // Activity
+            const activityText = this.add.text(10, yPos + 22, `⚡ ${npc.currentActivity || 'idle'}`, {
+                fontSize: "10px",
+                color: "#90EE90",
+                wordWrap: { width: 400, useAdvancedWrap: true }
+            });
+            this.debugPanelContent?.add(activityText);
+        });
+        
+        // Add footer with total count
+        const footerY = 80 + (npcArray.length * 35) + 10;
+        const footerText = this.add.text(10, footerY, `Total Characters: ${npcArray.length}`, {
+            fontSize: "10px",
             color: "#CCCCCC"
         });
-        this.debugPanelContent.add(instructionText);
-        
-        // Add debug time button
-        const debugTimeButton = this.add.text(10, 30, "🕐 Debug Time System", {
-            fontSize: "12px",
-            color: "#FFFFFF",
-            backgroundColor: "rgba(0, 0, 100, 0.7)",
-            padding: { x: 8, y: 4 }
-        }).setInteractive();
-        
-        debugTimeButton.on('pointerdown', () => {
-            this.debugTimeSystem();
-        });
-        
-        this.debugPanelContent.add(debugTimeButton);
-        
-        // Add NPC buttons
-        this.npcList.forEach((npc, index) => {
-            const yPos = 70 + (index * 30); // Adjusted for the new button
-            
-            // NPC button
-            const npcButton = this.add.text(10, yPos, `${npc.name} (${npc.current_location})`, {
-                fontSize: "12px",
-                color: "#FFFFFF",
-                backgroundColor: "rgba(0, 100, 0, 0.7)",
-                padding: { x: 8, y: 4 }
-            }).setInteractive();
-            
-            npcButton.on('pointerdown', () => {
-                this.generatePlanForNPC(npc.id, npc.name);
-            });
-            
-            if (this.debugPanelContent) {
-                this.debugPanelContent.add(npcButton);
-            }
-        });
+        this.debugPanelContent?.add(footerText);
     }
 
     private async generatePlanForNPC(npcId: string, npcName: string) {

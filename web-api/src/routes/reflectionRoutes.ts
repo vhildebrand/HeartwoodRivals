@@ -137,74 +137,13 @@ export function reflectionRoutes(pool: Pool, redisClient: ReturnType<typeof crea
     }
   });
 
-  // POST /reflection/test-memory-addition - Add test memories to trigger reflection
+  // POST /reflection/test-memory-addition - DISABLED - Was creating artificial memories
   router.post('/test-memory-addition', async (req, res) => {
-    try {
-      const { agentId, memoryCount = 5 } = req.body;
-
-      if (!agentId) {
-        return res.status(400).json({
-          error: 'Missing required field: agentId'
-        });
-      }
-
-      // Verify agent exists
-      const agentResult = await pool.query(
-        'SELECT id, name FROM agents WHERE id = $1',
-        [agentId]
-      );
-
-      if (agentResult.rows.length === 0) {
-        return res.status(404).json({
-          error: 'Agent not found'
-        });
-      }
-
-      const agent = agentResult.rows[0];
-
-      // Add test memories with high importance to trigger reflection
-      const testMemories = [
-        `I had an interesting conversation with a player about ${agent.name}'s work`,
-        `A player asked me about my goals and I shared my thoughts`,
-        `I noticed more players are visiting the town lately`,
-        `I completed an important task that I've been working on`,
-        `I had a meaningful interaction with another townsperson`,
-        `I observed some changes in the town's atmosphere`,
-        `A player showed interest in my personal story`,
-        `I made progress on one of my secondary goals`,
-        `I had a particularly engaging conversation today`,
-        `I noticed a pattern in how players interact with me`
-      ];
-
-      let addedMemories = 0;
-      for (let i = 0; i < Math.min(memoryCount, testMemories.length); i++) {
-        const memoryId = await memoryManager.storeObservation(
-          agentId,
-          testMemories[i],
-          'test_location',
-          [], // related_agents
-          ['test-player-id'], // related_players
-          8 // high importance to trigger reflection
-        );
-
-        if (memoryId !== -1) {
-          addedMemories++;
-        }
-      }
-
-      res.json({
-        success: true,
-        message: `Added ${addedMemories} test memories for ${agent.name}`,
-        agentId: agentId,
-        memories_added: addedMemories
-      });
-
-    } catch (error) {
-      console.error('Error in /reflection/test-memory-addition:', error);
-      res.status(500).json({
-        error: 'Internal server error'
-      });
-    }
+    return res.status(403).json({
+      error: 'Test memory addition endpoint disabled',
+      message: 'This endpoint was creating artificial memories that cluttered the NPC memory stream',
+      alternative: 'Use real player interactions to create natural memories instead'
+    });
   });
 
   return router;

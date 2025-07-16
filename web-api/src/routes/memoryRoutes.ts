@@ -291,19 +291,13 @@ export function memoryRoutes(pool: Pool, redisClient: ReturnType<typeof createCl
     }
   });
 
-  // Test endpoint: Add environment observations
+  // Test endpoint: Add environment observations - DISABLED
   router.post('/test-environment-observations', async (req, res) => {
-    try {
-      await observationSystem.simulateEnvironmentObservations();
-      
-      res.json({
-        success: true,
-        message: 'Environment observations added successfully'
-      });
-    } catch (error) {
-      console.error('Error adding environment observations:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
+    return res.status(403).json({
+      error: 'Environment observation simulation disabled',
+      message: 'This endpoint was creating artificial environment memories that cluttered the NPC memory stream',
+      alternative: 'Use real game events to create natural observations instead'
+    });
   });
 
   // Test endpoint: Demonstrate memory filtering

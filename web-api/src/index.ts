@@ -6,10 +6,12 @@ import { Pool } from 'pg';
 import { npcRoutes } from './routes/npcRoutes';
 import { memoryRoutes } from './routes/memoryRoutes';
 import { reflectionRoutes } from './routes/reflectionRoutes';
+import { metacognitionRoutes } from './routes/metacognitionRoutes';
 import { LLMWorker } from './services/LLMWorker';
 import { AgentMemoryManager } from './services/AgentMemoryManager';
 import { AgentObservationSystem } from './services/AgentObservationSystem';
 import { ReflectionProcessor } from './services/ReflectionProcessor';
+import { MetacognitionProcessor } from './services/MetacognitionProcessor';
 import { loadAgents } from './utils/loadAgents';
 
 // Load environment variables
@@ -66,6 +68,11 @@ async function initializeConnections() {
     reflectionProcessor.startProcessing();
     console.log('✅ Reflection Processor started successfully');
     
+    // Initialize Metacognition Processor
+    const metacognitionProcessor = new MetacognitionProcessor(pool, redisClient);
+    metacognitionProcessor.startProcessing();
+    console.log('✅ Metacognition Processor started successfully');
+    
     // Load agents from JSON files
     await loadAgents(pool);
     
@@ -79,6 +86,7 @@ async function initializeConnections() {
 app.use('/npc', npcRoutes(pool, redisClient));
 app.use('/memory', memoryRoutes(pool, redisClient));
 app.use('/reflection', reflectionRoutes(pool, redisClient));
+app.use('/metacognition', metacognitionRoutes(pool, redisClient));
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {

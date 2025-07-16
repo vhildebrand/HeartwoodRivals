@@ -320,30 +320,12 @@ export class AgentObservationSystem {
   }
 
   /**
-   * Simulate environment observations (for testing)
+   * Simulate environment observations (for testing) - DISABLED
+   * This was creating artificial environment memories that cluttered the memory stream
    */
   async simulateEnvironmentObservations(): Promise<void> {
-    const agents = await this.pool.query('SELECT id FROM agents');
-    
-    for (const agent of agents.rows) {
-      const environmentObservations = [
-        'The sun is shining brightly today',
-        'I can hear birds chirping outside',
-        'The air feels fresh and cool',
-        'There\'s a gentle breeze blowing',
-        'I notice the flowers in the garden are blooming'
-      ];
-      
-      const observation = environmentObservations[Math.floor(Math.random() * environmentObservations.length)];
-      
-      await this.memoryManager.storeObservation(
-        agent.id,
-        observation,
-        'environment',
-        [],
-        [],
-        2 // Low importance for environmental observations
-      );
-    }
+    console.log('⚠️  Environment observation simulation disabled - was creating artificial memories');
+    // Method disabled to prevent automatic memory generation
+    return;
   }
 } 

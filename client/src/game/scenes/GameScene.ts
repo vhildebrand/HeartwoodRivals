@@ -38,6 +38,11 @@ export class GameScene extends Scene {
     private currentGameTime: string = "06:00";
     private currentGameDay: number = 1;
     private currentSpeedMultiplier: number = 60;
+    
+    // Debug panel throttling
+    private lastDebugUpdateTime: number = 0;
+    private debugUpdateInterval: number = 2000; // Update every 2 seconds
+    private previousNPCData: Map<string, any> = new Map();
 
     constructor() {
         super("GameScene");
@@ -569,6 +574,55 @@ export class GameScene extends Scene {
             if (this.npcs.size > 0) {
                 console.log(`🤖 [CLIENT] Total NPCs active: ${this.npcs.size}`);
             }
+        }
+        
+        // Throttled debug panel updates (only every 2 seconds)
+        const currentTime = Date.now();
+        if (currentTime - this.lastDebugUpdateTime > this.debugUpdateInterval) {
+            this.updateDebugPanelData(agentStates);
+            this.lastDebugUpdateTime = currentTime;
+        }
+    }
+    
+    private updateDebugPanelData(agentStates: any) {
+        // Create current NPC data
+        const currentNPCData = new Map();
+        agentStates.forEach((agent: any, agentId: string) => {
+            currentNPCData.set(agentId, {
+                id: agentId,
+                name: agent.name,
+                x: agent.x,
+                y: agent.y,
+                currentActivity: agent.currentActivity || 'idle',
+                currentLocation: agent.currentLocation || 'Unknown'
+            });
+        });
+        
+        // Check if data has actually changed
+        let hasChanged = false;
+        
+        // Check if number of NPCs changed
+        if (currentNPCData.size !== this.previousNPCData.size) {
+            hasChanged = true;
+        } else {
+            // Check if any NPC data changed
+            for (const [agentId, currentData] of currentNPCData) {
+                const previousData = this.previousNPCData.get(agentId);
+                if (!previousData || 
+                    previousData.x !== currentData.x ||
+                    previousData.y !== currentData.y ||
+                    previousData.currentActivity !== currentData.currentActivity ||
+                    previousData.currentLocation !== currentData.currentLocation) {
+                    hasChanged = true;
+                    break;
+                }
+            }
+        }
+        
+        // Only emit if data has changed
+        if (hasChanged) {
+            this.previousNPCData = new Map(currentNPCData);
+            this.game.events.emit('npcDataUpdate', currentNPCData);
         }
     }
 

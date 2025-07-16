@@ -115,7 +115,7 @@ Backend: Create the reflection generation logic using LLM analysis of the memory
 
 Backend: Store reflections back into the memory stream.
 
-Deliverable: An agent can generate insights like "I seem to be spending a lot of time at the library" and use this reflection in future decisions.
+Deliverable: An agent can generate dockinsights like "I seem to be spending a lot of time at the library" and use this reflection in future decisions.
 
 Sprint 6: The Strategic Agent (Metacognition)
 
