@@ -2,8 +2,18 @@ import { Room, Client } from "colyseus";
 import { GameState, Player } from "./schema";
 import { MapManager } from "../maps/MapManager";
 import { createClient } from 'redis';
+import { Pool } from 'pg';
 import * as fs from 'fs';
 import * as path from 'path';
+import { GameTime, GameTimeConfig } from "../systems/GameTime";
+import { AgentSpawner, SpawnedAgent } from "../systems/AgentSpawner";
+import { PlanExecutor } from "../systems/PlanExecutor";
+import { AgentMovementSystem } from "../systems/AgentMovementSystem";
+
+// Database pool interface
+interface DatabasePool {
+  query(text: string, params?: any[]): Promise<{ rows: any[] }>;
+}
 
 // Direction constants
 const DIRECTIONS = {
@@ -31,9 +41,17 @@ export class HeartwoodRoom extends Room<GameState> {
     private readonly GAME_LOOP_RATE = 60; // 60 FPS server updates
     private redisClient: any; // Redis client for publishing player actions
     private playerLastTilePositions: Map<string, { x: number; y: number }> = new Map();
+    
+    // Agent systems
+    private gameTime!: GameTime;
+    private agentSpawner!: AgentSpawner;
+    private planExecutor!: PlanExecutor;
+    private agentMovementSystem!: AgentMovementSystem;
+    private databasePool!: DatabasePool;
+    private agents: Map<string, SpawnedAgent> = new Map();
 
     onJoin(client: Client, options: any) {
-        console.log(`Player ${client.sessionId} joined the heartwood_room`);
+        console.log(`👤 [SERVER] Player ${client.sessionId} joined the heartwood_room`);
         
         // Create new player with proper schema
         const player = new Player();
@@ -82,6 +100,8 @@ export class HeartwoodRoom extends Room<GameState> {
         // Add player to state
         this.state.players.set(client.sessionId, player);
         
+        console.log(`✅ [SERVER] Player ${player.name} spawned at tile (${startTileX}, ${startTileY}) - Total players: ${this.state.players.size}`);
+        
         // Publish player join action for agent observation
         this.publishPlayerAction({
             player_id: client.sessionId,
@@ -115,6 +135,9 @@ export class HeartwoodRoom extends Room<GameState> {
             this.state.tileSize = mapData.tileWidth;
         }
         
+        // Initialize agent systems
+        this.initializeAgentSystems();
+        
         // Register unified input message handler
         this.onMessage("player_input", (client: Client, message: { directions: string[], type: string, timestamp: number }) => {
             this.handlePlayerInput(client, message);
@@ -143,6 +166,19 @@ export class HeartwoodRoom extends Room<GameState> {
 
         this.onMessage("rightclick", (client: Client, message: any) => {
             this.handlePlayerRightClick(client, message);
+        });
+        
+        // Time control message handlers
+        this.onMessage("set_time", (client: Client, message: { time: string }) => {
+            this.handleSetTime(client, message);
+        });
+        
+        this.onMessage("advance_time", (client: Client, message: { hours: number }) => {
+            this.handleAdvanceTime(client, message);
+        });
+        
+        this.onMessage("set_speed", (client: Client, message: { speedMultiplier: number }) => {
+            this.handleSetSpeed(client, message);
         });
         
         // Start the game loop
@@ -310,6 +346,63 @@ export class HeartwoodRoom extends Room<GameState> {
         // - Information display
     }
 
+    private handleSetTime(client: Client, message: { time: string }) {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) return;
+
+        console.log(`🕐 [SERVER] Player ${player.name} set time to: ${message.time}`);
+        
+        if (this.gameTime) {
+            this.gameTime.setTime(message.time);
+            this.updateGameTimeState();
+            
+            // Trigger immediate agent schedule processing
+            if (this.planExecutor) {
+                this.planExecutor.processScheduledActions(this.agents);
+            }
+        }
+    }
+
+    private handleAdvanceTime(client: Client, message: { hours: number }) {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) return;
+
+        console.log(`⏰ [SERVER] Player ${player.name} advanced time by ${message.hours} hours`);
+        
+        if (this.gameTime) {
+            const currentTime = this.gameTime.getCurrentTime();
+            const newTime = (currentTime + (message.hours * 60)) % 1440; // Wrap at 24 hours
+            const newTimeString = this.formatTimeMinutes(newTime);
+            
+            this.gameTime.setTime(newTimeString);
+            this.updateGameTimeState();
+            
+            // Trigger immediate agent schedule processing
+            if (this.planExecutor) {
+                this.planExecutor.processScheduledActions(this.agents);
+            }
+        }
+    }
+
+    private handleSetSpeed(client: Client, message: { speedMultiplier: number }) {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) return;
+
+        console.log(`🚀 [SERVER] Player ${player.name} set speed multiplier to: ${message.speedMultiplier}x`);
+        
+        if (this.gameTime) {
+            this.gameTime.setSpeedMultiplier(message.speedMultiplier);
+            this.state.speedMultiplier = message.speedMultiplier;
+            this.updateGameTimeState();
+        }
+    }
+
+    private formatTimeMinutes(minutes: number): string {
+        const hours = Math.floor(minutes / 60);
+        const mins = Math.floor(minutes % 60);
+        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    }
+
     private async initializeRedis() {
         try {
             this.redisClient = createClient({
@@ -322,6 +415,110 @@ export class HeartwoodRoom extends Room<GameState> {
             console.error('❌ Redis connection failed:', error);
             console.log('⚠️  Game will continue without agent observations');
             this.redisClient = null;
+        }
+    }
+
+    private async initializeAgentSystems() {
+        console.log('🤖 Initializing agent systems...');
+        
+        try {
+            // Initialize PostgreSQL connection
+            const pool = new Pool({
+                host: process.env.DB_HOST || 'postgres',
+                port: parseInt(process.env.DB_PORT || '5432'),
+                database: process.env.DB_NAME || 'heartwood_db',
+                user: process.env.DB_USER || 'heartwood_user',
+                password: process.env.DB_PASSWORD || 'heartwood_password',
+                max: 10,
+                idleTimeoutMillis: 30000,
+                connectionTimeoutMillis: 2000,
+            });
+            
+            // Test database connection
+            try {
+                await pool.query('SELECT 1');
+                console.log('✅ Database connection established');
+            } catch (dbError) {
+                console.error('❌ Database connection failed:', dbError);
+                console.log('⚠️  Using mock database - no agents will be spawned');
+                // Fallback to mock database
+                this.databasePool = {
+                    query: async (text: string, params?: any[]) => {
+                        console.log('Mock database query:', text);
+                        return { rows: [] };
+                    }
+                };
+            }
+            
+            this.databasePool = pool;
+            
+            // Initialize game time system
+            const gameTimeConfig: GameTimeConfig = {
+                startTime: "06:00",
+                speedMultiplier: 60.0, // 1 minute = 1 second (for testing)
+                dayDurationMs: 24 * 60 * 1000 // 24 minutes = 1 day
+            };
+            
+            this.gameTime = GameTime.getInstance(gameTimeConfig);
+            
+            // Initialize agent systems
+            this.agentSpawner = new AgentSpawner(this.databasePool, this.MAP_ID);
+            this.planExecutor = new PlanExecutor();
+            this.agentMovementSystem = new AgentMovementSystem(this.MAP_ID);
+            
+            // Set up movement callbacks
+            this.agentMovementSystem.onMovementUpdate((update) => {
+                const agent = this.agents.get(update.agentId);
+                if (agent) {
+                    // Update agent in game state
+                    this.state.agents.set(update.agentId, agent.schema);
+                }
+            });
+            
+            // Actually spawn agents from database
+            try {
+                const spawnedAgents = await this.agentSpawner.spawnAllAgents();
+                this.agents = spawnedAgents;
+                
+                // Add spawned agents to game state
+                spawnedAgents.forEach((agent, agentId) => {
+                    this.state.agents.set(agentId, agent.schema);
+                });
+                
+                console.log(`✅ Added ${spawnedAgents.size} agents to game state`);
+                
+                // Load agent schedules into the plan executor
+                if (this.planExecutor && this.agents.size > 0) {
+                    await this.planExecutor.loadAgentSchedules(this.agents);
+                    console.log(`📅 [SERVER] Loaded schedules for ${this.agents.size} agents`);
+                }
+            } catch (spawnError) {
+                console.error('❌ Failed to spawn agents:', spawnError);
+            }
+            
+            // Update game state with time
+            this.updateGameTimeState();
+            
+        } catch (error) {
+            console.error('❌ Failed to initialize agent systems:', error);
+        }
+    }
+
+    private updateGameTimeState() {
+        if (this.gameTime) {
+            const newTime = this.gameTime.getCurrentTimeString();
+            const newDay = this.gameTime.getCurrentDay();
+            
+            // Log time changes
+            if (this.state.currentGameTime !== newTime) {
+                console.log(`🕐 [SERVER] Game time updated: ${this.state.currentGameTime} -> ${newTime}`);
+            }
+            if (this.state.gameDay !== newDay) {
+                console.log(`📅 [SERVER] Game day updated: ${this.state.gameDay} -> ${newDay}`);
+            }
+            
+            this.state.currentGameTime = newTime;
+            this.state.gameDay = newDay;
         }
     }
 
@@ -360,9 +557,11 @@ export class HeartwoodRoom extends Room<GameState> {
     }
 
     onLeave(client: Client, consented: boolean) {
-        console.log(`Player ${client.sessionId} left the heartwood_room`);
-        
         const player = this.state.players.get(client.sessionId);
+        const playerName = player ? player.name : 'Unknown';
+        
+        console.log(`👋 [SERVER] Player ${playerName} (${client.sessionId}) left the heartwood_room ${consented ? '(consented)' : '(disconnected)'}`);
+        
         if (player) {
             // Publish player leave action for agent observation
             const tilePos = this.mapManager.pixelToTile(this.MAP_ID, player.x, player.y);
@@ -376,6 +575,8 @@ export class HeartwoodRoom extends Room<GameState> {
         
         // Remove player from state
         this.state.players.delete(client.sessionId);
+        
+        console.log(`📊 [SERVER] Remaining players: ${this.state.players.size}`);
     }
 
     private startGameLoop() {
@@ -394,8 +595,43 @@ export class HeartwoodRoom extends Room<GameState> {
             this.updatePlayerPhysics(player, deltaTime);
         });
         
+        // Update agent systems
+        this.updateAgentSystems(deltaTime);
+        
         // Update game timestamp
         this.state.timestamp = Date.now();
+    }
+
+    private updateAgentSystems(deltaTime: number) {
+        if (!this.gameTime || !this.agentMovementSystem || !this.planExecutor) {
+            return;
+        }
+        
+        // Update game time
+        this.gameTime.processEvents();
+        this.updateGameTimeState();
+        
+        // Update agent movement
+        this.agentMovementSystem.updateMovement(this.agents, deltaTime / 1000);
+        
+        // Update agent state machines
+        for (const [agentId, agent] of this.agents) {
+            agent.stateMachine.update();
+        }
+        
+        // Process scheduled actions (less frequently to avoid performance issues)
+        if (Math.random() < 0.01) { // 1% chance per frame (~once per second at 60fps)
+            this.planExecutor.processScheduledActions(this.agents);
+            
+            // Log NPC status occasionally
+            if (Math.random() < 0.1) { // 10% of the time we process actions
+                const activeAgents = Array.from(this.agents.values());
+                if (activeAgents.length > 0) {
+                    const randomAgent = activeAgents[Math.floor(Math.random() * activeAgents.length)];
+                    console.log(`🤖 [SERVER] NPC ${randomAgent.schema.name} at (${randomAgent.schema.x}, ${randomAgent.schema.y}) - Activity: ${randomAgent.schema.currentActivity}`);
+                }
+            }
+        }
     }
 
     private updatePlayerPhysics(player: Player, deltaTime: number) {

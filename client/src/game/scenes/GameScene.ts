@@ -20,11 +20,24 @@ export class GameScene extends Scene {
     private pendingInputs: string[] = [];
     
     // NPC system
-    private npcs: Map<string, { sprite: Phaser.GameObjects.Sprite, nameLabel: Phaser.GameObjects.Text, name: string, x: number, y: number }> = new Map();
+    private npcs: Map<string, { 
+        sprite: Phaser.GameObjects.Sprite, 
+        nameLabel: Phaser.GameObjects.Text, 
+        actionLabel: Phaser.GameObjects.Text,
+        name: string, 
+        x: number, 
+        y: number 
+    }> = new Map();
     private interactionIndicator: Phaser.GameObjects.Text | null = null;
+    private lastNpcCount: number = 0; // Track last NPC count to avoid spam logging
     
     // Building labels
     private buildingLabels: Phaser.GameObjects.Text[] = [];
+    
+    // Game state tracking (for UI updates)
+    private currentGameTime: string = "06:00";
+    private currentGameDay: number = 1;
+    private currentSpeedMultiplier: number = 60;
 
     constructor() {
         super("GameScene");
@@ -44,6 +57,9 @@ export class GameScene extends Scene {
         
         // Create building labels
         this.createBuildingLabels();
+        
+        // Create time control instructions
+        this.createTimeControlInstructions();
         
         // Connect to server
         this.connectToServer();
@@ -112,67 +128,102 @@ export class GameScene extends Scene {
             this.handleInteraction();
         });
         
+        // Add key to zoom out camera for debugging
+        this.input.keyboard?.addKey('Q').on('down', () => {
+            const currentZoom = this.cameras.main.zoom;
+            this.cameras.main.setZoom(Math.max(0.5, currentZoom - 0.5));
+            console.log(`Camera zoom: ${this.cameras.main.zoom}`);
+        });
+        
+        // Add key to zoom in camera
+        this.input.keyboard?.addKey('Z').on('down', () => {
+            const currentZoom = this.cameras.main.zoom;
+            this.cameras.main.setZoom(Math.min(3, currentZoom + 0.5));
+            console.log(`Camera zoom: ${this.cameras.main.zoom}`);
+        });
+        
+        // Time control keys
+        this.input.keyboard?.addKey('ONE').on('down', () => {
+            this.setGameTime("06:00");
+        });
+        
+        this.input.keyboard?.addKey('TWO').on('down', () => {
+            this.setGameTime("09:00");
+        });
+        
+        this.input.keyboard?.addKey('THREE').on('down', () => {
+            this.setGameTime("12:00");
+        });
+        
+        this.input.keyboard?.addKey('FOUR').on('down', () => {
+            this.setGameTime("15:00");
+        });
+        
+        this.input.keyboard?.addKey('FIVE').on('down', () => {
+            this.setGameTime("18:00");
+        });
+        
+        this.input.keyboard?.addKey('SIX').on('down', () => {
+            this.setGameTime("21:00");
+        });
+        
+        this.input.keyboard?.addKey('PLUS').on('down', () => {
+            this.advanceTime(1);
+        });
+        
+        this.input.keyboard?.addKey('MINUS').on('down', () => {
+            this.advanceTime(-1);
+        });
+        
+        this.input.keyboard?.addKey('T').on('down', () => {
+            this.toggleSpeed();
+        });
+        
         console.log("GameScene: Controllers initialized");
+        console.log("🎮 Controls: WASD to move, E to interact, Q to zoom out, Z to zoom in");
+        console.log("🕐 Time: 1-6 to set time, +/- to advance time, T to toggle speed");
+    }
+
+    private setGameTime(time: string) {
+        if (this.room) {
+            this.room.send("set_time", { time });
+            console.log(`🕐 [CLIENT] Set time to: ${time}`);
+        }
+    }
+
+    private advanceTime(hours: number) {
+        if (this.room) {
+            this.room.send("advance_time", { hours });
+            console.log(`⏰ [CLIENT] Advanced time by ${hours} hours`);
+        }
+    }
+
+    private toggleSpeed() {
+        if (this.room) {
+            // Cycle through speed multipliers: 1x -> 10x -> 60x -> 1x
+            const speeds = [1, 10, 60];
+            const currentIndex = speeds.indexOf(this.currentSpeedMultiplier);
+            const nextIndex = (currentIndex + 1) % speeds.length;
+            const newSpeed = speeds[nextIndex];
+            
+            this.room.send("set_speed", { speedMultiplier: newSpeed });
+            console.log(`🚀 [CLIENT] Set speed to: ${newSpeed}x`);
+        }
     }
 
     private async createNPCs() {
-        try {
-            // Fetch NPCs from the web API
-            const response = await fetch('http://localhost:3000/npc/list');
-            if (!response.ok) {
-                console.error('Failed to fetch NPCs from API');
-                return;
-            }
-            
-            const data = await response.json();
-            const npcs = data.npcs || [];
-            
-            // Create sprites for each NPC
-            for (const npc of npcs) {
-                const npcSprite = this.add.sprite(npc.x_position * 16, npc.y_position * 16, 'player');
-                npcSprite.setScale(1);
-                npcSprite.setDepth(10);
-                npcSprite.setTint(0x00ff00); // Green tint to distinguish from players
-                
-                // Create animations for NPC (idle animation)
-                npcSprite.play('idle_down');
-                
-                // Create name label above NPC
-                const nameLabel = this.add.text(npc.x_position * 16, npc.y_position * 16 - 20, npc.name, {
-                    fontSize: '10px',
-                    color: '#FFFFFF',
-                    backgroundColor: '#000000',
-                    padding: { x: 3, y: 1 }
-                });
-                nameLabel.setOrigin(0.5, 0.5);
-                nameLabel.setDepth(15);
-                
-                // Store NPC data
-                this.npcs.set(npc.id, {
-                    sprite: npcSprite,
-                    nameLabel: nameLabel,
-                    name: npc.name,
-                    x: npc.x_position,
-                    y: npc.y_position
-                });
-                
-                console.log(`Created NPC: ${npc.name} at (${npc.x_position}, ${npc.y_position})`);
-            }
-            
-            // Create interaction indicator
-            this.interactionIndicator = this.add.text(0, 0, 'Press E to talk', {
-                fontSize: '12px',
-                color: '#FFD700',
-                backgroundColor: '#000000',
-                padding: { x: 4, y: 2 }
-            });
-            this.interactionIndicator.setDepth(1000);
-            this.interactionIndicator.setVisible(false);
-            
-            console.log(`Created ${npcs.length} NPCs`);
-        } catch (error) {
-            console.error('Error creating NPCs:', error);
-        }
+        // NPCs are now created automatically from server state updates
+        // Create interaction indicator
+        this.interactionIndicator = this.add.text(0, 0, 'Press E to talk', {
+            fontSize: '12px',
+            color: '#FFD700',
+            backgroundColor: '#000000',
+            padding: { x: 4, y: 2 }
+        });
+        this.interactionIndicator.setDepth(1000);
+        this.interactionIndicator.setVisible(false);
+        
+        console.log('NPC system initialized - agents will be created from server state');
     }
 
     private createBuildingLabels() {
@@ -225,6 +276,29 @@ export class GameScene extends Scene {
         } catch (error) {
             console.error('Error creating building labels:', error);
         }
+    }
+
+    private createTimeControlInstructions() {
+        // Create time control instructions (moved to bottom-left)
+        const instructionsText = this.add.text(16, this.cameras.main.height - 100, 
+            'Time Controls:\n' +
+            '1-6: Set time (06:00, 09:00, 12:00, 15:00, 18:00, 21:00)\n' +
+            '+/-: Advance time by ±1 hour\n' +
+            'T: Toggle speed (1x, 10x, 60x)',
+            {
+                fontSize: '12px',
+                color: '#CCCCCC',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                padding: { x: 6, y: 4 },
+                lineSpacing: 4
+            }
+        );
+        instructionsText.setOrigin(0, 0);
+        instructionsText.setDepth(1000);
+        instructionsText.setScrollFactor(0); // Fixed to camera
+        instructionsText.setVisible(true); // Ensure it's visible
+        
+        console.log('🕐 Time control instructions created');
     }
 
     private handleInteraction() {
@@ -400,6 +474,35 @@ export class GameScene extends Scene {
             // Update camera to follow current player
             this.updateCameraFollow();
         }
+        
+        // Update agents from server state
+        if (state.agents) {
+            this.updateAgents(state.agents);
+        }
+        
+        // Update game time from server state and emit to UI
+        if (state.currentGameTime && state.currentGameTime !== this.currentGameTime) {
+            this.currentGameTime = state.currentGameTime;
+            console.log(`🕐 [GAME] Time updated to: ${this.currentGameTime}`);
+        }
+        
+        if (state.gameDay && state.gameDay !== this.currentGameDay) {
+            this.currentGameDay = state.gameDay;
+            console.log(`📅 [GAME] Day updated to: ${this.currentGameDay}`);
+        }
+        
+        // Update speed multiplier from server state
+        if (state.speedMultiplier && state.speedMultiplier !== this.currentSpeedMultiplier) {
+            this.currentSpeedMultiplier = state.speedMultiplier;
+            console.log(`🚀 [GAME] Speed updated to: ${this.currentSpeedMultiplier}x`);
+        }
+        
+        // Emit game state updates to UI
+        this.game.events.emit('gameStateUpdate', {
+            currentGameTime: this.currentGameTime,
+            gameDay: this.currentGameDay,
+            speedMultiplier: this.currentSpeedMultiplier
+        });
     }
 
     private updateCameraFollow() {
@@ -409,6 +512,101 @@ export class GameScene extends Scene {
                 // Make the camera follow the current player more responsively
                 this.cameras.main.startFollow(mySprite, true, 0.2, 0.2);
             }
+        }
+    }
+
+    private updateAgents(agentStates: any) {
+        // Update existing agents and create new ones
+        agentStates.forEach((agent: any, agentId: string) => {
+            const existingAgent = this.npcs.get(agentId);
+            
+            if (existingAgent) {
+                // Update existing agent position and state
+                existingAgent.sprite.x = agent.x * 16; // Convert to pixels
+                existingAgent.sprite.y = agent.y * 16;
+                existingAgent.nameLabel.x = agent.x * 16;
+                existingAgent.nameLabel.y = agent.y * 16 - 20;
+                existingAgent.actionLabel.x = agent.x * 16;
+                existingAgent.actionLabel.y = agent.y * 16 + 20;
+                
+                // Update action label text
+                const actionText = agent.currentActivity || 'idle';
+                existingAgent.actionLabel.setText(actionText);
+                
+                // Update stored position
+                existingAgent.x = agent.x;
+                existingAgent.y = agent.y;
+            } else {
+                // Create new agent
+                this.createAgent(agentId, agent);
+            }
+        });
+        
+        // Remove agents that no longer exist
+        const currentAgents = Array.from(this.npcs.keys());
+        currentAgents.forEach(agentId => {
+            if (!agentStates.has(agentId)) {
+                this.removeAgent(agentId);
+            }
+        });
+        
+        // Show total agents in console only when count changes
+        if (this.npcs.size !== this.lastNpcCount) {
+            this.lastNpcCount = this.npcs.size;
+            if (this.npcs.size > 0) {
+                console.log(`🤖 [CLIENT] Total NPCs active: ${this.npcs.size}`);
+            }
+        }
+    }
+
+    private createAgent(agentId: string, agentData: any) {
+        const agentSprite = this.add.sprite(agentData.x * 16, agentData.y * 16, 'player');
+        agentSprite.setScale(1);
+        agentSprite.setDepth(10);
+        agentSprite.setTint(0x00ff00); // Green tint to distinguish from players
+        
+        // Create name label above agent
+        const nameLabel = this.add.text(agentData.x * 16, agentData.y * 16 - 20, agentData.name, {
+            fontSize: '10px',
+            color: '#FFFFFF',
+            backgroundColor: '#000000',
+            padding: { x: 3, y: 1 }
+        });
+        nameLabel.setOrigin(0.5, 0.5);
+        nameLabel.setDepth(15);
+        
+        // Create action label below agent
+        const actionText = agentData.currentActivity || 'idle';
+        const actionLabel = this.add.text(agentData.x * 16, agentData.y * 16 + 20, actionText, {
+            fontSize: '9px',
+            color: '#FF0000', // Red text as requested
+            backgroundColor: '#000000',
+            padding: { x: 3, y: 1 }
+        });
+        actionLabel.setOrigin(0.5, 0.5);
+        actionLabel.setDepth(15);
+        
+        // Store agent data
+        this.npcs.set(agentId, {
+            sprite: agentSprite,
+            nameLabel: nameLabel,
+            actionLabel: actionLabel,
+            name: agentData.name,
+            x: agentData.x,
+            y: agentData.y
+        });
+        
+        console.log(`Created agent: ${agentData.name} at (${agentData.x}, ${agentData.y}) - ${actionText}`);
+    }
+
+    private removeAgent(agentId: string) {
+        const agent = this.npcs.get(agentId);
+        if (agent) {
+            agent.sprite.destroy();
+            agent.nameLabel.destroy();
+            agent.actionLabel.destroy();
+            this.npcs.delete(agentId);
+            console.log(`Removed agent: ${agentId}`);
         }
     }
 
@@ -464,6 +662,7 @@ export class GameScene extends Scene {
         this.npcs.forEach(npc => {
             npc.sprite.destroy();
             npc.nameLabel.destroy();
+            npc.actionLabel.destroy();
         });
         this.npcs.clear();
         
