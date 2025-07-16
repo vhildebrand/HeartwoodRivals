@@ -212,20 +212,20 @@ export class AgentMemoryManager {
     // Get a mix of recent, important, and relevant memories
     const recentMemories = await this.retrieveMemories({
       agent_id,
-      limit: limit / 3,
+      limit: Math.floor(limit / 3),
       recent_hours: 24
     });
 
     const importantMemories = await this.retrieveMemories({
       agent_id,
-      limit: limit / 3,
+      limit: Math.floor(limit / 3),
       min_importance: 7
     });
 
     const relevantMemories = await this.retrieveMemories({
       agent_id,
       query_embedding: contextEmbedding,
-      limit: limit / 3,
+      limit: Math.floor(limit / 3),
       include_similarity: true
     });
 
@@ -238,8 +238,8 @@ export class AgentMemoryManager {
     // Sort by composite score (recency + importance + relevance)
     return uniqueMemories
       .sort((a, b) => {
-        const scoreA = this.calculateMemoryScore(a);
-        const scoreB = this.calculateMemoryScore(b);
+        const scoreA = this.calculateMemoryScore(a, context);
+        const scoreB = this.calculateMemoryScore(b, context);
         return scoreB - scoreA;
       })
       .slice(0, limit);
@@ -300,9 +300,9 @@ export class AgentMemoryManager {
   }
 
   /**
-   * Calculate a composite score for memory relevance
+   * Calculate a composite score for memory relevance with improved context awareness
    */
-  private calculateMemoryScore(memory: Memory): number {
+  private calculateMemoryScore(memory: Memory, context?: string): number {
     const now = new Date();
     const memoryTime = new Date(memory.timestamp || now);
     const hoursOld = (now.getTime() - memoryTime.getTime()) / (1000 * 60 * 60);
@@ -320,8 +320,36 @@ export class AgentMemoryManager {
     const similarityScore = (memory as any).similarity ? 
       (1 - (memory as any).similarity) * 10 : 5;
     
-    return (recencyScore * 0.3) + (importanceScore * 0.4) + 
-           (emotionalScore * 0.2) + (similarityScore * 0.1);
+    // Context relevance boost
+    let contextBoost = 1;
+    if (context && memory.content) {
+      // Give extra weight to conversation memories
+      if (memory.content.includes('said to me') || memory.content.includes('told me') || 
+          memory.content.includes('I responded')) {
+        contextBoost = 1.5;
+      }
+      
+      // Boost memories that contain words from the current context
+      const contextWords = context.toLowerCase().split(/\s+/).filter(word => word.length > 3);
+      const memoryWords = memory.content.toLowerCase().split(/\s+/);
+      const commonWords = contextWords.filter(word => memoryWords.includes(word));
+      
+      if (commonWords.length > 0) {
+        contextBoost += 0.1 * commonWords.length;
+      }
+    }
+    
+    // Adjust weights to give more importance to similarity when available
+    const weights = (memory as any).similarity ? 
+      { recency: 0.2, importance: 0.3, emotional: 0.2, similarity: 0.3 } :
+      { recency: 0.3, importance: 0.4, emotional: 0.2, similarity: 0.1 };
+    
+    const baseScore = (recencyScore * weights.recency) + 
+                     (importanceScore * weights.importance) + 
+                     (emotionalScore * weights.emotional) + 
+                     (similarityScore * weights.similarity);
+    
+    return baseScore * contextBoost;
   }
 
   /**
@@ -388,19 +416,428 @@ export class AgentMemoryManager {
   }
 
   /**
-   * Check if agent needs reflection based on memory accumulation
+   * Check if agent needs reflection based on cumulative importance scores
+   * Following the Stanford paper approach: trigger when cumulative importance exceeds threshold
    */
   private async checkReflectionTrigger(agent_id: string): Promise<void> {
-    const recentMemoryCount = await this.pool.query(
-      'SELECT COUNT(*) FROM agent_memories WHERE agent_id = $1 AND timestamp >= NOW() - INTERVAL \'24 hours\'',
+    try {
+      // Get the last reflection time for this agent
+      const lastReflectionResult = await this.pool.query(
+        `SELECT MAX(timestamp) as last_reflection 
+         FROM agent_memories 
+         WHERE agent_id = $1 AND memory_type = 'reflection'`,
+        [agent_id]
+      );
+      
+      const lastReflection = lastReflectionResult.rows[0]?.last_reflection;
+      const cutoffTime = lastReflection || new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago if no reflection
+      
+      // Calculate cumulative importance score since last reflection
+      const importanceResult = await this.pool.query(
+        `SELECT SUM(importance_score) as cumulative_importance, COUNT(*) as memory_count
+         FROM agent_memories 
+         WHERE agent_id = $1 
+         AND timestamp > $2 
+         AND memory_type != 'reflection'`,
+        [agent_id, cutoffTime]
+      );
+      
+      const cumulativeImportance = parseFloat(importanceResult.rows[0]?.cumulative_importance || '0');
+      const memoryCount = parseInt(importanceResult.rows[0]?.memory_count || '0');
+      
+      // Stanford paper suggests reflection threshold around 150-200 points
+      const REFLECTION_THRESHOLD = 150;
+      
+      // Also ensure minimum number of memories (avoid reflecting on too little data)
+      const MIN_MEMORIES_FOR_REFLECTION = 5;
+      
+      console.log(`💭 [REFLECTION] ${agent_id} - Cumulative importance: ${cumulativeImportance}, Memory count: ${memoryCount}`);
+      
+      if (cumulativeImportance >= REFLECTION_THRESHOLD && memoryCount >= MIN_MEMORIES_FOR_REFLECTION) {
+        console.log(`🔄 [REFLECTION] Triggering reflection for ${agent_id} (importance: ${cumulativeImportance})`);
+        
+        // Queue reflection generation
+        await this.queueReflectionGeneration(agent_id, cumulativeImportance);
+      }
+    } catch (error) {
+      console.error(`❌ [REFLECTION] Error checking reflection trigger for ${agent_id}:`, error);
+    }
+  }
+
+  /**
+   * Queue reflection generation for an agent
+   */
+  private async queueReflectionGeneration(agent_id: string, cumulativeImportance: number): Promise<void> {
+    try {
+      // Add to Redis queue for reflection processing
+      const reflectionData = {
+        agent_id,
+        cumulative_importance: cumulativeImportance,
+        trigger_time: new Date().toISOString(),
+        status: 'pending'
+      };
+      
+      await this.redisClient.lPush(`reflection_queue:${agent_id}`, JSON.stringify(reflectionData));
+      
+      // Also add to global reflection processing queue
+      await this.redisClient.lPush('global_reflection_queue', JSON.stringify(reflectionData));
+      
+      console.log(`📝 [REFLECTION] Queued reflection generation for ${agent_id}`);
+    } catch (error) {
+      console.error(`❌ [REFLECTION] Error queuing reflection for ${agent_id}:`, error);
+    }
+  }
+
+  /**
+   * Generate reflection for an agent based on recent memories
+   * Following the Stanford paper approach: synthesize higher-level insights
+   */
+  async generateReflection(agent_id: string): Promise<void> {
+    try {
+      console.log(`💭 [REFLECTION] Starting reflection generation for ${agent_id}`);
+      
+      // Get recent memories since last reflection
+      const recentMemories = await this.getMemoriesForReflection(agent_id);
+      
+      if (recentMemories.length < 5) {
+        console.log(`⚠️ [REFLECTION] Not enough memories for reflection (${recentMemories.length} memories)`);
+        return;
+      }
+      
+      // Generate reflection using LLM
+      const reflectionText = await this.generateReflectionText(agent_id, recentMemories);
+      
+      if (!reflectionText) {
+        console.log(`❌ [REFLECTION] Failed to generate reflection text for ${agent_id}`);
+        return;
+      }
+      
+      // Calculate importance score for reflection (typically high)
+      const importanceScore = this.calculateReflectionImportance(recentMemories);
+      
+      // Store reflection as a memory
+      const reflectionMemory: Memory = {
+        agent_id,
+        memory_type: 'reflection',
+        content: reflectionText,
+        importance_score: importanceScore,
+        emotional_relevance: 7, // Reflections are emotionally relevant
+        tags: ['reflection', 'self_insight', 'pattern_recognition'],
+        related_agents: this.extractRelatedAgents(recentMemories),
+        related_players: this.extractRelatedPlayers(recentMemories),
+        location: 'internal' // Reflections are internal thoughts
+      };
+      
+      // Store reflection (skip normal filtering as reflections are always important)
+      await this.storeReflectionMemory(reflectionMemory);
+      
+      console.log(`✅ [REFLECTION] Generated reflection for ${agent_id}: "${reflectionText.substring(0, 100)}..."`);
+      
+    } catch (error) {
+      console.error(`❌ [REFLECTION] Error generating reflection for ${agent_id}:`, error);
+    }
+  }
+
+  /**
+   * Get memories for reflection analysis
+   */
+  private async getMemoriesForReflection(agent_id: string): Promise<Memory[]> {
+    const lastReflectionResult = await this.pool.query(
+      `SELECT MAX(timestamp) as last_reflection 
+       FROM agent_memories 
+       WHERE agent_id = $1 AND memory_type = 'reflection'`,
       [agent_id]
     );
     
-    const count = parseInt(recentMemoryCount.rows[0].count);
+    const lastReflection = lastReflectionResult.rows[0]?.last_reflection;
+    const cutoffTime = lastReflection || new Date(Date.now() - 24 * 60 * 60 * 1000);
     
-    // Trigger reflection if agent has accumulated many memories
-    if (count > 0 && count % 20 === 0) {
-      await this.redisClient.lPush(`reflection_queue:${agent_id}`, new Date().toISOString());
+    // Get memories since last reflection, ordered by importance and recency
+    const result = await this.pool.query(
+      `SELECT id, agent_id, memory_type, content, importance_score, emotional_relevance,
+              tags, related_agents, related_players, location, timestamp
+       FROM agent_memories
+       WHERE agent_id = $1 
+       AND timestamp > $2 
+       AND memory_type != 'reflection'
+       ORDER BY importance_score DESC, timestamp DESC
+       LIMIT 50`,
+      [agent_id, cutoffTime]
+    );
+    
+    return result.rows.map(row => ({
+      id: row.id,
+      agent_id: row.agent_id,
+      memory_type: row.memory_type,
+      content: row.content,
+      importance_score: row.importance_score,
+      emotional_relevance: row.emotional_relevance,
+      tags: row.tags,
+      related_agents: row.related_agents,
+      related_players: row.related_players,
+      location: row.location,
+      timestamp: row.timestamp
+    }));
+  }
+
+  /**
+   * Generate reflection text using LLM
+   */
+  private async generateReflectionText(agent_id: string, memories: Memory[]): Promise<string | null> {
+    try {
+      // Get agent information
+      const agentResult = await this.pool.query(
+        'SELECT name, constitution, personality_traits, primary_goal FROM agents WHERE id = $1',
+        [agent_id]
+      );
+      
+      if (agentResult.rows.length === 0) {
+        console.error(`Agent ${agent_id} not found`);
+        return null;
+      }
+      
+      const agent = agentResult.rows[0];
+      
+      // Construct reflection prompt
+      const memoryTexts = memories.map(m => `- ${m.content} (importance: ${m.importance_score})`).join('\n');
+      
+      const prompt = `You are ${agent.name}, a character in Heartwood Valley. 
+
+Your core personality: ${agent.constitution}
+Your goal: ${agent.primary_goal}
+Your traits: ${agent.personality_traits?.join(', ') || 'None specified'}
+
+Based on your recent experiences and memories, reflect on patterns, relationships, and insights. Generate a higher-level understanding of what's been happening in your life.
+
+Recent memories:
+${memoryTexts}
+
+Generate a thoughtful reflection that synthesizes these experiences into a deeper insight. This should be a single, coherent thought that captures a pattern or realization about your relationships, activities, or situation. Keep it natural and in character.
+
+Examples of good reflections:
+- "I've noticed that I've been spending more time at the library lately - perhaps I'm seeking knowledge to help solve the town's problems"
+- "My conversations with the townspeople suggest they're worried about the upcoming harvest"
+- "I seem to be developing a closer relationship with Sarah - our daily conversations about farming are becoming more personal"
+
+Your reflection:`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are generating a personal reflection for an AI agent. Keep it concise, insightful, and in character.' },
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 200,
+        temperature: 0.7,
+      });
+
+      const reflectionText = response.choices[0]?.message?.content?.trim();
+      return reflectionText || null;
+      
+    } catch (error) {
+      console.error(`Error generating reflection text for ${agent_id}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate importance score for reflection
+   */
+  private calculateReflectionImportance(memories: Memory[]): number {
+    if (memories.length === 0) return 7;
+    
+    // Reflections are generally important, but base it on the memories they synthesize
+    const avgImportance = memories.reduce((sum, m) => sum + m.importance_score, 0) / memories.length;
+    
+    // Reflections are typically more important than the average of their constituent memories
+    return Math.min(10, Math.max(7, Math.round(avgImportance + 2)));
+  }
+
+  /**
+   * Extract related agents from memories
+   */
+  private extractRelatedAgents(memories: Memory[]): string[] {
+    const agents = new Set<string>();
+    memories.forEach(m => {
+      if (m.related_agents) {
+        m.related_agents.forEach(agent => agents.add(agent));
+      }
+    });
+    return Array.from(agents);
+  }
+
+  /**
+   * Extract related players from memories
+   */
+  private extractRelatedPlayers(memories: Memory[]): string[] {
+    const players = new Set<string>();
+    memories.forEach(m => {
+      if (m.related_players) {
+        m.related_players.forEach(player => players.add(player));
+      }
+    });
+    return Array.from(players);
+  }
+
+  /**
+   * Store reflection memory (bypassing normal filtering)
+   */
+  private async storeReflectionMemory(memory: Memory): Promise<void> {
+    const client = await this.pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      // Generate embedding for the reflection
+      const embedding = await this.generateEmbedding(memory.content);
+      
+      // Insert the reflection into the database
+      await client.query(
+        `INSERT INTO agent_memories (
+          agent_id, memory_type, content, importance_score, emotional_relevance,
+          tags, related_agents, related_players, location, embedding
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          memory.agent_id,
+          memory.memory_type,
+          memory.content,
+          memory.importance_score,
+          memory.emotional_relevance,
+          memory.tags,
+          memory.related_agents,
+          memory.related_players,
+          memory.location,
+          `[${embedding.join(',')}]`
+        ]
+      );
+      
+      await client.query('COMMIT');
+      
+      console.log(`✅ [REFLECTION] Stored reflection for ${memory.agent_id}: "${memory.content.substring(0, 50)}..."`);
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Consolidate related memories into summaries for better recall
+   */
+  async consolidatePlayerMemories(agent_id: string, player_id: string): Promise<void> {
+    try {
+      // Get all memories related to this player from the last 24 hours
+      const recentMemories = await this.pool.query(
+        `SELECT id, content, importance_score, timestamp
+         FROM agent_memories
+         WHERE agent_id = $1 
+         AND related_players @> $2::text[]
+         AND timestamp >= NOW() - INTERVAL '24 hours'
+         ORDER BY timestamp ASC`,
+        [agent_id, `{${player_id}}`]
+      );
+
+      if (recentMemories.rows.length < 3) {
+        return; // Not enough memories to consolidate
+      }
+
+      // Group memories by conversation sessions (within 1 hour of each other)
+      const sessions: Memory[][] = [];
+      let currentSession: Memory[] = [];
+      let lastTimestamp: Date | null = null;
+
+      for (const row of recentMemories.rows) {
+        const memory: Memory = {
+          id: row.id,
+          agent_id,
+          memory_type: 'observation',
+          content: row.content,
+          importance_score: row.importance_score,
+          emotional_relevance: 5,
+          tags: [],
+          related_agents: [],
+          related_players: [player_id],
+          location: 'conversation',
+          timestamp: row.timestamp
+        };
+
+        if (lastTimestamp && 
+            new Date(row.timestamp).getTime() - lastTimestamp.getTime() > 60 * 60 * 1000) {
+          // More than 1 hour gap, start new session
+          if (currentSession.length > 0) {
+            sessions.push(currentSession);
+          }
+          currentSession = [memory];
+        } else {
+          currentSession.push(memory);
+        }
+        
+        lastTimestamp = new Date(row.timestamp);
+      }
+
+      if (currentSession.length > 0) {
+        sessions.push(currentSession);
+      }
+
+      // Consolidate each session that has 3+ memories
+      for (const session of sessions) {
+        if (session.length >= 3) {
+          await this.consolidateMemorySession(agent_id, player_id, session);
+        }
+      }
+
+      console.log(`✅ Consolidated ${sessions.length} memory sessions for ${agent_id} with ${player_id}`);
+    } catch (error) {
+      console.error(`❌ Error consolidating memories for ${agent_id}:`, error);
+    }
+  }
+
+  /**
+   * Consolidate a session of memories into a single summary
+   */
+  private async consolidateMemorySession(agent_id: string, player_id: string, memories: Memory[]): Promise<void> {
+    try {
+      const playerName = await this.getPlayerName(player_id);
+      const memoryTexts = memories.map(m => m.content).join('\n- ');
+      
+      // Create consolidation summary
+      const consolidatedContent = `Conversation summary with ${playerName}: ${memoryTexts}`;
+      
+      // Calculate average importance
+      const avgImportance = memories.reduce((sum, m) => sum + m.importance_score, 0) / memories.length;
+      
+      // Create consolidated memory
+      const consolidatedMemory: Memory = {
+        agent_id,
+        memory_type: 'observation',
+        content: consolidatedContent,
+        importance_score: Math.round(avgImportance + 1), // Slightly boost consolidated memories
+        emotional_relevance: 6,
+        tags: ['conversation', 'consolidated', 'summary'],
+        related_agents: [],
+        related_players: [player_id],
+        location: 'conversation'
+      };
+
+      // Store consolidated memory
+      await this.storeMemory(consolidatedMemory);
+      
+      // Mark original memories as consolidated (add tag)
+      const memoryIds = memories.map(m => m.id).filter(id => id !== undefined);
+      if (memoryIds.length > 0) {
+        await this.pool.query(
+          `UPDATE agent_memories 
+           SET tags = array_append(tags, 'consolidated')
+           WHERE id = ANY($1)`,
+          [memoryIds]
+        );
+      }
+
+      console.log(`📋 Consolidated ${memories.length} memories into summary for ${agent_id}`);
+    } catch (error) {
+      console.error(`❌ Error consolidating memory session:`, error);
     }
   }
 
@@ -489,7 +926,37 @@ export class AgentMemoryManager {
   }
 
   /**
-   * Check if a memory is too similar to existing memories using embeddings
+   * Calculate dynamic similarity threshold based on memory availability
+   */
+  private async getDynamicSimilarityThreshold(agent_id: string, memory_type: string): Promise<number> {
+    try {
+      // Get recent memory count for this agent
+      const recentMemoryCount = await this.pool.query(
+        `SELECT COUNT(*) as count FROM agent_memories 
+         WHERE agent_id = $1 
+         AND memory_type = $2 
+         AND timestamp >= NOW() - INTERVAL '6 hours'`,
+        [agent_id, memory_type]
+      );
+      
+      const count = parseInt(recentMemoryCount.rows[0]?.count || '0');
+      
+      // If we have very few memories, be more lenient
+      if (count < 5) {
+        return 0.25; // More lenient threshold
+      } else if (count < 15) {
+        return 0.20; // Moderate threshold
+      } else {
+        return 0.15; // Strict threshold (current)
+      }
+    } catch (error) {
+      console.error('Error calculating dynamic similarity threshold:', error);
+      return 0.15; // Fallback to current threshold
+    }
+  }
+
+  /**
+   * Check if a memory is too similar to existing memories using dynamic threshold
    */
   private async isMemoryTooSimilar(
     agent_id: string, 
@@ -497,6 +964,9 @@ export class AgentMemoryManager {
     embedding: number[]
   ): Promise<boolean> {
     try {
+      // Get dynamic threshold based on memory availability
+      const threshold = await this.getDynamicSimilarityThreshold(agent_id, 'observation');
+      
       // Check semantic similarity with recent memories
       const similarMemories = await this.pool.query(`
         SELECT content, (embedding <-> $2) as similarity
@@ -507,11 +977,11 @@ export class AgentMemoryManager {
         LIMIT 3
       `, [agent_id, `[${embedding.join(',')}]`]);
 
-      // If any memory has similarity < 0.15 (very similar), skip this one
-      const tooSimilar = similarMemories.rows.some(row => row.similarity < 0.15);
+      // Use dynamic threshold instead of fixed 0.15
+      const tooSimilar = similarMemories.rows.some(row => row.similarity < threshold);
       
       if (tooSimilar) {
-        console.log(`🔍 Found similar memory: "${similarMemories.rows[0].content.substring(0, 50)}..." (similarity: ${similarMemories.rows[0].similarity})`);
+        console.log(`🔍 Found similar memory: "${similarMemories.rows[0].content.substring(0, 50)}..." (similarity: ${similarMemories.rows[0].similarity}, threshold: ${threshold})`);
       }
       
       return tooSimilar;
@@ -533,4 +1003,81 @@ export class AgentMemoryManager {
     
     return commonWords.length / totalWords;
   }
+
+  /**
+   * Get conversation-specific memories for better recall of player details
+   */
+  async getConversationMemories(agent_id: string, player_id: string, limit: number = 8): Promise<Memory[]> {
+    try {
+      // Get player name for more targeted search
+      const playerName = await this.getPlayerName(player_id);
+      
+      // Get recent memories involving this specific player with better targeting
+      const result = await this.pool.query(
+        `SELECT id, agent_id, memory_type, content, importance_score, emotional_relevance,
+                tags, related_agents, related_players, location, timestamp,
+                CASE 
+                  WHEN content ILIKE $4 THEN 3
+                  WHEN related_players @> $2::text[] THEN 2
+                  WHEN content ILIKE '%told me%' OR content ILIKE '%said to me%' THEN 1
+                  ELSE 0
+                END as relevance_score
+         FROM agent_memories
+         WHERE agent_id = $1 
+         AND (
+           related_players @> $2::text[] OR 
+           content ILIKE $4
+         )
+         AND timestamp >= NOW() - INTERVAL '72 hours'
+         ORDER BY relevance_score DESC, importance_score DESC, timestamp DESC
+         LIMIT $3`,
+        [agent_id, `{${player_id}}`, limit, `%${playerName}%`]
+      );
+
+      return result.rows.map(row => ({
+        id: row.id,
+        agent_id: row.agent_id,
+        memory_type: row.memory_type,
+        content: row.content,
+        importance_score: row.importance_score,
+        emotional_relevance: row.emotional_relevance,
+        tags: row.tags,
+        related_agents: row.related_agents,
+        related_players: row.related_players,
+        location: row.location,
+        timestamp: row.timestamp
+      }));
+    } catch (error) {
+      console.error(`Error retrieving conversation memories for ${agent_id}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get player name from character ID with caching
+   */
+  private async getPlayerName(characterId: string): Promise<string> {
+    try {
+      // Check cache first
+      const cacheKey = `player_name:${characterId}`;
+      const cached = await this.redisClient.get(cacheKey);
+      
+      if (cached) {
+        return cached;
+      }
+      
+      // For now, use a simple fallback since we don't have a proper user system yet
+      // In the future, this would look up the username from the characters/users table
+      const playerName = `Player_${characterId.substring(0, 8)}`;
+      
+      // Cache for 1 hour
+      await this.redisClient.setEx(cacheKey, 3600, playerName);
+      
+      return playerName;
+    } catch (error) {
+      console.error('Error getting player name:', error);
+      return `Player_${characterId.substring(0, 8)}`;
+    }
+  }
+
 } 

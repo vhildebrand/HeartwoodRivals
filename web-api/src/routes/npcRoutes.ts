@@ -88,7 +88,7 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
   // POST /npc/interact - Main endpoint for NPC conversations
   router.post('/interact', async (req, res) => {
     try {
-      const { npcId, message } = req.body;
+      const { npcId, message, characterId } = req.body;
 
       // Validate request
       if (!npcId || !message) {
@@ -103,11 +103,11 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
         });
       }
 
-      // For Sprint 3, we'll use a dummy character ID since authentication isn't implemented yet
-      const dummyCharacterId = 'test-character-id';
+      // Use provided characterId or fall back to dummy for backward compatibility
+      const actualCharacterId = characterId || 'test-character-id';
 
       // Check rate limiting (1 message per 5 seconds per user)
-      const rateLimitKey = `ratelimit:interact:${dummyCharacterId}`;
+      const rateLimitKey = `ratelimit:interact:${actualCharacterId}`;
       const rateLimitCheck = await redisClient.get(rateLimitKey);
       
       if (rateLimitCheck) {
@@ -138,7 +138,7 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
         npcId,
         npcName: agent.name,
         constitution: agent.constitution,
-        characterId: dummyCharacterId,
+        characterId: actualCharacterId,
         playerMessage: message.trim(),
         timestamp: Date.now()
       };

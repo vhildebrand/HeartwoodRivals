@@ -5,9 +5,11 @@ import { createClient } from 'redis';
 import { Pool } from 'pg';
 import { npcRoutes } from './routes/npcRoutes';
 import { memoryRoutes } from './routes/memoryRoutes';
+import { reflectionRoutes } from './routes/reflectionRoutes';
 import { LLMWorker } from './services/LLMWorker';
 import { AgentMemoryManager } from './services/AgentMemoryManager';
 import { AgentObservationSystem } from './services/AgentObservationSystem';
+import { ReflectionProcessor } from './services/ReflectionProcessor';
 import { loadAgents } from './utils/loadAgents';
 
 // Load environment variables
@@ -59,6 +61,11 @@ async function initializeConnections() {
     await llmWorker.start();
     console.log('✅ LLM Worker started successfully');
     
+    // Initialize Reflection Processor
+    const reflectionProcessor = new ReflectionProcessor(pool, redisClient);
+    reflectionProcessor.startProcessing();
+    console.log('✅ Reflection Processor started successfully');
+    
     // Load agents from JSON files
     await loadAgents(pool);
     
@@ -71,6 +78,7 @@ async function initializeConnections() {
 // Routes
 app.use('/npc', npcRoutes(pool, redisClient));
 app.use('/memory', memoryRoutes(pool, redisClient));
+app.use('/reflection', reflectionRoutes(pool, redisClient));
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {

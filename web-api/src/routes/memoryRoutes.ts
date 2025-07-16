@@ -14,7 +14,7 @@ export function memoryRoutes(pool: Pool, redisClient: ReturnType<typeof createCl
   // Test endpoint: Store a test observation
   router.post('/test-observation', async (req, res) => {
     try {
-      const { agent_id, observation, location } = req.body;
+      const { agent_id, observation, location, related_players } = req.body;
       
       if (!agent_id || !observation || !location) {
         return res.status(400).json({
@@ -22,12 +22,22 @@ export function memoryRoutes(pool: Pool, redisClient: ReturnType<typeof createCl
         });
       }
 
+      // Extract player information from observation if not explicitly provided
+      let playersInvolved = related_players || [];
+      if (playersInvolved.length === 0) {
+        // Try to extract player names from the observation content
+        const playerMatches = observation.match(/Player_\w+/g);
+        if (playerMatches) {
+          playersInvolved = playerMatches;
+        }
+      }
+
       const memoryId = await memoryManager.storeObservation(
         agent_id,
         observation,
         location,
-        [],
-        [],
+        [], // related_agents
+        playersInvolved, // related_players - now properly set
         5
       );
 
@@ -48,6 +58,117 @@ export function memoryRoutes(pool: Pool, redisClient: ReturnType<typeof createCl
       }
     } catch (error) {
       console.error('Error storing test observation:', error);
+      res.status(500).json({
+        error: 'Failed to store observation',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Test endpoint: Get contextual memories for debugging
+  router.get('/debug-memories/:agent_id', async (req, res) => {
+    try {
+      const { agent_id } = req.params;
+      const { context, limit } = req.query;
+      
+      if (!agent_id) {
+        return res.status(400).json({
+          error: 'Missing agent_id parameter'
+        });
+      }
+
+      const memories = await memoryManager.getContextualMemories(
+        agent_id,
+        context as string || 'conversation',
+        parseInt(limit as string) || 15
+      );
+
+      res.json({
+        success: true,
+        agent_id,
+        context: context || 'conversation',
+        memory_count: memories.length,
+        memories: memories.map(m => ({
+          id: m.id,
+          type: m.memory_type,
+          content: m.content,
+          importance: m.importance_score,
+          emotional_relevance: m.emotional_relevance,
+          timestamp: m.timestamp,
+          similarity: (m as any).similarity
+        }))
+      });
+    } catch (error) {
+      console.error('Error retrieving debug memories:', error);
+      res.status(500).json({
+        error: 'Failed to retrieve memories',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Test endpoint: Get conversation memories for specific player
+  router.get('/debug-conversation/:agent_id/:player_id', async (req, res) => {
+    try {
+      const { agent_id, player_id } = req.params;
+      const { limit } = req.query;
+      
+      if (!agent_id || !player_id) {
+        return res.status(400).json({
+          error: 'Missing agent_id or player_id parameter'
+        });
+      }
+
+      const memories = await memoryManager.getConversationMemories(
+        agent_id,
+        player_id,
+        parseInt(limit as string) || 8
+      );
+
+      res.json({
+        success: true,
+        agent_id,
+        player_id,
+        memory_count: memories.length,
+        memories: memories.map(m => ({
+          id: m.id,
+          type: m.memory_type,
+          content: m.content,
+          importance: m.importance_score,
+          emotional_relevance: m.emotional_relevance,
+          timestamp: m.timestamp,
+          related_players: m.related_players
+        }))
+      });
+    } catch (error) {
+      console.error('Error retrieving conversation memories:', error);
+      res.status(500).json({
+        error: 'Failed to retrieve conversation memories',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Test endpoint: Get memory statistics
+  router.get('/stats/:agent_id', async (req, res) => {
+    try {
+      const { agent_id } = req.params;
+      
+      if (!agent_id) {
+        return res.status(400).json({
+          error: 'Missing agent_id parameter'
+        });
+      }
+
+      const stats = await memoryManager.getMemoryStats(agent_id);
+
+      res.json({
+        success: true,
+        agent_id,
+        stats
+      });
+    } catch (error) {
+      console.error('Error retrieving memory stats:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -266,6 +387,71 @@ export function memoryRoutes(pool: Pool, redisClient: ReturnType<typeof createCl
       });
     } catch (error) {
       console.error('Error in filtering demo:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Debug endpoint: Test conversation memory retrieval flow
+  router.post('/debug-conversation-memories', async (req, res) => {
+    try {
+      const { agent_id, player_message, character_id } = req.body;
+      
+      if (!agent_id || !player_message) {
+        return res.status(400).json({
+          error: 'Missing required fields: agent_id, player_message'
+        });
+      }
+
+      const characterId = character_id || 'test-character-id';
+
+      // Replicate the exact memory retrieval from LLMWorker
+      const contextualMemories_general = await memoryManager.getContextualMemories(agent_id, player_message, 10);
+      
+      // Get conversation-specific memories for better player detail recall
+      const conversationMemories = await memoryManager.getConversationMemories(agent_id, characterId, 8);
+      
+      // Combine all memories
+      const allMemories = [...contextualMemories_general, ...conversationMemories];
+      
+      // Separate reflections from observations
+      const reflections = allMemories.filter(m => m.memory_type === 'reflection');
+      const observations = allMemories.filter(m => m.memory_type === 'observation');
+      
+      let memoryContext = '';
+      
+      if (reflections.length > 0) {
+        memoryContext += '\nYour recent reflections and insights:\n';
+        memoryContext += reflections.map(r => `- ${r.content}`).join('\n');
+      }
+      
+      if (observations.length > 0) {
+        memoryContext += '\nRecent relevant experiences:\n';
+        // Deduplicate and show most important conversation memories first
+        const uniqueObservations = observations.filter((obs, index, self) => 
+          index === self.findIndex(o => o.id === obs.id)
+        );
+        const sortedObservations = uniqueObservations.sort((a, b) => b.importance_score - a.importance_score);
+        memoryContext += sortedObservations.slice(0, 8).map(o => `- ${o.content}`).join('\n');
+      }
+
+      res.json({
+        agent_id,
+        player_message,
+        character_id: characterId,
+        contextual_memories_count: contextualMemories_general.length,
+        conversation_memories_count: conversationMemories.length,
+        total_memories_count: allMemories.length,
+        reflections_count: reflections.length,
+        observations_count: observations.length,
+        memory_context: memoryContext,
+        raw_memories: {
+          contextual: contextualMemories_general,
+          conversation: conversationMemories,
+          combined: allMemories
+        }
+      });
+    } catch (error) {
+      console.error('Error in debug conversation memories:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
