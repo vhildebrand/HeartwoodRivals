@@ -69,6 +69,12 @@ export class UIScene extends Scene {
         // Initialize dialogue manager
         this.dialogueManager = new DialogueManager(this);
 
+        // Listen for player ID updates from GameScene
+        this.game.events.on('playerIdSet', (playerId: string) => {
+            console.log(`👤 [UI] Setting player character ID: ${playerId}`);
+            this.dialogueManager?.setPlayerCharacterId(playerId);
+        });
+
         // Listen for dialogue events from GameScene
         this.game.events.on('openDialogue', (npcId: string, npcName: string) => {
             console.log(`💬 [UI] Opening dialogue with NPC: ${npcName} (ID: ${npcId})`);

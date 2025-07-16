@@ -5,6 +5,7 @@ export class DialogueManager {
     private isActive: boolean = false;
     private currentNpcId: string | null = null;
     private currentNpcName: string | null = null;
+    private playerCharacterId: string | null = null;
     
     // UI Elements
     private dialogueContainer: Phaser.GameObjects.Container | null = null;
@@ -24,6 +25,10 @@ export class DialogueManager {
         this.scene = scene;
         this.setupUI();
         this.setupInputHandlers();
+    }
+
+    setPlayerCharacterId(characterId: string) {
+        this.playerCharacterId = characterId;
     }
 
     private setupUI() {
@@ -197,7 +202,8 @@ export class DialogueManager {
                 },
                 body: JSON.stringify({
                     npcId: this.currentNpcId,
-                    message: message
+                    message: message,
+                    characterId: this.playerCharacterId
                 })
             });
 

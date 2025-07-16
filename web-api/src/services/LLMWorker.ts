@@ -179,7 +179,7 @@ Based on your memories above, how do you respond?`;
       // Get player name from character ID or use fallback
       const playerName = await this.getPlayerName(characterId);
       
-      // Store memory of the player's message
+      // Store memory of the player's message (raw dialogue)
       await this.memoryManager.storeObservation(
         npcId,
         `${playerName} said to me: "${playerMessage}"`,
@@ -188,6 +188,19 @@ Based on your memories above, how do you respond?`;
         [characterId], // related_players
         8 // importance - conversations are important
       );
+      
+      // Extract and store key facts from the player's message
+      const extractedFacts = await this.extractKeyFacts(playerMessage, playerName);
+      if (extractedFacts) {
+        await this.memoryManager.storeObservation(
+          npcId,
+          extractedFacts,
+          'conversation', // location
+          [], // related_agents
+          [characterId], // related_players
+          9 // importance - key facts are more important than raw dialogue
+        );
+      }
       
       // Store memory of the agent's response
       await this.memoryManager.storeObservation(
@@ -207,6 +220,52 @@ Based on your memories above, how do you respond?`;
     }
   }
 
+  private async extractKeyFacts(playerMessage: string, playerName: string): Promise<string | null> {
+    try {
+      // Simple pattern matching for common fact patterns
+      const patterns = [
+        // Name introduction: "Hello, I'm John" or "My name is John"
+        /(?:hello|hi|hey).*?(?:i'm|i am|my name is|call me)\s+(\w+)/i,
+        // Hobby/interest: "I love/like/enjoy X"
+        /i\s+(?:love|like|enjoy|am into)\s+([^.!?]+)/i,
+        // Food preference: "my favorite food is X"
+        /my\s+favorite\s+food\s+is\s+([^.!?]+)/i,
+        // Profession: "I'm a X" or "I work as X"
+        /i(?:'m|am)\s+a\s+([^.!?]+)/i,
+        // General facts: "I have X" or "I own X"
+        /i\s+(?:have|own)\s+([^.!?]+)/i
+      ];
+
+      const facts = [];
+      
+      for (const pattern of patterns) {
+        const match = playerMessage.match(pattern);
+        if (match) {
+          const fact = match[1]?.trim();
+          if (fact) {
+            if (pattern.source.includes('name')) {
+              facts.push(`${fact} told me their name is ${fact}`);
+            } else if (pattern.source.includes('love|like|enjoy')) {
+              facts.push(`${playerName} told me they love ${fact}`);
+            } else if (pattern.source.includes('favorite food')) {
+              facts.push(`${playerName} told me their favorite food is ${fact}`);
+            } else if (pattern.source.includes('profession')) {
+              facts.push(`${playerName} told me they are a ${fact}`);
+            } else if (pattern.source.includes('have|own')) {
+              facts.push(`${playerName} told me they have ${fact}`);
+            }
+          }
+        }
+      }
+      
+      return facts.length > 0 ? facts.join('. ') : null;
+      
+    } catch (error) {
+      console.error('Error extracting key facts:', error);
+      return null;
+    }
+  }
+
   private async getPlayerName(characterId: string): Promise<string> {
     try {
       // Check cache first
@@ -219,7 +278,7 @@ Based on your memories above, how do you respond?`;
       
       // For now, use a simple fallback since we don't have a proper user system yet
       // In the future, this would look up the username from the characters/users table
-      const playerName = `Player_${characterId.substring(0, 8)}`;
+      const playerName = `Player_${characterId}`;
       
       // Cache for 1 hour
       await this.redisClient.setEx(cacheKey, 3600, playerName);

@@ -1017,21 +1017,16 @@ Your reflection:`;
         `SELECT id, agent_id, memory_type, content, importance_score, emotional_relevance,
                 tags, related_agents, related_players, location, timestamp,
                 CASE 
-                  WHEN content ILIKE $4 THEN 3
                   WHEN related_players @> $2::text[] THEN 2
-                  WHEN content ILIKE '%told me%' OR content ILIKE '%said to me%' THEN 1
                   ELSE 0
                 END as relevance_score
          FROM agent_memories
          WHERE agent_id = $1 
-         AND (
-           related_players @> $2::text[] OR 
-           content ILIKE $4
-         )
+         AND related_players @> $2::text[]
          AND timestamp >= NOW() - INTERVAL '72 hours'
          ORDER BY relevance_score DESC, importance_score DESC, timestamp DESC
          LIMIT $3`,
-        [agent_id, `{${player_id}}`, limit, `%${playerName}%`]
+        [agent_id, `{${player_id}}`, limit]
       );
 
       return result.rows.map(row => ({
@@ -1068,7 +1063,7 @@ Your reflection:`;
       
       // For now, use a simple fallback since we don't have a proper user system yet
       // In the future, this would look up the username from the characters/users table
-      const playerName = `Player_${characterId.substring(0, 8)}`;
+      const playerName = `Player_${characterId}`;
       
       // Cache for 1 hour
       await this.redisClient.setEx(cacheKey, 3600, playerName);

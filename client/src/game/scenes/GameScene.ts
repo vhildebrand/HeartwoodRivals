@@ -444,6 +444,8 @@ export class GameScene extends Scene {
             this.myPlayerId = this.room.sessionId;
             if (this.myPlayerId) {
                 this.playerController.setMyPlayerId(this.myPlayerId);
+                // Emit player ID for UI Scene to set up dialogue manager
+                this.game.events.emit('playerIdSet', this.myPlayerId);
             }
             
             // Set up state change handler
