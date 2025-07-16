@@ -16,8 +16,8 @@ export class PreloaderScene extends Scene {
             { fontSize: "32px", color: "#fff" }
         ).setOrigin(0.5);
 
-        // Load the large test map
-        this.load.tilemapTiledJSON('large_town', 'assets/large_test_map.json');
+        // Load the Beacon Bay map
+        this.load.tilemapTiledJSON('beacon_bay', 'assets/beacon_bay_map.json');
         
         // Load the proper tileset image
         this.load.image('tileset', 'assets/tileset.png');
@@ -50,7 +50,7 @@ export class PreloaderScene extends Scene {
 
     private loadMapIntoManager() {
         // Get the loaded map data
-        const mapData = this.cache.tilemap.get('large_town');
+        const mapData = this.cache.tilemap.get('beacon_bay');
         if (!mapData) {
             console.error('Failed to load map data');
             return;
@@ -58,8 +58,8 @@ export class PreloaderScene extends Scene {
 
         // Load the map into the shared MapManager
         const mapManager = MapManager.getInstance();
-        mapManager.loadMap('large_town', mapData.data);
+        mapManager.loadMap('beacon_bay', mapData.data);
         
-        console.log('Loaded large_town map into MapManager');
+        console.log('Loaded beacon_bay map into MapManager');
     }
 }

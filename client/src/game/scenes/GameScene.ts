@@ -46,7 +46,7 @@ export class GameScene extends Scene {
     private createWorld() {
         // Create the tilemap object
         console.log("Creating tilemap...");
-        const map = this.make.tilemap({ key: 'large_town' });
+        const map = this.make.tilemap({ key: 'beacon_bay' });
         
         // Add the tileset to the map
         console.log("Adding tileset...");
@@ -57,17 +57,17 @@ export class GameScene extends Scene {
             return;
         }
         
-        // Render layers
-        const groundLayer = map.createLayer('Ground', tileset);
-        this.wallsLayer = map.createLayer('Walls', tileset);
-        const aboveLayer = map.createLayer('Above', tileset);
+        // Render layers - Beacon Bay map has a single 'ground' layer
+        const groundLayer = map.createLayer('ground', tileset);
+        this.wallsLayer = null; // No walls layer in Beacon Bay map
+        // const aboveLayer = map.createLayer('Above', tileset); // No above layer in Beacon Bay map
         
         // Set up camera with proper bounds
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         
         // Set camera zoom and smoothing
-        this.cameras.main.setZoom(3); // Zoom in 3x
-        this.cameras.main.setLerp(0.05, 0.05); // Reduced camera smoothing for better responsiveness
+        this.cameras.main.setZoom(1); // Zoom in 3x
+        this.cameras.main.setLerp(0.25, 0.25); // Reduced camera smoothing for better responsiveness
         
         // Set the camera viewport to the game size
         this.cameras.main.setViewport(0, 0, this.cameras.main.width, this.cameras.main.height);
@@ -79,7 +79,7 @@ export class GameScene extends Scene {
         
         // Get the MapManager to access collision data
         const mapManager = MapManager.getInstance();
-        const mapData = mapManager.getMap('large_town');
+        const mapData = mapManager.getMap('beacon_bay');
         if (mapData) {
             console.log(`MapManager: Loaded map with ${mapData.width}x${mapData.height} tiles`);
         }

@@ -1,0 +1,112 @@
+{
+  "town_hall": {
+    "x": 137,
+    "y": 50,
+    "name": "Town Hall"
+  },
+  "hospital": {
+    "x": 160,
+    "y": 52,
+    "name": "Hospital"
+  },
+  "police_station": {
+    "x": 131,
+    "y": 64,
+    "name": "Police Station"
+  },
+  "fire_station": {
+    "x": 146,
+    "y": 64,
+    "name": "Fire Station"
+  },
+  "post_office": {
+    "x": 159,
+    "y": 63,
+    "name": "Post Office"
+  },
+  "library": {
+    "x": 171,
+    "y": 65,
+    "name": "Library"
+  },
+  "cafe": {
+    "x": 116,
+    "y": 99,
+    "name": "Cafe"
+  },
+  "gym": {
+    "x": 132,
+    "y": 100,
+    "name": "Gym"
+  },
+  "music_store": {
+    "x": 150,
+    "y": 99,
+    "name": "Music Store"
+  },
+  "butcher": {
+    "x": 164,
+    "y": 98,
+    "name": "Butcher"
+  },
+  "apartments": {
+    "x": 100,
+    "y": 152,
+    "name": "Apartments"
+  },
+  "mansion": {
+    "x": 215,
+    "y": 62,
+    "name": "Mansion"
+  },
+  "rec_center": {
+    "x": 92,
+    "y": 237,
+    "name": "Recreation Center"
+  },
+  "playground": {
+    "x": 117,
+    "y": 240,
+    "name": "Playground"
+  },
+  "dj_stage": {
+    "x": 155,
+    "y": 244,
+    "name": "DJ Stage"
+  },
+  "beach": {
+    "x": 150,
+    "y": 245,
+    "name": "Beach"
+  },
+  "farmhouse": {
+    "x": 26,
+    "y": 25,
+    "name": "Farmhouse"
+  },
+  "barn": {
+    "x": 42,
+    "y": 26,
+    "name": "Barn"
+  },
+  "mad_science_lab": {
+    "x": 262,
+    "y": 35,
+    "name": "Mad Science Lab"
+  },
+  "fishing_dock_1": {
+    "x": 107,
+    "y": 245,
+    "name": "Fishing Dock 1"
+  },
+  "fishing_dock_2": {
+    "x": 140,
+    "y": 242,
+    "name": "Fishing Dock 2"
+  },
+  "fishing_dock_3": {
+    "x": 170,
+    "y": 245,
+    "name": "Fishing Dock 3"
+  }
+}

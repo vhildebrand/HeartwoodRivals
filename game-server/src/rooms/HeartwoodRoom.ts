@@ -26,7 +26,7 @@ const MOVEMENT_DELTAS = {
 export class HeartwoodRoom extends Room<GameState> {
     maxClients = 10;
     private mapManager!: MapManager;
-    private readonly MAP_ID = 'large_town';
+    private readonly MAP_ID = 'beacon_bay';
     private gameLoopInterval: NodeJS.Timeout | null = null;
     private readonly GAME_LOOP_RATE = 60; // 60 FPS server updates
     private redisClient: any; // Redis client for publishing player actions
@@ -153,8 +153,8 @@ export class HeartwoodRoom extends Room<GameState> {
 
     private loadMap() {
         try {
-            // Load the large map data
-            const mapPath = path.join(__dirname, '../maps/large_test_map.json');
+            // Load the Beacon Bay map data
+            const mapPath = path.join(__dirname, '../maps/beacon_bay_map.json');
             const mapData = JSON.parse(fs.readFileSync(mapPath, 'utf8'));
             
             // Load the map into the MapManager
