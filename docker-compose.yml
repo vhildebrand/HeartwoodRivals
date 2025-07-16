@@ -44,6 +44,8 @@ services:
       - '2567:2567' # Default Colyseus port
     volumes:
       - ./game-server:/usr/src/app
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - postgres
 

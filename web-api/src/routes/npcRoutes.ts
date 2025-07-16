@@ -14,6 +14,77 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
     },
   });
 
+  // POST /npc/generate-plan - Debug endpoint to trigger plan generation
+  router.post('/generate-plan', async (req, res) => {
+    try {
+      const { npcId, forceRegenerate } = req.body;
+
+      if (!npcId) {
+        return res.status(400).json({
+          error: 'Missing required field: npcId'
+        });
+      }
+
+      // Verify Agent exists
+      const agentResult = await pool.query(
+        'SELECT id, name, constitution FROM agents WHERE id = $1',
+        [npcId]
+      );
+
+      if (agentResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'Agent not found'
+        });
+      }
+
+      const agent = agentResult.rows[0];
+
+      // Create a Redis message to trigger plan generation
+      const message = {
+        agentId: npcId,
+        agentName: agent.name,
+        forceRegenerate: forceRegenerate || false,
+        timestamp: Date.now()
+      };
+
+      await redisClient.publish('generate_plan', JSON.stringify(message));
+
+      console.log(`📋 [NPC_ROUTES] Plan generation triggered for ${agent.name} (force: ${forceRegenerate || false})`);
+
+      res.json({
+        success: true,
+        message: `Plan generation triggered for ${agent.name}${forceRegenerate ? ' (forced)' : ''}`,
+        agentId: npcId,
+        forceRegenerate: forceRegenerate || false
+      });
+
+    } catch (error) {
+      console.error('❌ [NPC_ROUTES] Error in /npc/generate-plan:', error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  // GET /npc/list - Get list of all NPCs for debug panel
+  router.get('/list', async (req, res) => {
+    try {
+      const result = await pool.query(
+        'SELECT id, name, current_location, current_activity FROM agents ORDER BY name'
+      );
+
+      res.json({
+        agents: result.rows
+      });
+
+    } catch (error) {
+      console.error('Error in /npc/list:', error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  });
+
   // POST /npc/interact - Main endpoint for NPC conversations
   router.post('/interact', async (req, res) => {
     try {
@@ -122,25 +193,6 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
 
     } catch (error) {
       console.error('Error checking job status:', error);
-      res.status(500).json({
-        error: 'Internal server error'
-      });
-    }
-  });
-
-  // GET /npc/list - Get all available Agents
-  router.get('/list', async (req, res) => {
-    try {
-      const result = await pool.query(
-        'SELECT a.id, a.name, s.current_x as x_position, s.current_y as y_position FROM agents a LEFT JOIN agent_states s ON a.id = s.agent_id ORDER BY a.name'
-      );
-
-      res.json({
-        npcs: result.rows
-      });
-
-    } catch (error) {
-      console.error('Error fetching Agents:', error);
       res.status(500).json({
         error: 'Internal server error'
       });

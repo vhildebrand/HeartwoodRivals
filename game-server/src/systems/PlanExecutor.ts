@@ -8,6 +8,7 @@ import { GameTime } from './GameTime';
 import { SpawnedAgent } from './AgentSpawner';
 import { AgentState, WorkingData, MovementData } from './AgentStateMachine';
 import { Point } from './Pathfinding';
+import { Pool } from 'pg';
 
 export interface ScheduledAction {
   agentId: string;
@@ -23,12 +24,18 @@ export interface ActionResult {
   success: boolean;
   message: string;
   newState?: AgentState;
-  newLocation?: string;
   duration?: number;
+  newLocation?: string;
 }
 
-export interface LocationMapping {
-  [key: string]: { x: number; y: number };
+export interface GeneratedPlan {
+  agent_id: string;
+  plan_date: string;
+  daily_goal: string;
+  schedule: { [time: string]: string };
+  reasoning: string;
+  priority: number;
+  created_at: Date;
 }
 
 export class PlanExecutor {
@@ -38,9 +45,11 @@ export class PlanExecutor {
   private actionProcessors: Map<string, (agent: SpawnedAgent, action: ScheduledAction) => Promise<ActionResult>> = new Map();
   private executionHistory: Map<string, ScheduledAction[]> = new Map();
   private lastDay: number = 1;
+  private pool?: Pool;
 
-  constructor() {
+  constructor(pool?: Pool) {
     this.gameTime = GameTime.getInstance();
+    this.pool = pool;
     this.setupActionProcessors();
     this.initializeLocationMappings();
   }
@@ -52,10 +61,26 @@ export class PlanExecutor {
     console.log('📅 Loading agent schedules...');
     
     for (const [agentId, agent] of agents) {
-      const schedule = this.parseAgentSchedule(agent);
-      if (schedule.length > 0) {
-        this.scheduledActions.set(agentId, schedule);
-        console.log(`✅ Loaded ${schedule.length} scheduled actions for ${agent.data.name}`);
+      // Always load static schedules first
+      const staticSchedule = this.parseAgentSchedule(agent);
+      
+      // Try to load generated plans, but don't fail if they don't exist
+      const generatedSchedule = await this.loadGeneratedPlan(agentId);
+      
+      // Use generated schedule if it exists, otherwise use static schedule
+      const finalSchedule = generatedSchedule.length > 0 
+        ? this.combineSchedules(staticSchedule, generatedSchedule)
+        : staticSchedule;
+      
+      if (finalSchedule.length > 0) {
+        this.scheduledActions.set(agentId, finalSchedule);
+        
+        if (generatedSchedule.length > 0) {
+          console.log(`✅ Loaded ${finalSchedule.length} actions for ${agent.data.name} (${generatedSchedule.length} generated + ${staticSchedule.length} static)`);
+          console.log(`📋 [SCHEDULE] Using generated plan for ${agent.data.name} with ${generatedSchedule.length} planned activities`);
+        } else {
+          console.log(`✅ Loaded ${finalSchedule.length} static actions for ${agent.data.name}`);
+        }
       }
     }
     
@@ -227,6 +252,123 @@ export class PlanExecutor {
     }
     
     return actions;
+  }
+
+  /**
+   * Load generated plan for an agent from database
+   */
+  private async loadGeneratedPlan(agentId: string): Promise<ScheduledAction[]> {
+    if (!this.pool) {
+      return [];
+    }
+    
+    try {
+      const currentDay = this.gameTime.getCurrentDay();
+      
+      console.log(`📋 [PLAN_EXECUTOR] Searching for generated plan for agent ${agentId} on day ${currentDay}`);
+      
+      const result = await this.pool.query(
+        `SELECT agent_id, goal, plan_steps, priority, created_at
+         FROM agent_plans 
+         WHERE agent_id = $1 
+         AND plan_steps::text LIKE '%day_${currentDay}%'
+         AND status = 'active'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [agentId]
+      );
+      
+      if (result.rows.length === 0) {
+        console.log(`📋 [PLAN_EXECUTOR] No generated plan found for agent ${agentId} on day ${currentDay}`);
+        return [];
+      }
+      
+      const plan = result.rows[0];
+      const planData = JSON.parse(plan.plan_steps[0]);
+      
+      // Handle both old format (just schedule) and new format (with plan_date)
+      const schedule = planData.schedule || planData;
+      const planDate = planData.plan_date || `day_${this.gameTime.getCurrentDay()}`;
+      
+      console.log(`📋 [PLAN_EXECUTOR] Loading generated plan for agent ${agentId}:`);
+      console.log(`   🎯 Goal: ${plan.goal}`);
+      console.log(`   📅 Plan Date: ${planDate}`);
+      console.log(`   📅 Schedule:`);
+      Object.entries(schedule).forEach(([time, activityData]) => {
+        if (typeof activityData === 'string') {
+          console.log(`     ${time}: ${activityData}`);
+        } else {
+          const activity = activityData as { activity: string; description: string };
+          console.log(`     ${time}: ${activity.activity} - ${activity.description}`);
+        }
+      });
+      console.log(`   📊 Priority: ${plan.priority}`);
+      
+      const scheduledActions = this.parseGeneratedSchedule(agentId, schedule, plan.priority);
+      console.log(`📋 [PLAN_EXECUTOR] Generated ${scheduledActions.length} scheduled actions from plan`);
+      
+      return scheduledActions;
+      
+    } catch (error) {
+      console.error(`❌ Error loading generated plan for ${agentId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse generated schedule into ScheduledAction format
+   */
+  private parseGeneratedSchedule(agentId: string, schedule: { [time: string]: string | { activity: string; description: string } }, priority: number): ScheduledAction[] {
+    const actions: ScheduledAction[] = [];
+    
+    for (const [time, activityData] of Object.entries(schedule)) {
+      let activity: string;
+      let description: string;
+      
+      // Handle both old format (string) and new format (object)
+      if (typeof activityData === 'string') {
+        activity = activityData;
+        description = activityData;
+      } else {
+        activity = activityData.activity;
+        description = activityData.description;
+      }
+      
+      actions.push({
+        agentId,
+        time,
+        action: activity,
+        location: this.extractLocationFromAction(description),
+        duration: this.estimateActionDuration(description),
+        priority: priority + 1 // Generated plans have higher priority than static ones
+      });
+    }
+    
+    return actions;
+  }
+
+  /**
+   * Combine static and generated schedules, prioritizing generated plans
+   */
+  private combineSchedules(staticSchedule: ScheduledAction[], generatedSchedule: ScheduledAction[]): ScheduledAction[] {
+    if (generatedSchedule.length > 0) {
+      // Use generated schedule as primary, fill gaps with static schedule
+      const generatedTimes = new Set(generatedSchedule.map(action => action.time));
+      const staticFiller = staticSchedule.filter(action => !generatedTimes.has(action.time));
+      
+      return [...generatedSchedule, ...staticFiller].sort((a, b) => a.time.localeCompare(b.time));
+    }
+    
+    return staticSchedule;
+  }
+
+  /**
+   * Reload schedules for all agents (useful after new plans are generated)
+   */
+  public async reloadSchedules(agents: Map<string, SpawnedAgent>): Promise<void> {
+    console.log('📅 Reloading agent schedules with new plans...');
+    this.scheduledActions.clear();
+    await this.loadAgentSchedules(agents);
   }
 
   /**

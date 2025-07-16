@@ -99,9 +99,8 @@ export class AgentObservationSystem {
       return null;
     }
     
-    // Get player information
-    const playerInfo = await this.getPlayerInfo(action.player_id);
-    const playerName = playerInfo?.name || `Player_${action.player_id.substring(0, 8)}`;
+    // Get player name from action data or fallback to ID
+    const playerName = action.data?.name || `Player_${action.player_id.substring(0, 8)}`;
     
     let observationText = '';
     let importance = 7; // Chat messages are important

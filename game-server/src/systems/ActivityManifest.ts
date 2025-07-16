@@ -298,7 +298,7 @@ export class ActivityManifest {
     });
 
     this.addActivity('crafting', {
-      activityType: ActivityType.CRAFTING,
+      activityType: ActivityType.STATIONARY,
       locationTags: ['crafting', 'workshop', 'work'],
       duration: Duration.SCHEDULED,
       priority: 6,

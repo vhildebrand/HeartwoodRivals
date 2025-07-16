@@ -9,6 +9,7 @@ import { GameTime, GameTimeConfig } from "../systems/GameTime";
 import { AgentSpawner, SpawnedAgent } from "../systems/AgentSpawner";
 import { PlanExecutor } from "../systems/PlanExecutor";
 import { AgentMovementSystem } from "../systems/AgentMovementSystem";
+import { PlanningSystem } from "../systems/PlanningSystem";
 
 // Database pool interface
 interface DatabasePool {
@@ -47,8 +48,10 @@ export class HeartwoodRoom extends Room<GameState> {
     private agentSpawner!: AgentSpawner;
     private planExecutor!: PlanExecutor;
     private agentMovementSystem!: AgentMovementSystem;
+    private planningSystem!: PlanningSystem;
     private databasePool!: DatabasePool;
     private agents: Map<string, SpawnedAgent> = new Map();
+    private lastPlanningDay: number = 0;
 
     onJoin(client: Client, options: any) {
         console.log(`👤 [SERVER] Player ${client.sessionId} joined the heartwood_room`);
@@ -179,6 +182,11 @@ export class HeartwoodRoom extends Room<GameState> {
         
         this.onMessage("set_speed", (client: Client, message: { speedMultiplier: number }) => {
             this.handleSetSpeed(client, message);
+        });
+        
+        // Add debug time message handler
+        this.onMessage("debug_time", (client: Client, message: any) => {
+            this.handleDebugTime(client, message);
         });
         
         // Start the game loop
@@ -397,6 +405,30 @@ export class HeartwoodRoom extends Room<GameState> {
         }
     }
 
+    private handleDebugTime(client: Client, message: any) {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) return;
+
+        console.log(`🕐 [DEBUG] Player ${player.name} requested time debug info`);
+        
+        if (this.gameTime) {
+            const debugInfo = this.gameTime.getDebugInfo();
+            const currentTime = this.gameTime.getCurrentTime();
+            const currentTimeString = this.gameTime.getCurrentTimeString();
+            const currentDay = this.gameTime.getCurrentDay();
+            
+            console.log(`🕐 [DEBUG] Game Time Status:`, {
+                ...debugInfo,
+                currentTimeMinutes: currentTime,
+                currentTimeString,
+                currentDay,
+                timestamp: Date.now()
+            });
+        } else {
+            console.log(`❌ [DEBUG] GameTime not initialized`);
+        }
+    }
+
     private formatTimeMinutes(minutes: number): string {
         const hours = Math.floor(minutes / 60);
         const mins = Math.floor(minutes % 60);
@@ -411,6 +443,22 @@ export class HeartwoodRoom extends Room<GameState> {
             
             await this.redisClient.connect();
             console.log('✅ Redis connected in HeartwoodRoom - agent observations enabled');
+            
+            // Subscribe to plan generation requests
+            const planSubscriber = this.redisClient.duplicate();
+            await planSubscriber.connect();
+            
+            await planSubscriber.subscribe('generate_plan', (message: string) => {
+                try {
+                    const planRequest = JSON.parse(message);
+                    console.log(`📋 [DEBUG] Received plan generation request for ${planRequest.agentName}`);
+                    this.handlePlanGenerationRequest(planRequest);
+                } catch (error) {
+                    console.error('❌ Error processing plan generation request:', error);
+                }
+            });
+            
+            console.log('✅ Subscribed to plan generation requests');
         } catch (error) {
             console.error('❌ Redis connection failed:', error);
             console.log('⚠️  Game will continue without agent observations');
@@ -463,8 +511,9 @@ export class HeartwoodRoom extends Room<GameState> {
             
             // Initialize agent systems
             this.agentSpawner = new AgentSpawner(this.databasePool, this.MAP_ID);
-            this.planExecutor = new PlanExecutor();
+            this.planExecutor = new PlanExecutor(pool);
             this.agentMovementSystem = new AgentMovementSystem(this.MAP_ID);
+            this.planningSystem = new PlanningSystem(pool, this.redisClient);
             
             // Set up movement callbacks
             this.agentMovementSystem.onMovementUpdate((update) => {
@@ -510,6 +559,11 @@ export class HeartwoodRoom extends Room<GameState> {
             const newTime = this.gameTime.getCurrentTimeString();
             const newDay = this.gameTime.getCurrentDay();
             
+            // Add debug logging every 30 seconds (at 60fps, that's about 1800 frames)
+            if (Math.random() < 0.0006) { // About once every 30 seconds
+                console.log(`🕐 [TIME_PROGRESS] Current time: ${newTime}, Day: ${newDay}`);
+            }
+            
             // Log time changes
             if (this.state.currentGameTime !== newTime) {
                 console.log(`🕐 [SERVER] Game time updated: ${this.state.currentGameTime} -> ${newTime}`);
@@ -549,11 +603,16 @@ export class HeartwoodRoom extends Room<GameState> {
     }
 
     private publishPlayerMovement(playerId: string, tileX: number, tileY: number) {
+        // Get player name from state
+        const player = this.state.players.get(playerId);
+        const playerName = player ? player.name : 'Unknown';
+        
         // Publish movement event for agent observation system
         this.publishPlayerAction({
             player_id: playerId,
             action_type: 'move',
-            location: `${tileX},${tileY}`
+            location: `${tileX},${tileY}`,
+            data: { name: playerName }
         });
     }
 
@@ -612,6 +671,15 @@ export class HeartwoodRoom extends Room<GameState> {
         this.gameTime.processEvents();
         this.updateGameTimeState();
         
+        // Disable automatic daily planning - only use manual triggering
+        // Check for new day and trigger planning
+        // const currentDay = this.gameTime.getCurrentDay();
+        // if (currentDay !== this.lastPlanningDay) {
+        //     this.lastPlanningDay = currentDay;
+        //     console.log(`📅 [SERVER] New day ${currentDay} started - triggering agent planning`);
+        //     this.triggerDailyPlanning();
+        // }
+        
         // Update agent movement
         this.agentMovementSystem.updateMovement(this.agents, deltaTime / 1000);
         
@@ -633,6 +701,94 @@ export class HeartwoodRoom extends Room<GameState> {
                     console.log(`🤖 [SERVER] NPC ${randomAgent.schema.name} at (${randomAgent.schema.x}, ${randomAgent.schema.y}) - Activity: ${randomAgent.schema.currentActivity}`);
                 }
             }
+        }
+    }
+
+    /**
+     * Handle manual plan generation request from debug panel
+     */
+    private async handlePlanGenerationRequest(planRequest: { agentId: string; agentName: string; forceRegenerate?: boolean; timestamp: number }) {
+        try {
+            const agent = this.agents.get(planRequest.agentId);
+            if (!agent) {
+                console.error(`❌ [DEBUG] Agent ${planRequest.agentId} not found`);
+                return;
+            }
+
+            console.log(`📋 [DEBUG] Starting ${planRequest.forceRegenerate ? 'forced' : 'manual'} plan generation for ${agent.data.name}`);
+
+            if (this.planningSystem) {
+                let plan = null;
+                
+                if (planRequest.forceRegenerate) {
+                    // Force regenerate the plan, replacing any existing plans
+                    plan = await this.planningSystem.forceRegeneratePlan(agent);
+                } else {
+                    // Normal plan generation (only if needed)
+                    const needsPlan = await this.planningSystem.needsDailyPlan(agent);
+                    if (needsPlan) {
+                        plan = await this.planningSystem.generateDailyPlan(agent);
+                    } else {
+                        console.log(`📋 [DEBUG] ${agent.data.name} already has a recent plan, skipping generation`);
+                        return;
+                    }
+                }
+                
+                if (plan) {
+                    console.log(`✅ [DEBUG] Generated plan for ${agent.data.name}: ${plan.daily_goal}`);
+                    
+                    // Reload schedules to use the new plan
+                    if (this.planExecutor) {
+                        await this.planExecutor.reloadSchedules(this.agents);
+                        console.log(`📅 [DEBUG] Reloaded schedules with new plan for ${agent.data.name}`);
+                    }
+                } else {
+                    console.error(`❌ [DEBUG] Failed to generate plan for ${agent.data.name}`);
+                }
+            } else {
+                console.error(`❌ [DEBUG] Planning system not initialized`);
+            }
+        } catch (error) {
+            console.error(`❌ [DEBUG] Error in manual plan generation:`, error);
+        }
+    }
+
+    private async triggerDailyPlanning() {
+        if (!this.planningSystem || this.agents.size === 0) {
+            return;
+        }
+        
+        try {
+            console.log(`📋 [SERVER] Starting daily planning for ${this.agents.size} agents`);
+            
+            let plansGenerated = 0;
+            
+            // Generate plans for each agent that needs one
+            for (const [agentId, agent] of this.agents) {
+                try {
+                    const needsPlan = await this.planningSystem.needsDailyPlan(agent);
+                    if (needsPlan) {
+                        console.log(`📋 [SERVER] Generating plan for ${agent.data.name}`);
+                        const plan = await this.planningSystem.generateDailyPlan(agent);
+                        if (plan) {
+                            console.log(`✅ [SERVER] Generated plan for ${agent.data.name}: ${plan.daily_goal}`);
+                            plansGenerated++;
+                        }
+                    }
+                } catch (error) {
+                    console.error(`❌ [SERVER] Error generating plan for ${agent.data.name}:`, error);
+                }
+            }
+            
+            // Reload schedules if any plans were generated
+            if (plansGenerated > 0 && this.planExecutor) {
+                console.log(`📅 [SERVER] Reloading schedules for ${plansGenerated} newly generated plans`);
+                await this.planExecutor.reloadSchedules(this.agents);
+            }
+            
+            console.log(`📋 [SERVER] Daily planning completed (${plansGenerated} plans generated)`);
+        } catch (error) {
+            console.error(`❌ [SERVER] Error in daily planning:`, error);
         }
     }
 

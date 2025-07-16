@@ -426,7 +426,18 @@ export class GameScene extends Scene {
         
         try {
             this.client = new Client(`ws://localhost:2567`);
-            this.room = await this.client.joinOrCreate('heartwood_room');
+            
+            // Get username from user or use default
+            let username = localStorage.getItem('heartwoodUsername');
+            if (!username) {
+                username = prompt("Enter your username:") || `Player_${Date.now().toString().slice(-6)}`;
+                localStorage.setItem('heartwoodUsername', username);
+            }
+            
+            console.log(`Connecting with username: ${username}`);
+            
+            // Send username as option when joining
+            this.room = await this.client.joinOrCreate('heartwood_room', { name: username });
             
             console.log("Connected to Colyseus server, joined heartwood_room");
             
