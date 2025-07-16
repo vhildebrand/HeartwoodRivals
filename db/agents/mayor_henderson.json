@@ -43,23 +43,58 @@
   "current_x": 144,
   "current_y": 55,
   "schedule": {
-    "7:00": "morning coffee and newspaper review",
-    "7:30": "review overnight communications and reports",
-    "8:00": "morning walk through town",
-    "9:00": "town hall meetings and administrative duties",
-    "10:00": "meetings with department heads",
-    "11:00": "community member appointments",
-    "12:00": "lunch with local business owners",
-    "13:00": "development project reviews",
-    "14:00": "regional government coordination",
-    "15:00": "budget planning and financial oversight",
-    "16:00": "community event planning",
-    "17:00": "evening town hall accessibility",
-    "18:00": "dinner break",
-    "19:00": "community events and public forums",
-    "20:00": "personal time with family",
-    "21:00": "review next day's agenda",
-    "22:00": "prepare for bed"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, review daily agenda"
+    },
+    "6:30": {
+      "activity": "breakfast",
+      "description": "breakfast and newspaper review"
+    },
+    "7:00": {
+      "activity": "work",
+      "description": "prepare for day's meetings"
+    },
+    "8:00": {
+      "activity": "administration",
+      "description": "morning administrative duties"
+    },
+    "9:00": {
+      "activity": "meetings",
+      "description": "meetings with town council and staff"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "meetings",
+      "description": "afternoon meetings with citizens"
+    },
+    "15:00": {
+      "activity": "work",
+      "description": "review town projects and budgets"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "end-of-day administrative tasks"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, plan future initiatives"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

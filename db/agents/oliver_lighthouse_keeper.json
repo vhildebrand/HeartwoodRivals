@@ -44,19 +44,58 @@
   "current_x": 284,
   "current_y": 284,
   "schedule": {
-    "4:00": "wake up, check lighthouse operation",
-    "4:30": "morning weather observation",
-    "5:00": "equipment maintenance and cleaning",
-    "6:00": "breakfast, review ship logs",
-    "7:00": "morning watch, monitor sea conditions",
-    "12:00": "lunch break, continue observations",
-    "13:00": "afternoon equipment checks",
-    "15:00": "weather pattern analysis",
-    "17:00": "evening watch begins",
-    "18:00": "dinner",
-    "19:00": "night watch preparation",
-    "21:00": "night observations, log entries",
-    "23:00": "final equipment check, sleep"
+    "5:00": {
+      "activity": "wake_up",
+      "description": "wake up, check lighthouse operation"
+    },
+    "5:30": {
+      "activity": "work",
+      "description": "lighthouse maintenance, check weather"
+    },
+    "7:00": {
+      "activity": "breakfast",
+      "description": "breakfast with sea-view"
+    },
+    "8:00": {
+      "activity": "work",
+      "description": "morning equipment checks"
+    },
+    "10:00": {
+      "activity": "work",
+      "description": "maintenance tasks, repairs"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "work",
+      "description": "afternoon maintenance"
+    },
+    "15:00": {
+      "activity": "social",
+      "description": "check on coastal activities"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "prepare lighthouse for night"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, weather observation"
+    },
+    "21:00": {
+      "activity": "work",
+      "description": "night watch begins"
+    },
+    "23:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

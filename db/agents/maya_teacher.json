@@ -44,21 +44,58 @@
   "current_x": 214,
   "current_y": 57,
   "schedule": {
-    "6:30": "wake up, prepare for school day",
-    "7:00": "breakfast, review lesson plans",
-    "7:30": "arrive at school, prepare classroom",
-    "8:00": "morning classes begin",
-    "10:00": "outdoor learning activities",
-    "11:00": "continue morning lessons",
-    "12:00": "lunch break with students",
-    "13:00": "afternoon classes and activities",
-    "15:00": "after-school programs and tutoring",
-    "16:00": "grade assignments, plan tomorrow",
-    "17:00": "close school, meet with parents",
-    "18:00": "dinner",
-    "19:00": "evening lesson planning",
-    "20:30": "personal time and reading",
-    "21:30": "prepare for bed"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, prepare for school day"
+    },
+    "6:30": {
+      "activity": "breakfast",
+      "description": "breakfast, review lesson plans"
+    },
+    "7:00": {
+      "activity": "work",
+      "description": "prepare classroom, set up materials"
+    },
+    "8:00": {
+      "activity": "teaching",
+      "description": "morning classes"
+    },
+    "10:00": {
+      "activity": "teaching",
+      "description": "continue teaching, help students"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "teaching",
+      "description": "afternoon classes"
+    },
+    "15:00": {
+      "activity": "work",
+      "description": "grade assignments, prepare lessons"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "clean classroom, organize materials"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, continue lesson planning"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

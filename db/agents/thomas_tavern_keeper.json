@@ -44,17 +44,50 @@
   "current_x": 183,
   "current_y": 105,
   "schedule": {
-    "7:00": "wake up, check tavern and supplies",
-    "8:00": "breakfast, plan daily specials",
-    "9:00": "morning cleaning and preparation",
-    "10:00": "receive deliveries, stock bar",
-    "11:00": "open tavern for lunch service",
-    "12:00": "lunch rush, serve food and drinks",
-    "15:00": "afternoon break, prepare for evening",
-    "16:00": "evening preparation, set up entertainment",
-    "17:00": "busy evening service begins",
-    "23:00": "close tavern, clean up",
-    "24:00": "final checks, prepare for bed"
+    "7:00": {
+      "activity": "wake_up",
+      "description": "wake up, check tavern and supplies"
+    },
+    "8:00": {
+      "activity": "breakfast",
+      "description": "breakfast, plan daily specials"
+    },
+    "9:00": {
+      "activity": "work",
+      "description": "morning cleaning and preparation"
+    },
+    "10:00": {
+      "activity": "delivery",
+      "description": "receive deliveries, stock bar"
+    },
+    "11:00": {
+      "activity": "work",
+      "description": "open tavern for lunch service"
+    },
+    "12:00": {
+      "activity": "work",
+      "description": "lunch rush, serve food and drinks"
+    },
+    "15:00": {
+      "activity": "break",
+      "description": "afternoon break, prepare for evening"
+    },
+    "16:00": {
+      "activity": "work",
+      "description": "evening preparation, set up entertainment"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "busy evening service begins"
+    },
+    "23:00": {
+      "activity": "work",
+      "description": "close tavern, clean up"
+    },
+    "24:00": {
+      "activity": "prepare_for_bed",
+      "description": "final checks, prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

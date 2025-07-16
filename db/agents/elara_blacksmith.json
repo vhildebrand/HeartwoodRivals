@@ -43,19 +43,58 @@
   "current_x": 151,
   "current_y": 85,
   "schedule": {
-    "6:00": "wake up, listen to morning waves",
-    "6:30": "light forge, prepare tools",
-    "7:00": "breakfast with sea-view",
-    "8:00": "open shop, work on orders",
-    "9:00": "craft fishing equipment and ship fittings",
-    "12:00": "lunch break, walk to harbor",
-    "13:00": "afternoon smithing",
-    "16:00": "meet with fishermen about repairs",
-    "17:00": "close shop, evening forge maintenance",
-    "18:00": "dinner",
-    "19:00": "personal time, sketching designs",
-    "20:30": "listen to evening waves",
-    "21:00": "prepare for bed"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, listen to morning waves"
+    },
+    "6:30": {
+      "activity": "work",
+      "description": "light forge, prepare tools"
+    },
+    "7:00": {
+      "activity": "breakfast",
+      "description": "breakfast with sea-view"
+    },
+    "8:00": {
+      "activity": "work",
+      "description": "open shop, work on orders"
+    },
+    "9:00": {
+      "activity": "crafting",
+      "description": "craft fishing equipment and ship fittings"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break, walk to harbor"
+    },
+    "13:00": {
+      "activity": "crafting",
+      "description": "afternoon smithing"
+    },
+    "16:00": {
+      "activity": "social",
+      "description": "meet with fishermen about repairs"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "close shop, evening forge maintenance"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, sketching designs"
+    },
+    "20:30": {
+      "activity": "relaxation",
+      "description": "listen to evening waves"
+    },
+    "21:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

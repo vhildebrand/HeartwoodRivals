@@ -44,21 +44,62 @@
   "current_x": 200,
   "current_y": 103,
   "schedule": {
-    "6:00": "wake up, morning meditation",
-    "6:30": "tend to herb garden",
-    "7:30": "breakfast with herbal tea",
-    "8:00": "gather coastal plants and seaweed",
-    "9:00": "open shop, prepare daily remedies",
-    "10:00": "morning consultations with customers",
-    "12:00": "lunch break, study herbalism texts",
-    "13:00": "afternoon remedy preparation",
-    "15:00": "meet with Dr. Helena about treatments",
-    "16:00": "evening consultations",
-    "17:00": "close shop, organize supplies",
-    "18:00": "dinner",
-    "19:00": "research and study time",
-    "21:00": "evening meditation and reflection",
-    "22:00": "prepare for bed"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, morning meditation"
+    },
+    "6:30": {
+      "activity": "gardening",
+      "description": "tend to herb garden"
+    },
+    "7:30": {
+      "activity": "breakfast",
+      "description": "breakfast with herbal tea"
+    },
+    "8:00": {
+      "activity": "crafting",
+      "description": "prepare daily remedies"
+    },
+    "9:00": {
+      "activity": "work",
+      "description": "open shop, prepare daily remedies"
+    },
+    "10:00": {
+      "activity": "work",
+      "description": "customer consultations, sell remedies"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "work",
+      "description": "afternoon appointments, consultations"
+    },
+    "15:00": {
+      "activity": "crafting",
+      "description": "create special remedies and tinctures"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "close shop, organize inventory"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, study herbs"
+    },
+    "20:30": {
+      "activity": "relaxation",
+      "description": "evening meditation"
+    },
+    "21:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

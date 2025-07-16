@@ -44,17 +44,50 @@
   "current_x": 111,
   "current_y": 252,
   "schedule": {
-    "4:30": "wake up, check weather and tides",
-    "5:00": "prepare boat and equipment",
-    "5:30": "head out to sea for morning catch",
-    "11:00": "return to dock, process catch",
-    "12:00": "lunch break, check other boats",
-    "13:00": "afternoon fishing or boat maintenance",
-    "17:00": "return to dock, secure boats",
-    "18:00": "dinner at the Fish Market",
-    "19:00": "evening at the Salty Sailor Tavern",
-    "21:00": "prepare nets and equipment for tomorrow",
-    "22:00": "prepare for bed"
+    "4:30": {
+      "activity": "wake_up",
+      "description": "wake up, check weather and tides"
+    },
+    "5:00": {
+      "activity": "fishing",
+      "description": "prepare boat and equipment"
+    },
+    "5:30": {
+      "activity": "fishing",
+      "description": "morning fishing expedition"
+    },
+    "11:00": {
+      "activity": "work",
+      "description": "return to dock, unload catch"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "work",
+      "description": "boat maintenance, prepare nets"
+    },
+    "15:00": {
+      "activity": "social",
+      "description": "visit Fish Market, social time"
+    },
+    "17:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "18:00": {
+      "activity": "personal_time",
+      "description": "personal time, plan next day"
+    },
+    "20:00": {
+      "activity": "relaxation",
+      "description": "sunset watching, evening reflection"
+    },
+    "21:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

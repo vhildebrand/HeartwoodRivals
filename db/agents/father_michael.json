@@ -44,19 +44,58 @@
   "current_x": 193,
   "current_y": 60,
   "schedule": {
-    "5:30": "wake up, morning prayers",
-    "6:00": "personal meditation time",
-    "7:00": "breakfast, prepare for the day",
-    "8:00": "open church, tend to grounds",
-    "9:00": "morning counseling sessions",
-    "11:00": "administrative duties, sermon preparation",
-    "12:00": "lunch break, community visits",
-    "14:00": "afternoon counseling and meetings",
-    "16:00": "evening prayers, church maintenance",
-    "17:00": "dinner",
-    "18:00": "community outreach, visit sick or elderly",
-    "20:00": "evening study and reflection",
-    "21:30": "prepare for bed"
+    "5:30": {
+      "activity": "wake_up",
+      "description": "wake up, morning prayers"
+    },
+    "6:00": {
+      "activity": "religious_service",
+      "description": "morning prayer and meditation"
+    },
+    "7:00": {
+      "activity": "breakfast",
+      "description": "breakfast, prepare for the day"
+    },
+    "8:00": {
+      "activity": "work",
+      "description": "open church, morning service"
+    },
+    "9:00": {
+      "activity": "counseling",
+      "description": "pastoral counseling, visits"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "work",
+      "description": "afternoon community service"
+    },
+    "15:00": {
+      "activity": "social",
+      "description": "visit sick and elderly"
+    },
+    "17:00": {
+      "activity": "religious_service",
+      "description": "evening prayer service"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, study scripture"
+    },
+    "21:00": {
+      "activity": "religious_service",
+      "description": "evening prayers and reflection"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

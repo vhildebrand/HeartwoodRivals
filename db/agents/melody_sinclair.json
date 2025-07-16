@@ -43,21 +43,66 @@
   "current_x": 155,
   "current_y": 103,
   "schedule": {
-    "6:30": "morning vocal warm-ups and practice",
-    "7:00": "breakfast and composition time",
-    "8:00": "school music classes",
-    "9:00": "group lessons and choir practice",
-    "10:30": "individual student assessments",
-    "12:00": "lunch break",
-    "13:00": "afternoon school music programs",
-    "14:30": "music store private lessons",
-    "16:00": "instrument maintenance and store duties",
-    "17:00": "advanced students and performance prep",
-    "18:00": "dinner break",
-    "19:00": "community music groups and ensembles",
-    "20:00": "personal practice and composition",
-    "21:00": "lesson planning and music arrangement",
-    "22:00": "prepare for bed"
+    "6:30": {
+      "activity": "music_practice",
+      "description": "morning vocal warm-ups and practice"
+    },
+    "7:00": {
+      "activity": "breakfast", 
+      "description": "breakfast and composition time"
+    },
+    "8:00": {
+      "activity": "teaching",
+      "description": "school music classes"
+    },
+    "9:00": {
+      "activity": "music_practice",
+      "description": "group lessons and choir practice"
+    },
+    "10:30": {
+      "activity": "teaching",
+      "description": "individual student assessments"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "teaching",
+      "description": "afternoon school music programs"
+    },
+    "14:30": {
+      "activity": "teaching",
+      "description": "music store private lessons"
+    },
+    "16:00": {
+      "activity": "equipment_maintenance",
+      "description": "instrument maintenance and store duties"
+    },
+    "17:00": {
+      "activity": "teaching",
+      "description": "advanced students and performance prep"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner break"
+    },
+    "19:00": {
+      "activity": "music_practice",
+      "description": "community music groups and ensembles"
+    },
+    "20:00": {
+      "activity": "music_practice",
+      "description": "personal practice and composition"
+    },
+    "21:00": {
+      "activity": "planning",
+      "description": "lesson planning and music arrangement"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

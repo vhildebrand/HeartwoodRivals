@@ -43,22 +43,58 @@
   "current_x": 227,
   "current_y": 72,
   "schedule": {
-    "7:00": "morning meditation and planning",
-    "7:30": "review philanthropic opportunities",
-    "8:00": "incognito town walk to observe needs",
-    "9:00": "meetings with local business owners",
-    "10:00": "education initiative planning",
-    "11:00": "investment research and analysis",
-    "12:00": "lunch with community leaders",
-    "13:00": "sustainability project development",
-    "14:00": "mentor meetings with young entrepreneurs",
-    "15:30": "funding application reviews",
-    "17:00": "community event participation",
-    "18:00": "dinner",
-    "19:00": "evening town stroll and observation",
-    "20:00": "personal reading and research",
-    "21:00": "strategic planning for future initiatives",
-    "22:00": "prepare for bed"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, review business reports"
+    },
+    "6:30": {
+      "activity": "breakfast",
+      "description": "breakfast while reading financial news"
+    },
+    "7:00": {
+      "activity": "work",
+      "description": "prepare for day's business"
+    },
+    "8:00": {
+      "activity": "business",
+      "description": "morning business meetings"
+    },
+    "9:00": {
+      "activity": "meetings",
+      "description": "meetings with local business owners"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "business",
+      "description": "afternoon business development"
+    },
+    "15:00": {
+      "activity": "work",
+      "description": "review investments and opportunities"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "end-of-day business tasks"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, plan business strategy"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

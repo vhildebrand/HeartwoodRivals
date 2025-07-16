@@ -43,22 +43,58 @@
   "current_x": 139,
   "current_y": 105,
   "schedule": {
-    "5:30": "sunrise beach run",
-    "6:30": "personal workout and preparation",
-    "7:00": "open gym, early morning classes",
-    "8:00": "personal training sessions",
-    "9:30": "group fitness classes",
-    "11:00": "equipment maintenance and cleaning",
-    "12:00": "lunch break and nutrition planning",
-    "13:00": "afternoon personal training",
-    "14:30": "specialized programs for maritime workers",
-    "16:00": "group classes and community programs",
-    "17:30": "evening workout sessions",
-    "19:00": "gym closing and equipment check",
-    "19:30": "dinner",
-    "20:00": "beach walk and relaxation",
-    "21:00": "program planning and client progress review",
-    "22:00": "prepare for bed"
+    "5:30": {
+      "activity": "wake_up",
+      "description": "wake up, morning preparation"
+    },
+    "6:00": {
+      "activity": "exercise",
+      "description": "sunrise beach run"
+    },
+    "7:00": {
+      "activity": "breakfast",
+      "description": "breakfast and nutrition planning"
+    },
+    "8:00": {
+      "activity": "work",
+      "description": "open gym, set up equipment"
+    },
+    "9:00": {
+      "activity": "training",
+      "description": "morning training sessions"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "training",
+      "description": "afternoon training and coaching"
+    },
+    "16:00": {
+      "activity": "work",
+      "description": "equipment maintenance, gym cleanup"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "close gym, personal training"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, plan training programs"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

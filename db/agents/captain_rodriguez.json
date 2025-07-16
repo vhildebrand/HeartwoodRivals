@@ -43,22 +43,58 @@
   "current_x": 152,
   "current_y": 68,
   "schedule": {
-    "6:00": "early morning equipment check",
-    "6:30": "crew briefing and assignments",
-    "7:00": "physical training and drills",
-    "8:00": "equipment maintenance",
-    "9:00": "fire safety inspections around town",
-    "10:30": "maritime rescue training",
-    "12:00": "lunch with crew",
-    "13:00": "community safety education visits",
-    "14:30": "equipment testing and maintenance",
-    "16:00": "coordination with police and coast guard",
-    "17:00": "evening equipment check",
-    "18:00": "dinner break",
-    "19:00": "paperwork and incident reports",
-    "20:00": "crew training and development",
-    "21:00": "personal time, family",
-    "22:00": "prepare for bed"
+    "5:00": {
+      "activity": "wake_up",
+      "description": "wake up, check weather and tide charts"
+    },
+    "5:30": {
+      "activity": "work",
+      "description": "morning equipment check"
+    },
+    "6:00": {
+      "activity": "breakfast",
+      "description": "breakfast, review shipping schedules"
+    },
+    "7:00": {
+      "activity": "work",
+      "description": "prepare for day's voyage"
+    },
+    "8:00": {
+      "activity": "sailing",
+      "description": "begin sailing or cargo operations"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "sailing",
+      "description": "continue sailing activities"
+    },
+    "16:00": {
+      "activity": "work",
+      "description": "dock management, cargo handling"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "secure vessel, end-of-day duties"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, plan next voyage"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

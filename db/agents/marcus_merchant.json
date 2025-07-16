@@ -43,18 +43,54 @@
   "current_x": 167,
   "current_y": 86,
   "schedule": {
-    "6:30": "wake up, check overnight deliveries",
-    "7:00": "breakfast, review shipping schedules",
-    "8:00": "open store, arrange displays",
-    "9:00": "serve customers, handle orders",
-    "12:00": "lunch at the Salty Sailor Tavern",
-    "13:00": "afternoon business, meet with suppliers",
-    "16:00": "receive Sarah's produce delivery",
-    "17:30": "close store, visit other businesses",
-    "18:30": "dinner at the tavern",
-    "19:30": "evening socializing, gather trade news",
-    "21:00": "inventory planning for next day",
-    "22:00": "prepare for bed"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, review daily orders"
+    },
+    "6:30": {
+      "activity": "work",
+      "description": "inventory check, prepare displays"
+    },
+    "7:00": {
+      "activity": "breakfast",
+      "description": "breakfast, plan daily work"
+    },
+    "8:00": {
+      "activity": "work",
+      "description": "open store, morning customers"
+    },
+    "10:00": {
+      "activity": "work",
+      "description": "restock shelves, organize inventory"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "work",
+      "description": "afternoon sales, customer service"
+    },
+    "15:00": {
+      "activity": "delivery",
+      "description": "receive shipments, check orders"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "close store, end-of-day accounting"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, review business"
+    },
+    "21:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

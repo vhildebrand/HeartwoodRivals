@@ -43,22 +43,58 @@
   "current_x": 137,
   "current_y": 68,
   "schedule": {
-    "6:00": "morning coffee and briefing review",
-    "6:30": "equipment check and preparation",
-    "7:00": "morning patrol through residential areas",
-    "8:00": "check in with business owners",
-    "9:00": "paperwork and incident reports",
-    "10:00": "harbor patrol and maritime coordination",
-    "12:00": "lunch break",
-    "13:00": "afternoon town patrol",
-    "14:00": "community relations and problem-solving",
-    "16:00": "coordination with fire department",
-    "17:00": "evening patrol preparation",
-    "18:00": "dinner break",
-    "19:00": "evening community patrol",
-    "20:00": "station duties and report completion",
-    "21:00": "personal time, planning next day",
-    "22:00": "prepare for bed"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, review overnight incidents"
+    },
+    "6:30": {
+      "activity": "work",
+      "description": "equipment check and preparation"
+    },
+    "7:00": {
+      "activity": "breakfast",
+      "description": "breakfast and briefing review"
+    },
+    "8:00": {
+      "activity": "patrol",
+      "description": "begin morning patrol"
+    },
+    "10:00": {
+      "activity": "patrol",
+      "description": "continue patrol, check on community"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "patrol",
+      "description": "afternoon patrol and investigations"
+    },
+    "15:00": {
+      "activity": "work",
+      "description": "paperwork and incident reports"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "end-of-shift duties"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, community engagement"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

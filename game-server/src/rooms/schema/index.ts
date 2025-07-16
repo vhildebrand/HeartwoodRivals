@@ -40,5 +40,5 @@ export class GameState extends Schema {
     @type("number") tileSize = 16;
     @type("string") currentGameTime!: string;  // Current game time (HH:MM format)
     @type("number") gameDay!: number;  // Current game day
-    @type("number") speedMultiplier = 60;  // Speed multiplier for game time
+    @type("number") speedMultiplier = 30;  // Speed multiplier for game time
 }

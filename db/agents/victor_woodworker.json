@@ -44,20 +44,54 @@
   "current_x": 127,
   "current_y": 120,
   "schedule": {
-    "6:30": "wake up, review current projects",
-    "7:00": "breakfast, plan daily work",
-    "7:30": "open shop, organize tools and materials",
-    "8:00": "morning woodworking - detailed work",
-    "10:00": "meet with customers about orders",
-    "11:00": "continue woodworking projects",
-    "12:30": "lunch break, plan afternoon work",
-    "13:30": "afternoon woodworking - assembly and finishing",
-    "16:00": "tool maintenance and shop cleanup",
-    "17:00": "close shop, personal projects",
-    "18:00": "dinner",
-    "19:00": "evening woodworking, special projects",
-    "21:00": "design planning and sketching",
-    "22:00": "prepare for bed"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, review current projects"
+    },
+    "6:30": {
+      "activity": "breakfast",
+      "description": "breakfast, plan daily work"
+    },
+    "7:00": {
+      "activity": "work",
+      "description": "begin woodworking projects"
+    },
+    "9:00": {
+      "activity": "crafting",
+      "description": "detailed woodworking and carving"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "crafting",
+      "description": "afternoon woodworking"
+    },
+    "15:00": {
+      "activity": "work",
+      "description": "furniture assembly and finishing"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "clean workshop, organize tools"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, design new pieces"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

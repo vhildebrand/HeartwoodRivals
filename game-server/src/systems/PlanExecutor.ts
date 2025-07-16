@@ -103,7 +103,7 @@ export class PlanExecutor {
   }
 
   /**
-   * Execute a specific action for an agent
+   * Execute a specific action for an agent using the new activity system
    */
   public async executeAction(agent: SpawnedAgent, action: ScheduledAction): Promise<ActionResult> {
     console.log(`🎬 [SCHEDULE] Executing action for ${agent.data.name}: "${action.action}" at ${action.time}`);
@@ -117,34 +117,28 @@ export class PlanExecutor {
         };
       }
       
-      // Find appropriate action processor
-      const actionType = this.getActionType(action.action);
-      const processor = this.actionProcessors.get(actionType);
+      // Use the new activity manager to handle the scheduled action
+      // This will handle interruption if needed via interruptCurrent: true
+      const activityResult = agent.activityManager.handleScheduledActivity(action.action, action.time);
       
-      if (!processor) {
+      if (activityResult.success) {
+        // Record execution
+        this.recordActionExecution(agent.data.id, action);
+        
+        console.log(`✅ [SCHEDULE] ${agent.data.name} activity started: "${action.action}"`);
+        
         return {
-          success: false,
-          message: `No processor found for action type: ${actionType}`
+          success: true,
+          message: `Scheduled activity started: ${action.action}`,
+          newState: AgentState.WORKING,
+          duration: action.duration
         };
+      } else {
+        console.log(`❌ [SCHEDULE] ${agent.data.name} failed to start activity: "${action.action}"`);
+        return activityResult;
       }
-      
-      // Execute the action
-      const result = await processor(agent, action);
-      
-      // Record execution
-      this.recordActionExecution(agent.data.id, action);
-      
-      // Update agent activity
-      const previousActivity = agent.schema.currentActivity;
-      agent.schema.currentActivity = action.action;
-      agent.schema.lastUpdate = Date.now();
-      
-      console.log(`✅ [SCHEDULE] ${agent.data.name} activity updated: "${previousActivity}" → "${action.action}"`);
-      
-      return result;
-      
     } catch (error) {
-      console.error(`❌ Error executing action for ${agent.data.name}:`, error);
+      console.error(`❌ [SCHEDULE] Error executing action for ${agent.data.name}:`, error);
       return {
         success: false,
         message: `Error executing action: ${error}`
@@ -202,21 +196,33 @@ export class PlanExecutor {
    * Parse agent schedule from database data
    */
   private parseAgentSchedule(agent: SpawnedAgent): ScheduledAction[] {
-    const schedule = agent.data.schedule as { [key: string]: string };
+    const schedule = agent.data.schedule as { [key: string]: string | { activity: string; description: string } };
     const actions: ScheduledAction[] = [];
     
     if (!schedule || typeof schedule !== 'object') {
       return actions;
     }
     
-    for (const [time, activity] of Object.entries(schedule)) {
+    for (const [time, activityData] of Object.entries(schedule)) {
+      let activity: string;
+      let description: string;
+      
+      // Handle both old format (string) and new format (object)
+      if (typeof activityData === 'string') {
+        activity = activityData;
+        description = activityData;
+      } else {
+        activity = activityData.activity;
+        description = activityData.description;
+      }
+      
       actions.push({
         agentId: agent.data.id,
         time: time,
         action: activity,
-        location: this.extractLocationFromAction(activity),
-        duration: this.estimateActionDuration(activity),
-        priority: this.calculateActionPriority(activity)
+        location: this.extractLocationFromAction(description),
+        duration: this.estimateActionDuration(description),
+        priority: this.calculateActionPriority(description)
       });
     }
     
@@ -384,7 +390,7 @@ export class PlanExecutor {
       };
     });
     
-    // Movement action processor
+    // Move action processor
     this.actionProcessors.set('move', async (agent: SpawnedAgent, action: ScheduledAction) => {
       const targetLocation = action.location || this.extractLocationFromAction(action.action);
       
@@ -403,26 +409,42 @@ export class PlanExecutor {
         };
       }
       
-      const path = agent.pathfinding.findPath(
-        { x: agent.schema.x, y: agent.schema.y },
-        targetPosition
-      );
+      // Convert pixel coordinates to tile coordinates for pathfinding
+      const mapManager = require('../maps/MapManager').MapManager.getInstance();
+      const mapId = 'beacon_bay'; // Should match the map ID being used
       
-      if (path.length === 0) {
+      // Convert current position (pixel) to tile coordinates
+      const currentTilePosRaw = mapManager.pixelToTile(mapId, agent.schema.x, agent.schema.y);
+      const currentTilePos = { x: currentTilePosRaw.tileX, y: currentTilePosRaw.tileY };
+      
+      // Convert target position (pixel) to tile coordinates
+      const targetTilePosRaw = mapManager.pixelToTile(mapId, targetPosition.x, targetPosition.y);
+      const targetTilePos = { x: targetTilePosRaw.tileX, y: targetTilePosRaw.tileY };
+      
+      // Find path in tile coordinates
+      const tilePath = agent.pathfinding.findPath(currentTilePos, targetTilePos);
+      
+      if (tilePath.length === 0) {
         return {
           success: false,
           message: 'No path found to target location'
         };
       }
       
+      // Convert tile path back to pixel coordinates for movement
+      const pixelPath = tilePath.map(tilePoint => {
+        const pixelPoint = mapManager.tileToPixel(mapId, tilePoint.x, tilePoint.y);
+        return { x: pixelPoint.pixelX, y: pixelPoint.pixelY };
+      });
+      
       const movementData: MovementData = {
         targetX: targetPosition.x,
         targetY: targetPosition.y,
-        path: path,
+        path: pixelPath,
         currentPathIndex: 0,
         speed: 1.0,
         startTime: Date.now(),
-        estimatedArrival: Date.now() + (path.length * 1000)
+        estimatedArrival: Date.now() + (pixelPath.length * 1000)
       };
       
       const success = agent.stateMachine.transitionTo(AgentState.MOVING, movementData);

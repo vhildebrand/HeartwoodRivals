@@ -44,19 +44,58 @@
   "current_x": 110,
   "current_y": 103,
   "schedule": {
-    "3:30": "wake up, start ovens",
-    "4:00": "begin bread preparation",
-    "5:00": "bake morning bread and pastries",
-    "7:00": "open bakery, serve early customers",
-    "8:00": "breakfast break with fresh bread",
-    "9:00": "prepare specialty items and lunch treats",
-    "12:00": "lunch break, plan afternoon baking",
-    "13:00": "afternoon baking, prepare for next day",
-    "16:00": "close bakery, clean equipment",
-    "17:00": "dinner",
-    "18:00": "evening preparation, inventory",
-    "20:00": "personal time, recipe development",
-    "21:30": "prepare for bed"
+    "3:30": {
+      "activity": "wake_up",
+      "description": "wake up, start ovens"
+    },
+    "4:00": {
+      "activity": "baking",
+      "description": "begin bread preparation"
+    },
+    "5:00": {
+      "activity": "baking",
+      "description": "bake morning bread and pastries"
+    },
+    "7:00": {
+      "activity": "work",
+      "description": "open bakery, serve early customers"
+    },
+    "8:00": {
+      "activity": "breakfast",
+      "description": "breakfast break with fresh bread"
+    },
+    "9:00": {
+      "activity": "baking",
+      "description": "prepare specialty items and lunch treats"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break, plan afternoon baking"
+    },
+    "13:00": {
+      "activity": "baking",
+      "description": "afternoon baking, prepare for next day"
+    },
+    "16:00": {
+      "activity": "work",
+      "description": "close bakery, clean equipment"
+    },
+    "17:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "18:00": {
+      "activity": "work",
+      "description": "evening preparation, inventory"
+    },
+    "20:00": {
+      "activity": "personal_time",
+      "description": "personal time, recipe development"
+    },
+    "21:30": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

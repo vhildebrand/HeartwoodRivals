@@ -251,7 +251,7 @@ export class HeartwoodRoom extends Room<GameState> {
         player.isMoving = true;
         player.lastUpdate = Date.now();
         
-        console.log(`Player ${player.name} started moving ${direction} with velocity (${player.velocityX}, ${player.velocityY})`);
+        //console.log(`Player ${player.name} started moving ${direction} with velocity (${player.velocityX}, ${player.velocityY})`);
     }
 
     private handleMovementStop(player: Player) {
@@ -260,7 +260,7 @@ export class HeartwoodRoom extends Room<GameState> {
         player.isMoving = false;
         player.lastUpdate = Date.now();
         
-        console.log(`Player ${player.name} stopped moving`);
+        //console.log(`Player ${player.name} stopped moving`);
     }
 
     private handleMovementContinuous(player: Player, directions: string[]) {
@@ -296,7 +296,7 @@ export class HeartwoodRoom extends Room<GameState> {
         player.isMoving = true;
         player.lastUpdate = Date.now();
         
-        console.log(`Player ${player.name} continuous movement: velocities (${player.velocityX}, ${player.velocityY})`);
+        //console.log(`Player ${player.name} continuous movement: velocities (${player.velocityX}, ${player.velocityY})`);
     }
 
     // Legacy methods removed - now handled by unified handlePlayerInput system
@@ -455,7 +455,7 @@ export class HeartwoodRoom extends Room<GameState> {
             // Initialize game time system
             const gameTimeConfig: GameTimeConfig = {
                 startTime: "06:00",
-                speedMultiplier: 60.0, // 1 minute = 1 second (for testing)
+                speedMultiplier: 30.0, // 1 minute = 2 seconds (for testing)
                 dayDurationMs: 24 * 60 * 1000 // 24 minutes = 1 day
             };
             
@@ -480,8 +480,9 @@ export class HeartwoodRoom extends Room<GameState> {
                 const spawnedAgents = await this.agentSpawner.spawnAllAgents();
                 this.agents = spawnedAgents;
                 
-                // Add spawned agents to game state
+                // Set movement system reference for all agents
                 spawnedAgents.forEach((agent, agentId) => {
+                    agent.movementSystem = this.agentMovementSystem;
                     this.state.agents.set(agentId, agent.schema);
                 });
                 
@@ -614,9 +615,10 @@ export class HeartwoodRoom extends Room<GameState> {
         // Update agent movement
         this.agentMovementSystem.updateMovement(this.agents, deltaTime / 1000);
         
-        // Update agent state machines
+        // Update agent state machines and activity managers
         for (const [agentId, agent] of this.agents) {
             agent.stateMachine.update();
+            agent.activityManager.update();
         }
         
         // Process scheduled actions (less frequently to avoid performance issues)

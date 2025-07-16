@@ -77,14 +77,14 @@ export class GameTime {
   }
 
   /**
-   * Check if it's currently a specific time (within 5 minute tolerance)
+   * Check if it's currently a specific time (within 1 minute tolerance)
    */
   public isTime(timeString: string): boolean {
     const targetTime = this.parseTime(timeString);
     const currentTime = this.getCurrentTime();
     
-    // Check if within 5 minute tolerance (more flexible for schedule execution)
-    return Math.abs(currentTime - targetTime) < 5;
+    // Check if within 1 minute tolerance (more precise for schedule execution)
+    return Math.abs(currentTime - targetTime) < 1;
   }
 
   /**

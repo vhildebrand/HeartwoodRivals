@@ -43,21 +43,58 @@
   "current_x": 161,
   "current_y": 248,
   "schedule": {
-    "10:00": "morning set planning and music discovery",
-    "10:30": "equipment maintenance and sound checks",
-    "11:00": "recording coastal sounds for new mixes",
-    "12:00": "lunch break",
-    "13:00": "collaboration with local musicians",
-    "14:00": "mixing and production work",
-    "15:30": "event planning and venue preparation",
-    "17:00": "sunset sound check and preparation",
-    "18:00": "dinner break",
-    "19:00": "evening performances and events",
-    "21:00": "peak performance hours",
-    "23:00": "late night underground sets",
-    "01:00": "equipment breakdown and cleanup",
-    "02:00": "post-event reflection and planning",
-    "03:00": "prepare for bed"
+    "10:00": {
+      "activity": "wake_up",
+      "description": "wake up, check music equipment"
+    },
+    "10:30": {
+      "activity": "breakfast",
+      "description": "breakfast and music news review"
+    },
+    "11:00": {
+      "activity": "music_work",
+      "description": "prepare music sets and playlists"
+    },
+    "12:00": {
+      "activity": "music_work",
+      "description": "record coastal sounds for new mixes"
+    },
+    "13:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "14:00": {
+      "activity": "music_work",
+      "description": "afternoon music production"
+    },
+    "16:00": {
+      "activity": "work",
+      "description": "equipment maintenance and setup"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "prepare for evening events"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "performance",
+      "description": "evening DJ performance"
+    },
+    "22:00": {
+      "activity": "work",
+      "description": "pack up equipment"
+    },
+    "23:00": {
+      "activity": "social",
+      "description": "late night social time"
+    },
+    "1:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

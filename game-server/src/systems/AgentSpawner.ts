@@ -8,6 +8,8 @@ import { Agent } from '../rooms/schema';
 import { AgentStateMachine, AgentState, AgentStateData } from './AgentStateMachine';
 import { MapManager } from '../maps/MapManager';
 import { Pathfinding } from './Pathfinding';
+import { ActivityManager } from './ActivityManager';
+import { AgentMovementSystem } from './AgentMovementSystem';
 import { GameTime } from './GameTime';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -46,6 +48,8 @@ export interface SpawnedAgent {
   data: AgentData;
   stateMachine: AgentStateMachine;
   pathfinding: Pathfinding;
+  activityManager: ActivityManager;
+  movementSystem?: AgentMovementSystem; // Reference to the movement system
   nextScheduledAction?: string;
   nextScheduledTime?: string;
 }
@@ -144,9 +148,21 @@ export class AgentSpawner {
         data,
         stateMachine,
         pathfinding,
+        activityManager: new ActivityManager({
+          schema: agentSchema,
+          data,
+          stateMachine,
+          pathfinding,
+          activityManager: null as any, // Will be set after creation
+          nextScheduledAction: nextAction?.action,
+          nextScheduledTime: nextAction?.time
+        }),
         nextScheduledAction: nextAction?.action,
         nextScheduledTime: nextAction?.time
       };
+      
+      // Set the activity manager's agent reference
+      spawnedAgent.activityManager = new ActivityManager(spawnedAgent);
       
       // Set up state machine callbacks
       this.setupStateMachineCallbacks(spawnedAgent);
@@ -370,7 +386,7 @@ export class AgentSpawner {
       return null;
     }
     
-    const schedule = data.schedule as { [key: string]: string };
+    const schedule = data.schedule as { [key: string]: string | { activity: string; description: string } };
     const currentTime = this.gameTime.getCurrentTimeString();
     
     // Find next action after current time
@@ -378,14 +394,18 @@ export class AgentSpawner {
     
     for (const time of sortedTimes) {
       if (time > currentTime) {
-        return { action: schedule[time], time };
+        const scheduleEntry = schedule[time];
+        const action = typeof scheduleEntry === 'string' ? scheduleEntry : scheduleEntry.activity;
+        return { action, time };
       }
     }
     
     // If no action found for today, return first action of next day
     if (sortedTimes.length > 0) {
       const firstTime = sortedTimes[0];
-      return { action: schedule[firstTime], time: firstTime };
+      const scheduleEntry = schedule[firstTime];
+      const action = typeof scheduleEntry === 'string' ? scheduleEntry : scheduleEntry.activity;
+      return { action, time: firstTime };
     }
     
     return null;

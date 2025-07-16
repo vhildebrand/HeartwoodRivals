@@ -44,19 +44,54 @@
   "current_x": 177,
   "current_y": 70,
   "schedule": {
-    "8:00": "wake up, prepare for the day",
-    "8:30": "breakfast while reading",
-    "9:00": "open library, organize daily tasks",
-    "10:00": "morning cataloging and book processing",
-    "11:00": "help patrons with research and questions",
-    "12:30": "lunch break, continue reading",
-    "13:30": "afternoon programs and activities",
-    "15:00": "work on maritime history project",
-    "16:00": "evening patron services",
-    "17:00": "close library, final organization",
-    "18:00": "dinner",
-    "19:00": "personal reading and research time",
-    "21:00": "prepare for bed"
+    "6:30": {
+      "activity": "wake_up",
+      "description": "wake up, prepare for the day"
+    },
+    "7:00": {
+      "activity": "breakfast",
+      "description": "breakfast while reading"
+    },
+    "8:00": {
+      "activity": "work",
+      "description": "open library, organize books"
+    },
+    "9:00": {
+      "activity": "work",
+      "description": "help patrons, manage circulation"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "work",
+      "description": "afternoon library service"
+    },
+    "15:00": {
+      "activity": "work",
+      "description": "catalog new books, research assistance"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "close library, organize collections"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal reading time"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

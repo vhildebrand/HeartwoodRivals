@@ -41,18 +41,54 @@
   "current_x": 30,
   "current_y": 55,
   "schedule": {
-    "5:00": "wake up, check weather and tide charts",
-    "5:30": "morning field inspection, tend to animals",
-    "7:00": "breakfast with herbal tea",
-    "8:00": "field work - planting, harvesting, or maintenance",
-    "12:00": "lunch break, rest from sun",
-    "13:00": "afternoon field work",
-    "16:00": "visit General Store to deliver produce",
-    "17:00": "evening chores, prepare for weather",
-    "18:00": "dinner",
-    "19:00": "equipment maintenance, planning next day",
-    "20:30": "personal time, read farming almanac",
-    "21:30": "prepare for bed"
+    "5:00": {
+      "activity": "wake_up",
+      "description": "wake up, check weather and tide charts"
+    },
+    "5:30": {
+      "activity": "farm_work",
+      "description": "morning field inspection, tend to animals"
+    },
+    "7:00": {
+      "activity": "breakfast",
+      "description": "breakfast with herbal tea"
+    },
+    "8:00": {
+      "activity": "farm_work",
+      "description": "field work - planting, harvesting, or maintenance"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break, rest from sun"
+    },
+    "13:00": {
+      "activity": "farm_work",
+      "description": "afternoon field work"
+    },
+    "16:00": {
+      "activity": "delivery",
+      "description": "visit General Store to deliver produce"
+    },
+    "17:00": {
+      "activity": "farm_work",
+      "description": "evening chores, prepare for weather"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "equipment_maintenance",
+      "description": "equipment maintenance, planning next day"
+    },
+    "20:30": {
+      "activity": "personal_time",
+      "description": "personal time, read farming almanac"
+    },
+    "21:30": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

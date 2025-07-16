@@ -44,18 +44,54 @@
   "current_x": 170,
   "current_y": 59,
   "schedule": {
-    "6:30": "wake up, check on overnight patients",
-    "7:00": "morning rounds, review patient status",
-    "8:00": "breakfast break",
-    "9:00": "morning appointments and consultations",
-    "12:00": "lunch break, update medical records",
-    "13:00": "afternoon appointments",
-    "16:00": "emergency preparations, supply inventory",
-    "17:00": "evening rounds, prepare for night",
-    "18:00": "dinner break",
-    "19:00": "administrative work, medical research",
-    "21:00": "on-call availability, personal time",
-    "22:30": "prepare for bed"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, check on overnight patients"
+    },
+    "6:30": {
+      "activity": "medical_work",
+      "description": "morning rounds, check experiments"
+    },
+    "7:30": {
+      "activity": "breakfast",
+      "description": "breakfast while reading scientific journals"
+    },
+    "8:00": {
+      "activity": "medical_work",
+      "description": "open hospital, morning appointments"
+    },
+    "10:00": {
+      "activity": "medical_work",
+      "description": "research and laboratory work"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "medical_work",
+      "description": "afternoon patient care"
+    },
+    "15:00": {
+      "activity": "medical_work",
+      "description": "emergency availability, documentation"
+    },
+    "17:00": {
+      "activity": "medical_work",
+      "description": "evening rounds, prepare for night"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, medical reading"
+    },
+    "21:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

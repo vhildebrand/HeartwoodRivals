@@ -44,19 +44,54 @@
   "current_x": 111,
   "current_y": 119,
   "schedule": {
-    "7:00": "wake up, review daily orders",
-    "7:30": "breakfast, plan daily sewing projects",
-    "8:00": "open shop, organize fabrics and supplies",
-    "9:00": "morning sewing and alterations",
-    "11:00": "fittings and consultations with customers",
-    "12:30": "lunch break, fabric research",
-    "13:30": "afternoon sewing projects",
-    "15:00": "work on special orders",
-    "17:00": "close shop, clean and organize",
-    "18:00": "dinner",
-    "19:00": "evening sewing, personal projects",
-    "21:00": "design planning and sketching",
-    "22:00": "prepare for bed"
+    "6:30": {
+      "activity": "wake_up",
+      "description": "wake up, review orders"
+    },
+    "7:00": {
+      "activity": "breakfast",
+      "description": "breakfast, plan daily sewing projects"
+    },
+    "8:00": {
+      "activity": "work",
+      "description": "open shop, morning sewing"
+    },
+    "9:00": {
+      "activity": "sewing",
+      "description": "morning sewing and alterations"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "sewing",
+      "description": "afternoon sewing projects"
+    },
+    "15:00": {
+      "activity": "work",
+      "description": "customer fittings and consultations"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "close shop, organize materials"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, design new patterns"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],

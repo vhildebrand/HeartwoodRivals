@@ -44,18 +44,54 @@
   "current_x": 269,
   "current_y": 42,
   "schedule": {
-    "5:00": "wake up, check overnight experiments",
-    "5:30": "morning data collection and analysis",
-    "7:00": "breakfast while reading scientific journals",
-    "8:00": "begin main research activities",
-    "10:00": "field work - collecting samples from the bay",
-    "12:00": "lunch break, continue experiments",
-    "13:00": "afternoon research and experimentation",
-    "16:00": "data analysis and documentation",
-    "18:00": "dinner",
-    "19:00": "evening experiments and observations",
-    "22:00": "late night research and planning",
-    "24:00": "prepare for bed (sometimes)"
+    "6:00": {
+      "activity": "wake_up",
+      "description": "wake up, check overnight experiments"
+    },
+    "6:30": {
+      "activity": "breakfast",
+      "description": "breakfast while reading scientific journals"
+    },
+    "7:00": {
+      "activity": "research",
+      "description": "morning research and experiments"
+    },
+    "9:00": {
+      "activity": "research",
+      "description": "continue experiments, analyze results"
+    },
+    "12:00": {
+      "activity": "lunch",
+      "description": "lunch break"
+    },
+    "13:00": {
+      "activity": "research",
+      "description": "afternoon research projects"
+    },
+    "15:00": {
+      "activity": "documentation",
+      "description": "document findings, write reports"
+    },
+    "17:00": {
+      "activity": "work",
+      "description": "lab cleanup, organize equipment"
+    },
+    "18:00": {
+      "activity": "dinner",
+      "description": "dinner"
+    },
+    "19:00": {
+      "activity": "personal_time",
+      "description": "personal time, read scientific literature"
+    },
+    "21:00": {
+      "activity": "social",
+      "description": "evening social time"
+    },
+    "22:00": {
+      "activity": "prepare_for_bed",
+      "description": "prepare for bed"
+    }
   },
   "relationships": {},
   "memories": [],
