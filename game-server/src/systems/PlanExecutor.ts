@@ -14,6 +14,7 @@ export interface ScheduledAction {
   agentId: string;
   time: string;
   action: string;
+  description?: string;
   location?: string;
   duration?: number;
   priority: number;
@@ -162,7 +163,7 @@ export class PlanExecutor {
       
       // Use the new activity manager to handle the scheduled action
       // This will handle interruption if needed via interruptCurrent: true
-      const activityResult = agent.activityManager.handleScheduledActivity(action.action, action.time);
+      const activityResult = agent.activityManager.handleScheduledActivity(action.action, action.time, action.description);
       
       if (activityResult.success) {
         // Record execution
@@ -215,7 +216,8 @@ export class PlanExecutor {
           scheduledTime: action.time,
           emergency: true,
           reason: `Emergency action: ${action.action}`,
-          emergencyLocation: action.location // Pass emergency location
+          emergencyLocation: action.location, // Pass emergency location
+          customDescription: action.description // Pass detailed emergency description
         }
       });
       
@@ -318,6 +320,7 @@ export class PlanExecutor {
         agentId: agent.data.id,
         time: time,
         action: activity,
+        description: description,
         location: this.extractLocationFromAction(description),
         duration: this.estimateActionDuration(description),
         priority: this.calculateActionPriority(description)
@@ -414,6 +417,7 @@ export class PlanExecutor {
         agentId,
         time,
         action: activity,
+        description: description,
         location,
         duration: this.estimateActionDuration(description),
         priority: priority + 1 // Generated plans have higher priority than static ones

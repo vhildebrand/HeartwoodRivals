@@ -332,11 +332,11 @@ export class ActivityManager {
   /**
    * Handle scheduled activity from PlanExecutor
    */
-  public handleScheduledActivity(activityName: string, scheduledTime: string): ActivityResult {
+  public handleScheduledActivity(activityName: string, scheduledTime: string, scheduledDescription?: string): ActivityResult {
     console.log(`📅 [ACTIVITY MANAGER] Scheduled activity for ${this.agent.data.name}: ${activityName} at ${scheduledTime}`);
     
-    // Get the custom description for this activity from the agent's schedule
-    const customDescription = this.getCustomDescriptionForActivity(activityName, scheduledTime);
+    // Get the custom description - prioritize scheduledDescription parameter over schedule lookup
+    const customDescription = scheduledDescription || this.getCustomDescriptionForActivity(activityName, scheduledTime);
     
     // Extract location information from the description if available
     const locationParameters = customDescription 
