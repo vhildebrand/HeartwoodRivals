@@ -9,6 +9,7 @@ export class Player extends Schema {
     @type("number") velocityY!: number;  // Add velocity for smooth movement
     @type("number") direction!: number;  // 0=down, 1=up, 2=left, 3=right
     @type("boolean") isMoving!: boolean;
+    @type("string") currentActivity!: string;  // Current activity description
     @type("number") lastUpdate!: number;
 }
 

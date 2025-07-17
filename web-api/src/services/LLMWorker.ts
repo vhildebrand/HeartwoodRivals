@@ -82,6 +82,9 @@ export class LLMWorker {
       // Store conversation as agent memory
       await this.storeConversationMemory(npcId, characterId, playerMessage, npcResponse);
 
+      // *** POST-RESPONSE ANALYSIS: Check for gossip ***
+      await this.analyzeConversationForGossip(npcId, characterId, playerMessage, npcResponse);
+
       // Return the response
       return {
         npcId,
@@ -324,6 +327,257 @@ Based on your memories and knowledge of this player's reputation, how do you res
       console.error('Error getting player name:', error);
       return `Player_${characterId.substring(0, 8)}`;
     }
+  }
+
+  /**
+   * Analyze player's message for gossip and process accordingly
+   * This implements the post-response analysis step from Sprint 3
+   */
+  private async analyzeConversationForGossip(
+    npcId: string, 
+    characterId: string, 
+    playerMessage: string, 
+    npcResponse: string
+  ): Promise<void> {
+    try {
+      // Analyze the player's message for gossip
+      const gossipAnalysis = await this.detectGossipInMessage(playerMessage, characterId, npcId);
+      
+      if (gossipAnalysis.detected && gossipAnalysis.subject_character_id) {
+        console.log(`🗣️ [GOSSIP] Detected gossip from ${characterId} about ${gossipAnalysis.subject_character_id} to ${npcId}`);
+        console.log(`🗣️ [GOSSIP] Sentiment: ${gossipAnalysis.sentiment}, Confidence: ${gossipAnalysis.confidence}`);
+        
+        // Get NPC's trust level with the gossiping player for credibility calculation
+        const trustLevel = await this.getTrustLevel(npcId, characterId);
+        const credibilityScore = this.calculateCredibilityScore(gossipAnalysis.confidence, trustLevel);
+        
+        // Log the gossip to database
+        const gossipId = await this.reputationManager.logGossip({
+          source_character_id: characterId,
+          target_character_id: gossipAnalysis.subject_character_id,
+          npc_listener_id: npcId,
+          content: playerMessage,
+          is_positive: gossipAnalysis.sentiment === 'positive',
+          credibility_score: credibilityScore
+        });
+        
+        // Store gossip as high-importance memory for the NPC
+        await this.storeGossipMemory(npcId, characterId, gossipAnalysis, credibilityScore);
+        
+        // Update target's reputation based on gossip
+        await this.processGossipReputationImpact(gossipAnalysis, credibilityScore);
+        
+        console.log(`✅ [GOSSIP] Processed gossip entry ${gossipId} with credibility ${credibilityScore}`);
+      }
+    } catch (error) {
+      console.error('Error analyzing conversation for gossip:', error);
+      // Don't throw - gossip analysis failure shouldn't break conversations
+    }
+  }
+
+  /**
+   * Detect gossip in player's message using LLM analysis
+   */
+  private async detectGossipInMessage(
+    playerMessage: string, 
+    speakerId: string, 
+    listenerId: string
+  ): Promise<{
+    detected: boolean;
+    subject_character_id: string | null;
+    sentiment: 'positive' | 'negative' | 'neutral';
+    confidence: number;
+  }> {
+    try {
+      const prompt = `You are analyzing a conversation to detect if a player is talking about another character (gossip).
+
+PLAYER MESSAGE: "${playerMessage}"
+
+Your task is to determine:
+1. Is the player talking ABOUT another specific character/person?
+2. If yes, what is the sentiment of what they're saying about that person?
+3. How confident are you that this is gossip about a specific person?
+
+Rules:
+- Only consider it gossip if the player is talking ABOUT a specific person/character
+- Direct conversations TO someone are not gossip
+- General statements about groups are not gossip
+- Must be about a specific individual
+
+Common gossip patterns to look for:
+- "X is really nice/mean/rude/kind"
+- "I saw X doing Y"
+- "X told me Z"
+- "X is good/bad at something"
+- "X has been acting strange"
+- "X and Y are dating/fighting"
+
+Respond with JSON format:
+{
+  "detected": true/false,
+  "subject_name": "name of person being talked about" or null,
+  "sentiment": "positive"/"negative"/"neutral",
+  "confidence": 0-100,
+  "reasoning": "brief explanation"
+}
+
+Examples:
+- "Bob is really helpful" → detected: true, subject_name: "Bob", sentiment: "positive"
+- "I think Alice has been rude lately" → detected: true, subject_name: "Alice", sentiment: "negative"
+- "Hello there!" → detected: false
+- "How are you?" → detected: false
+- "The weather is nice" → detected: false`;
+
+      const completion = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: prompt
+          }
+        ],
+        max_tokens: 200,
+        temperature: 0.3, // Lower temperature for more consistent analysis
+      });
+
+      const response = completion.choices[0]?.message?.content?.trim();
+      if (!response) {
+        throw new Error('Empty response from OpenAI');
+      }
+
+      // Parse JSON response
+      let cleanedResponse = response;
+      if (cleanedResponse.includes('```json')) {
+        cleanedResponse = cleanedResponse.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      } else if (cleanedResponse.includes('```')) {
+        cleanedResponse = cleanedResponse.replace(/```\s*/, '').replace(/```\s*$/, '');
+      }
+      
+      const analysis = JSON.parse(cleanedResponse.trim());
+      
+      // Map subject name to character ID (for now, use simple mapping)
+      const subjectCharacterId = analysis.subject_name ? 
+        this.mapCharacterNameToId(analysis.subject_name) : null;
+      
+      return {
+        detected: analysis.detected || false,
+        subject_character_id: subjectCharacterId,
+        sentiment: analysis.sentiment || 'neutral',
+        confidence: Math.max(0, Math.min(100, analysis.confidence || 0))
+      };
+      
+    } catch (error) {
+      console.error('Error detecting gossip in message:', error);
+      return {
+        detected: false,
+        subject_character_id: null,
+        sentiment: 'neutral',
+        confidence: 0
+      };
+    }
+  }
+
+  /**
+   * Get trust level between NPC and player for credibility calculation
+   */
+  private async getTrustLevel(npcId: string, characterId: string): Promise<number> {
+    try {
+      const result = await this.pool.query(
+        'SELECT trust_level FROM agent_player_relationships WHERE agent_id = $1 AND character_id = $2',
+        [npcId, characterId]
+      );
+      
+      return result.rows[0]?.trust_level || 50; // Default to neutral trust
+    } catch (error) {
+      console.error('Error getting trust level:', error);
+      return 50; // Default to neutral trust
+    }
+  }
+
+  /**
+   * Calculate credibility score based on confidence and trust level
+   */
+  private calculateCredibilityScore(confidence: number, trustLevel: number): number {
+    // Credibility = (confidence * trust_factor)
+    // Trust factor ranges from 0.5 (low trust) to 1.5 (high trust)
+    const trustFactor = 0.5 + (trustLevel / 100);
+    const credibilityScore = Math.round(confidence * trustFactor);
+    
+    return Math.max(0, Math.min(100, credibilityScore));
+  }
+
+  /**
+   * Store gossip as high-importance memory for the NPC
+   */
+  private async storeGossipMemory(
+    npcId: string, 
+    speakerId: string, 
+    gossipAnalysis: any, 
+    credibilityScore: number
+  ): Promise<void> {
+    try {
+      const speakerName = await this.getPlayerName(speakerId);
+      const subjectName = gossipAnalysis.subject_name || 'someone';
+      
+      const sentimentText = gossipAnalysis.sentiment === 'positive' ? 'positive things' : 
+                           gossipAnalysis.sentiment === 'negative' ? 'negative things' : 'neutral things';
+      
+      const memoryContent = `${speakerName} told me ${sentimentText} about ${subjectName}. I found this ${credibilityScore >= 70 ? 'quite believable' : credibilityScore >= 40 ? 'somewhat believable' : 'not very believable'}.`;
+      
+      await this.memoryManager.storeObservationWithTags(
+        npcId,
+        memoryContent,
+        'conversation',
+        [], // related_agents
+        [speakerId], // related_players
+        9, // high importance for gossip
+        ['gossip', 'conversation', gossipAnalysis.sentiment === 'positive' ? 'positive_gossip' : 'negative_gossip']
+      );
+      
+      console.log(`💭 [GOSSIP] Stored gossip memory for ${npcId}: "${memoryContent}"`);
+    } catch (error) {
+      console.error('Error storing gossip memory:', error);
+    }
+  }
+
+  /**
+   * Process reputation impact from gossip
+   */
+  private async processGossipReputationImpact(
+    gossipAnalysis: any, 
+    credibilityScore: number
+  ): Promise<void> {
+    try {
+      // Calculate reputation change based on sentiment and credibility
+      const baseImpact = gossipAnalysis.sentiment === 'positive' ? 1 : 
+                        gossipAnalysis.sentiment === 'negative' ? -1 : 0;
+      
+      // Scale impact by credibility (0-100) -> (0-1)
+      const credibilityMultiplier = credibilityScore / 100;
+      const reputationChange = Math.round(baseImpact * credibilityMultiplier * 2); // Max +/-2 points
+      
+      if (reputationChange !== 0 && gossipAnalysis.subject_character_id) {
+        await this.reputationManager.updatePlayerReputation({
+          character_id: gossipAnalysis.subject_character_id,
+          score_change: reputationChange,
+          reason: `Gossip impact (${gossipAnalysis.sentiment}, credibility: ${credibilityScore})`,
+          source: 'gossip_analysis'
+        });
+        
+        console.log(`📊 [GOSSIP] Updated reputation for ${gossipAnalysis.subject_character_id} by ${reputationChange} points`);
+      }
+    } catch (error) {
+      console.error('Error processing gossip reputation impact:', error);
+    }
+  }
+
+  /**
+   * Map character name to character ID (simplified for now)
+   */
+  private mapCharacterNameToId(characterName: string): string | null {
+    // For now, return a generated ID based on the name
+    // In a real system, this would look up the actual character ID
+    return `player_${characterName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
   }
 
 

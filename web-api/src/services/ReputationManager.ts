@@ -46,6 +46,18 @@ export class ReputationManager {
    */
   async getPlayerReputation(character_id: string): Promise<PlayerReputation | null> {
     try {
+      // Validate UUID format - if not valid, return null instead of throwing
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(character_id)) {
+        console.warn(`⚠️  Invalid UUID format for character_id: ${character_id}, using session ID as character_id`);
+        // For now, return a default reputation for session IDs
+        return {
+          character_id: character_id,
+          reputation_score: 50, // Default neutral reputation
+          last_updated: new Date()
+        };
+      }
+      
       const query = `
         SELECT character_id, reputation_score, last_updated
         FROM player_reputations
@@ -56,7 +68,12 @@ export class ReputationManager {
       return result.rows[0] || null;
     } catch (error) {
       console.error('Error getting player reputation:', error);
-      throw error;
+      // Return default instead of throwing to prevent conversation failures
+      return {
+        character_id: character_id,
+        reputation_score: 50,
+        last_updated: new Date()
+      };
     }
   }
 

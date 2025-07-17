@@ -98,6 +98,7 @@ export class HeartwoodRoom extends Room<GameState> {
         }
         player.direction = DIRECTIONS.down;
         player.isMoving = false;
+        player.currentActivity = "No activity set";
         player.lastUpdate = Date.now();
         
         // Add player to state
@@ -105,13 +106,7 @@ export class HeartwoodRoom extends Room<GameState> {
         
         console.log(`✅ [SERVER] Player ${player.name} spawned at tile (${startTileX}, ${startTileY}) - Total players: ${this.state.players.size}`);
         
-        // Publish player join action for agent observation
-        this.publishPlayerAction({
-            player_id: client.sessionId,
-            action_type: 'join',
-            location: `${startTileX},${startTileY}`,
-            data: { name: player.name }
-        });
+
         
         console.log(`Player ${player.name} spawned at tile (${startTileX}, ${startTileY}), pixel (${player.x}, ${player.y})`);
     }
@@ -187,6 +182,15 @@ export class HeartwoodRoom extends Room<GameState> {
         // Add debug time message handler
         this.onMessage("debug_time", (client: Client, message: any) => {
             this.handleDebugTime(client, message);
+        });
+
+        // Player text interface message handlers
+        this.onMessage("player_speech", (client: Client, message: { message: string; location: string; timestamp: number }) => {
+            this.handlePlayerSpeech(client, message);
+        });
+
+        this.onMessage("player_activity", (client: Client, message: { message: string; location: string; timestamp: number }) => {
+            this.handlePlayerActivity(client, message);
         });
         
         // Start the game loop
@@ -451,6 +455,67 @@ export class HeartwoodRoom extends Room<GameState> {
         }
     }
 
+    private handlePlayerSpeech(client: Client, message: { message: string; location: string; timestamp: number }) {
+        const player = this.state.players.get(client.sessionId);
+        
+        if (!player) {
+            console.warn(`🗣️ [SERVER] Public speech from unknown player: ${client.sessionId}`);
+            return;
+        }
+
+        console.log(`🗣️ [SERVER] Player ${player.name} says publicly: "${message.message}" at ${message.location}`);
+        
+        // Publish player speech as a witnessable event
+        this.publishPlayerAction({
+            player_id: client.sessionId,
+            action_type: 'public_speech',
+            location: message.location,
+            data: { 
+                name: player.name,
+                speech: message.message,
+                timestamp: message.timestamp
+            }
+        });
+
+        // Send confirmation back to client
+        client.send('speech_confirmed', {
+            message: message.message,
+            timestamp: Date.now()
+        });
+    }
+
+    private handlePlayerActivity(client: Client, message: { message: string; location: string; timestamp: number }) {
+        const player = this.state.players.get(client.sessionId);
+        
+        if (!player) {
+            console.warn(`🎯 [SERVER] Activity update from unknown player: ${client.sessionId}`);
+            return;
+        }
+
+        console.log(`🎯 [SERVER] Player ${player.name} updates activity: "${message.message}" at ${message.location}`);
+        
+        // Update player activity in game state so other players can see it
+        player.currentActivity = message.message;
+        
+        // Publish player activity update as a witnessable event
+        this.publishPlayerAction({
+            player_id: client.sessionId,
+            action_type: 'activity_update',
+            location: message.location,
+            data: { 
+                name: player.name,
+                activity: message.message,
+                timestamp: message.timestamp
+            }
+        });
+
+        // Send confirmation back to client
+        client.send('activity_confirmed', {
+            message: message.message,
+            timestamp: Date.now()
+        });
+    }
+
     private formatTimeMinutes(minutes: number): string {
         const hours = Math.floor(minutes / 60);
         const mins = Math.floor(minutes % 60);
@@ -621,24 +686,34 @@ export class HeartwoodRoom extends Room<GameState> {
             };
             
             await this.redisClient.publish('player_actions', JSON.stringify(actionData));
+            console.log(`📢 [REDIS] Published player action: ${action.action_type} at ${action.location} for ${action.data?.name || action.player_id}`);
         } catch (error) {
             console.error('Error publishing player action:', error);
             // Don't break the game if Redis fails
         }
     }
 
-    private publishPlayerMovement(playerId: string, tileX: number, tileY: number) {
-        // Get player name from state
-        const player = this.state.players.get(playerId);
-        const playerName = player ? player.name : 'Unknown';
+
+
+    private publishPlayerCurrentActivity(playerId: string, playerName: string, location: string, currentActivity: string) {
+        if (!this.redisClient) {
+            return;
+        }
         
-        // Publish movement event for agent observation system
-        this.publishPlayerAction({
-            player_id: playerId,
-            action_type: 'move',
-            location: `${tileX},${tileY}`,
-            data: { name: playerName }
-        });
+        try {
+            const activityObservationData = {
+                player_id: playerId,
+                player_name: playerName,
+                location: location,
+                current_activity: currentActivity,
+                timestamp: new Date()
+            };
+            
+            this.redisClient.publish('player_current_activity', JSON.stringify(activityObservationData));
+            console.log(`📢 [REDIS] Published current activity observation for ${playerName} at ${location}: ${currentActivity}`);
+        } catch (error) {
+            console.error('Error publishing player current activity:', error);
+        }
     }
 
     onLeave(client: Client, consented: boolean) {
@@ -648,14 +723,7 @@ export class HeartwoodRoom extends Room<GameState> {
         console.log(`👋 [SERVER] Player ${playerName} (${client.sessionId}) left the heartwood_room ${consented ? '(consented)' : '(disconnected)'}`);
         
         if (player) {
-            // Publish player leave action for agent observation
-            const tilePos = this.mapManager.pixelToTile(this.MAP_ID, player.x, player.y);
-            this.publishPlayerAction({
-                player_id: client.sessionId,
-                action_type: 'leave',
-                location: `${tilePos.tileX},${tilePos.tileY}`,
-                data: { name: player.name }
-            });
+            // Player left - no observation needed
         }
         
         // Remove player from state
@@ -900,10 +968,13 @@ export class HeartwoodRoom extends Room<GameState> {
             player.y = Math.round(newY * 100) / 100;
             player.lastUpdate = Date.now();
             
-            // Check if player moved to a new tile and publish movement event
+            // Check if player moved to a new tile and publish current activity observation
             const oldTile = this.mapManager.pixelToTile(this.MAP_ID, oldX, oldY);
             if (oldTile.tileX !== newTile.tileX || oldTile.tileY !== newTile.tileY) {
-                this.publishPlayerMovement(player.id, newTile.tileX, newTile.tileY);
+                // Only publish current activity observation if player has a meaningful activity
+                if (player.currentActivity && player.currentActivity !== 'idle' && player.currentActivity !== 'No activity set') {
+                    this.publishPlayerCurrentActivity(player.id, player.name, `${newTile.tileX},${newTile.tileY}`, player.currentActivity);
+                }
             }
         } else {
             // Stop movement on collision

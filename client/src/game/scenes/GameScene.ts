@@ -75,6 +75,24 @@ export class GameScene extends Scene {
             console.log(`💬 [GAME] Dialogue closed - re-enabling movement`);
             this.inputManager.setDialogueActive(false);
         });
+
+        // Listen for player speech events from UIScene
+        this.game.events.on('playerSpeech', (data: { message: string; type: string }) => {
+            console.log(`🗣️ [GAME] Player public speech: "${data.message}"`);
+            this.handlePlayerSpeech(data.message);
+        });
+
+        // Listen for player activity events from UIScene
+        this.game.events.on('playerActivity', (data: { message: string; type: string }) => {
+            console.log(`🎯 [GAME] Player activity update: "${data.message}"`);
+            this.handlePlayerActivity(data.message);
+        });
+
+        // Listen for movement blocking events from UIScene
+        this.game.events.on('blockMovement', (blocked: boolean) => {
+            console.log(`🚫 [GAME] Movement ${blocked ? 'blocked' : 'unblocked'} for text input`);
+            this.inputManager.setMovementBlocked(blocked);
+        });
     }
 
     private createWorld() {
@@ -325,6 +343,12 @@ export class GameScene extends Scene {
             return;
         }
         
+        // Check if player is currently typing (speech or activity input)
+        if (uiScene && (uiScene.speechInputActive || uiScene.activityInputActive)) {
+            console.log(`🚫 [GAME] Cannot open dialogue while typing text input`);
+            return;
+        }
+        
         // Check if player is near any NPC
         const nearbyNpc = this.getNearbyNPC(mySprite.x, mySprite.y);
         if (nearbyNpc) {
@@ -432,6 +456,63 @@ export class GameScene extends Scene {
         if (this.room) {
             this.room.send('rightclick', clickData);
         }
+    }
+
+    private handlePlayerSpeech(message: string) {
+        if (!this.room || !this.myPlayerId) {
+            console.warn('🗣️ [GAME] Cannot send speech - no room or player ID');
+            return;
+        }
+
+        // Get current player position
+        const player = this.playerController.getPlayerSprite(this.myPlayerId);
+        if (!player) {
+            console.warn('🗣️ [GAME] Cannot send speech - no player sprite');
+            return;
+        }
+
+        // Calculate tile position
+        const tileX = Math.floor(player.x / 16);
+        const tileY = Math.floor(player.y / 16);
+
+        // Send public speech message to server
+        this.room.send('player_speech', {
+            message: message,
+            location: `${tileX},${tileY}`,
+            timestamp: Date.now()
+        });
+
+        console.log(`🗣️ [GAME] Sent public speech to server: "${message}" at (${tileX}, ${tileY})`);
+    }
+
+    private handlePlayerActivity(message: string) {
+        if (!this.room || !this.myPlayerId) {
+            console.warn('🎯 [GAME] Cannot send activity - no room or player ID');
+            return;
+        }
+
+        // Get current player position
+        const player = this.playerController.getPlayerSprite(this.myPlayerId);
+        if (!player) {
+            console.warn('🎯 [GAME] Cannot send activity - no player sprite');
+            return;
+        }
+
+        // Calculate tile position
+        const tileX = Math.floor(player.x / 16);
+        const tileY = Math.floor(player.y / 16);
+
+        // Update local player activity display
+        this.playerController.updatePlayerActivity(this.myPlayerId, message);
+
+        // Send activity update message to server
+        this.room.send('player_activity', {
+            message: message,
+            location: `${tileX},${tileY}`,
+            timestamp: Date.now()
+        });
+
+        console.log(`🎯 [GAME] Sent activity update to server: "${message}" at (${tileX}, ${tileY})`);
     }
 
     async connectToServer() {

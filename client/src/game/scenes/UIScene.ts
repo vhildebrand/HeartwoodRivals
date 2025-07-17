@@ -21,6 +21,20 @@ export class UIScene extends Scene {
     // Real-time NPC data from game server
     private realtimeNPCData: Map<string, any> = new Map();
     private locationsData: any = null;
+    
+    // Player text interface
+    private playerTextContainer: Phaser.GameObjects.Container | null = null;
+    private speechInputActive: boolean = false;
+    private activityInputActive: boolean = false;
+    private speechInputBox: Phaser.GameObjects.Rectangle | null = null;
+    private speechInputText: Phaser.GameObjects.Text | null = null;
+    private activityInputBox: Phaser.GameObjects.Rectangle | null = null;
+    private activityInputText: Phaser.GameObjects.Text | null = null;
+    private currentSpeechMessage: string = '';
+    private currentActivityMessage: string = '';
+    private speechPrompt: Phaser.GameObjects.Text | null = null;
+    private activityPrompt: Phaser.GameObjects.Text | null = null;
+    private rangeIndicator: Phaser.GameObjects.Text | null = null;
 
     constructor() {
         super("UIScene");
@@ -73,6 +87,9 @@ export class UIScene extends Scene {
         // Create debug panel (initially hidden)
         this.createDebugPanel();
 
+        // Create player text interface (public speech and activity updates)
+        this.createPlayerTextInterface();
+
         // Initialize dialogue manager
         this.dialogueManager = new DialogueManager(this);
 
@@ -107,6 +124,277 @@ export class UIScene extends Scene {
         });
 
         console.log("🎮 [UI] UIScene created and running in parallel with clock display");
+    }
+
+    private createPlayerTextInterface() {
+        // Create container for player text interface
+        this.playerTextContainer = this.add.container(0, 0);
+        
+        // Create speech input interface (bottom left)
+        const speechY = this.cameras.main.height - 100;
+        
+        // Speech input box
+        this.speechInputBox = this.add.rectangle(150, speechY, 280, 35, 0x000000, 0.8)
+            .setOrigin(0, 0.5);
+        
+        // Speech input text
+        this.speechInputText = this.add.text(160, speechY, '', {
+            fontSize: "14px",
+            color: "#FFFFFF",
+            wordWrap: { width: 260 }
+        }).setOrigin(0, 0.5);
+        
+        // Speech prompt
+        this.speechPrompt = this.add.text(10, speechY, "Say Out Loud (T):", {
+            fontSize: "12px",
+            color: "#FFFF00",
+            backgroundColor: "rgba(0, 0, 0, 0.7)",
+            padding: { x: 4, y: 2 }
+        }).setOrigin(0, 0.5);
+        
+        // Activity input interface (bottom right)
+        const activityY = this.cameras.main.height - 60;
+        
+        // Activity input box
+        this.activityInputBox = this.add.rectangle(150, activityY, 280, 35, 0x000000, 0.8)
+            .setOrigin(0, 0.5);
+        
+        // Activity input text
+        this.activityInputText = this.add.text(160, activityY, '', {
+            fontSize: "14px",
+            color: "#FFFFFF",
+            wordWrap: { width: 260 }
+        }).setOrigin(0, 0.5);
+        
+        // Activity prompt
+        this.activityPrompt = this.add.text(10, activityY, "Update Activity (Y):", {
+            fontSize: "12px",
+            color: "#00FF00",
+            backgroundColor: "rgba(0, 0, 0, 0.7)",
+            padding: { x: 4, y: 2 }
+        }).setOrigin(0, 0.5);
+        
+        // Range indicator
+        this.rangeIndicator = this.add.text(450, speechY - 20, "NPCs within 10 tiles can hear you", {
+            fontSize: "11px",
+            color: "#FFFF99",
+            backgroundColor: "rgba(0, 0, 0, 0.7)",
+            padding: { x: 4, y: 2 }
+        }).setOrigin(0, 0.5);
+        
+        // Add all elements to container
+        this.playerTextContainer.add([
+            this.speechInputBox,
+            this.speechInputText,
+            this.speechPrompt,
+            this.activityInputBox,
+            this.activityInputText,
+            this.activityPrompt,
+            this.rangeIndicator
+        ]);
+        
+        // Initially hide the input boxes
+        this.speechInputBox.setVisible(false);
+        this.speechInputText.setVisible(false);
+        this.activityInputBox.setVisible(false);
+        this.activityInputText.setVisible(false);
+        
+        // Setup keyboard handlers
+        this.setupPlayerTextInputHandlers();
+        
+        console.log("🎮 [UI] Player text interface created - Press T to say something, Y to update activity");
+    }
+
+    private setupPlayerTextInputHandlers() {
+        // T key to activate speech input
+        this.input.keyboard?.addKey('T').on('down', () => {
+            if (!this.speechInputActive && !this.activityInputActive && !this.dialogueManager?.isDialogueActive() && !this.isTypingInHtmlInput()) {
+                this.activateSpeechInput();
+            }
+        });
+        
+        // Y key to activate activity input
+        this.input.keyboard?.addKey('Y').on('down', () => {
+            if (!this.speechInputActive && !this.activityInputActive && !this.dialogueManager?.isDialogueActive() && !this.isTypingInHtmlInput()) {
+                this.activateActivityInput();
+            }
+        });
+        
+        // Handle typing for both inputs
+        this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
+            if (this.speechInputActive || this.activityInputActive) {
+                this.handleTextInput(event);
+            }
+        });
+    }
+
+    private activateSpeechInput() {
+        this.speechInputActive = true;
+        this.currentSpeechMessage = '';
+        
+        if (this.speechInputBox && this.speechInputText) {
+            this.speechInputBox.setVisible(true);
+            this.speechInputText.setVisible(true);
+            this.speechInputText.setText('');
+        }
+        
+        // Block player movement while typing
+        this.game.events.emit('blockMovement', true);
+        
+        console.log("🗣️ [UI] Speech input activated - Type your message and press Enter");
+    }
+
+    private activateActivityInput() {
+        this.activityInputActive = true;
+        this.currentActivityMessage = '';
+        
+        if (this.activityInputBox && this.activityInputText) {
+            this.activityInputBox.setVisible(true);
+            this.activityInputText.setVisible(true);
+            this.activityInputText.setText('');
+        }
+        
+        // Block player movement while typing
+        this.game.events.emit('blockMovement', true);
+        
+        console.log("🎯 [UI] Activity input activated - Type your activity and press Enter");
+    }
+
+    private handleTextInput(event: KeyboardEvent) {
+        if (event.key === 'Enter') {
+            if (this.speechInputActive) {
+                this.submitSpeechMessage();
+            } else if (this.activityInputActive) {
+                this.submitActivityMessage();
+            }
+            return;
+        }
+        
+        if (event.key === 'Escape') {
+            this.cancelTextInput();
+            return;
+        }
+        
+        // Handle backspace
+        if (event.key === 'Backspace') {
+            if (this.speechInputActive) {
+                this.currentSpeechMessage = this.currentSpeechMessage.slice(0, -1);
+                this.speechInputText?.setText(this.currentSpeechMessage);
+            } else if (this.activityInputActive) {
+                this.currentActivityMessage = this.currentActivityMessage.slice(0, -1);
+                this.activityInputText?.setText(this.currentActivityMessage);
+            }
+            return;
+        }
+        
+        // Add character to current message
+        if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+            if (this.speechInputActive) {
+                this.currentSpeechMessage += event.key;
+                this.speechInputText?.setText(this.currentSpeechMessage);
+            } else if (this.activityInputActive) {
+                this.currentActivityMessage += event.key;
+                this.activityInputText?.setText(this.currentActivityMessage);
+            }
+        }
+    }
+
+    private submitSpeechMessage() {
+        if (!this.currentSpeechMessage.trim()) {
+            this.cancelTextInput();
+            return;
+        }
+        
+        console.log(`🗣️ [UI] Player says: "${this.currentSpeechMessage}"`);
+        
+        // Send to game server
+        this.game.events.emit('playerSpeech', {
+            message: this.currentSpeechMessage,
+            type: 'public_speech'
+        });
+        
+        // Unblock movement and clear input
+        this.game.events.emit('blockMovement', false);
+        this.cancelTextInput();
+    }
+
+    private submitActivityMessage() {
+        if (!this.currentActivityMessage.trim()) {
+            this.cancelTextInput();
+            return;
+        }
+        
+        console.log(`🎯 [UI] Player activity: "${this.currentActivityMessage}"`);
+        
+        // Send to game server
+        this.game.events.emit('playerActivity', {
+            message: this.currentActivityMessage,
+            type: 'activity_update'
+        });
+        
+        // Unblock movement and clear input
+        this.game.events.emit('blockMovement', false);
+        this.cancelTextInput();
+    }
+
+    private cancelTextInput() {
+        this.speechInputActive = false;
+        this.activityInputActive = false;
+        this.currentSpeechMessage = '';
+        this.currentActivityMessage = '';
+        
+        if (this.speechInputBox && this.speechInputText) {
+            this.speechInputBox.setVisible(false);
+            this.speechInputText.setVisible(false);
+        }
+        
+        if (this.activityInputBox && this.activityInputText) {
+            this.activityInputBox.setVisible(false);
+            this.activityInputText.setVisible(false);
+        }
+        
+        // Unblock player movement
+        this.game.events.emit('blockMovement', false);
+        
+        console.log("🎮 [UI] Text input cancelled");
+    }
+
+    /**
+     * Check if user is currently typing in an HTML input field
+     * This prevents hotkeys from activating while typing in textboxes
+     */
+    private isTypingInHtmlInput(): boolean {
+        const activeElement = document.activeElement;
+        
+        if (!activeElement) {
+            return false;
+        }
+        
+        // Check if typing in input fields
+        if (activeElement.tagName === 'INPUT') {
+            const inputType = (activeElement as HTMLInputElement).type;
+            // Allow hotkeys for buttons, checkboxes, etc., but not text inputs
+            return inputType === 'text' || inputType === 'password' || inputType === 'email' || 
+                   inputType === 'search' || inputType === 'url' || inputType === 'tel' || 
+                   inputType === 'number' || inputType === 'textarea';
+        }
+        
+        // Check if typing in textarea
+        if (activeElement.tagName === 'TEXTAREA') {
+            return true;
+        }
+        
+        // Check if typing in contenteditable element
+        if (activeElement.getAttribute('contenteditable') === 'true') {
+            return true;
+        }
+        
+        // Check if element has role="textbox"
+        if (activeElement.getAttribute('role') === 'textbox') {
+            return true;
+        }
+        
+        return false;
     }
 
     private updateClockDisplay(gameState: any) {
@@ -178,16 +466,17 @@ export class UIScene extends Scene {
     }
 
     private createDebugPanel() {
-        // Create debug panel container (made wider and taller)
+        // Create debug panel container (extends to bottom of screen)
         this.debugPanel = this.add.container(this.cameras.main.width - 450, 60);
         
-        // Background (made wider and taller)
-        this.debugPanelBackground = this.add.rectangle(0, 0, 440, 500, 0x000000, 0.8);
+        // Background (extends to bottom of screen)
+        const debugPanelHeight = this.cameras.main.height - 60; // From top bar to bottom
+        this.debugPanelBackground = this.add.rectangle(0, 0, 440, debugPanelHeight, 0x000000, 0.8);
         this.debugPanelBackground.setOrigin(0, 0);
         this.debugPanelBackground.setStrokeStyle(2, 0x444444);
         
         // Title
-        this.debugPanelTitle = this.add.text(10, 10, "Debug Panel - Character Status", {
+        this.debugPanelTitle = this.add.text(10, 10, "Debug Panel - Character Status (Full Height)", {
             fontSize: "16px",
             color: "#FFFFFF",
             fontStyle: "bold"

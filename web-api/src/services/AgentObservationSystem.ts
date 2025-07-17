@@ -5,7 +5,7 @@ import { ReputationManager } from './ReputationManager';
 
 interface PlayerAction {
   player_id: string;
-  action_type: 'move' | 'interact' | 'chat' | 'join' | 'leave' | 'gift_giving' | 'player_pushing' | 'item_destruction' | 'helping' | 'rude_behavior' | 'generous_act' | 'social_event';
+  action_type: 'move' | 'interact' | 'chat' | 'gift_giving' | 'player_pushing' | 'item_destruction' | 'helping' | 'rude_behavior' | 'generous_act' | 'social_event' | 'public_speech' | 'activity_update';
   location: string;
   target?: string;
   data?: any;
@@ -28,7 +28,7 @@ export class AgentObservationSystem {
   private redisClient: ReturnType<typeof createClient>;
   private memoryManager: AgentMemoryManager;
   private reputationManager: ReputationManager;
-  private readonly OBSERVATION_RANGE = 5; // tiles
+  private observationRange: number = 10; // tiles - configurable
   private readonly OBSERVATION_CHANNEL = 'player_actions';
   
   constructor(
@@ -51,12 +51,27 @@ export class AgentObservationSystem {
     const subscriber = this.redisClient.duplicate();
     await subscriber.connect();
     
-    await subscriber.subscribe(this.OBSERVATION_CHANNEL, (message) => {
+    await subscriber.subscribe(this.OBSERVATION_CHANNEL, async (message) => {
       try {
         const action: PlayerAction = JSON.parse(message);
-        this.processPlayerAction(action);
+        await this.processPlayerAction(action);
       } catch (error) {
         console.error('Error processing player action:', error);
+      }
+    });
+
+    // Subscribe to player current activity events
+    await subscriber.subscribe('player_current_activity', async (message) => {
+      try {
+        const activityData = JSON.parse(message);
+        await this.observePlayerCurrentActivity(
+          activityData.player_id,
+          activityData.player_name,
+          activityData.location,
+          activityData.current_activity
+        );
+      } catch (error) {
+        console.error('Error processing player current activity:', error);
       }
     });
 
@@ -68,16 +83,43 @@ export class AgentObservationSystem {
    */
   async processPlayerAction(action: PlayerAction): Promise<void> {
     try {
+      // Skip movement actions entirely - NPCs shouldn't process player movement
+      if (action.action_type === 'move') {
+        return;
+      }
+      
       // Find agents within observation range
-      const nearbyAgents = await this.findNearbyAgents(action.location, this.OBSERVATION_RANGE);
+      const nearbyAgents = await this.findNearbyAgents(action.location, this.observationRange);
+      
+      console.log(`👥 [OBSERVATION] Processing ${action.action_type} at ${action.location} - ${nearbyAgents.length} NPCs in range (${this.observationRange} tiles)`);
+      if (nearbyAgents.length > 0) {
+        console.log(`🔍 [OBSERVATION] Nearby NPCs: ${nearbyAgents.map(a => a.name).join(', ')}`);
+      }
       
       // Generate observations for each nearby agent
+      let observationsCreated = 0;
       for (const agent of nearbyAgents) {
-        const observation = await this.generateObservation(agent, action);
-        
-        if (observation) {
-          await this.storeObservation(observation);
+        try {
+          console.log(`🔄 [OBSERVATION] Processing NPC ${agent.name} for ${action.action_type}`);
+          const observation = await this.generateObservation(agent, action);
+          
+          if (observation) {
+            await this.storeObservation(observation);
+            observationsCreated++;
+            console.log(`📝 [OBSERVATION] Created memory for NPC ${agent.name} about ${action.action_type} (importance: ${observation.importance})`);
+          } else {
+            console.log(`⚠️ [OBSERVATION] No observation generated for NPC ${agent.name} for ${action.action_type}`);
+          }
+        } catch (error) {
+          console.error(`❌ [OBSERVATION] Error processing NPC ${agent.name} for ${action.action_type}:`, error);
         }
+        
+        // Small delay to prevent potential race conditions
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      
+      if (observationsCreated > 0) {
+        console.log(`✅ [OBSERVATION] Created ${observationsCreated} memories for ${action.action_type} action`);
       }
     } catch (error) {
       console.error('Error processing player action:', error);
@@ -97,7 +139,7 @@ export class AgentObservationSystem {
    */
   async recordWitnessableEvent(
     player_id: string,
-    action_type: 'gift_giving' | 'player_pushing' | 'item_destruction' | 'helping' | 'rude_behavior' | 'generous_act' | 'social_event',
+    action_type: 'gift_giving' | 'player_pushing' | 'item_destruction' | 'helping' | 'rude_behavior' | 'generous_act' | 'social_event' | 'public_speech' | 'activity_update',
     location: string,
     eventData: any
   ): Promise<void> {
@@ -240,18 +282,22 @@ export class AgentObservationSystem {
         tags = ['witnessable_social_event', 'social_event', 'social_interaction'];
         break;
         
-      case 'move':
-        // Skip movement observations for now to avoid noise
-        return null;
-        
-      case 'join':
-      case 'leave':
-        // Handle basic join/leave events
-        const joinLeaveAction = action.action_type === 'join' ? 'joined' : 'left';
-        observationText = `${playerName} ${joinLeaveAction} the area`;
-        importance = 5; // Lower importance for basic events
-        tags = ['player_movement', action.action_type];
+      case 'public_speech':
+        const speech = action.data?.speech || 'something';
+        observationText = `I heard ${playerName} say publicly: "${speech}". This was a public statement.`;
+        importance = 9; // High importance for public speech
+        tags = ['witnessable_social_event', 'public_speech', 'speech', 'public_statement'];
         break;
+        
+      case 'activity_update':
+        const activity = action.data?.activity || 'updating their activity';
+        observationText = `I noticed ${playerName} is ${activity}`;
+        importance = 8; // Medium-high importance for activity updates
+        tags = ['witnessable_social_event', 'activity_update', 'public_announcement'];
+        break;
+        
+
+
         
       default:
         // Skip unknown action types
@@ -294,6 +340,7 @@ export class AgentObservationSystem {
     
     if (!coords) {
       // If location is not coordinates, find agents in the same named location
+      console.log(`🔍 [NEARBY] Finding agents in named location: ${location}`);
       const result = await this.pool.query(`
         SELECT a.id, a.name, s.current_x, s.current_y, a.current_location as location
         FROM agents a
@@ -301,10 +348,12 @@ export class AgentObservationSystem {
         WHERE a.current_location = $1
       `, [location]);
       
+      console.log(`📍 [NEARBY] Found ${result.rows.length} agents in location ${location}: ${result.rows.map(r => r.name).join(', ')}`);
       return result.rows;
     }
     
     // Find agents within coordinate range
+    console.log(`🔍 [NEARBY] Finding agents within ${range} tiles of coordinates (${coords.x}, ${coords.y})`);
     const result = await this.pool.query(`
       SELECT a.id, a.name, s.current_x, s.current_y, a.current_location as location
       FROM agents a
@@ -312,6 +361,7 @@ export class AgentObservationSystem {
       WHERE ABS(s.current_x - $1) <= $3 AND ABS(s.current_y - $2) <= $3
     `, [coords.x, coords.y, range]);
     
+    console.log(`📍 [NEARBY] Found ${result.rows.length} agents within ${range} tiles of (${coords.x}, ${coords.y}): ${result.rows.map(r => `${r.name}(${r.current_x},${r.current_y})`).join(', ')}`);
     return result.rows;
   }
 
@@ -319,6 +369,8 @@ export class AgentObservationSystem {
    * Store an observation in the agent's memory
    */
   private async storeObservation(observation: AgentObservation): Promise<void> {
+    console.log(`💾 [OBSERVATION] Attempting to store observation for ${observation.agent_id}: "${observation.observation.substring(0, 50)}..." (importance: ${observation.importance})`);
+    
     const memoryId = await this.memoryManager.storeObservationWithTags(
       observation.agent_id,
       observation.observation,
@@ -337,8 +389,9 @@ export class AgentObservationSystem {
       if (observation.tags.includes('witnessable_social_event') && observation.related_players.length > 0) {
         await this.updateReputationFromWitnessedEvent(observation);
       }
+    } else {
+      console.log(`🚫 [OBSERVATION] Memory filtered out for ${observation.agent_id}: "${observation.observation.substring(0, 50)}..." (importance: ${observation.importance})`);
     }
-    // Filtered observations are already logged by the memory manager
   }
 
   /**
@@ -415,6 +468,112 @@ export class AgentObservationSystem {
     } else {
       return 'at night';
     }
+  }
+
+  /**
+   * Get current observation range
+   */
+  getObservationRange(): number {
+    return this.observationRange;
+  }
+
+  /**
+   * Set observation range
+   */
+  setObservationRange(range: number): void {
+    this.observationRange = Math.max(1, Math.min(20, range)); // Clamp between 1 and 20
+    console.log(`📐 [OBSERVATION] Range set to ${this.observationRange} tiles`);
+  }
+
+  /**
+   * Observe player current activity when NPCs are nearby
+   * This should be called when an NPC gets close to a player
+   */
+  async observePlayerCurrentActivity(playerId: string, playerName: string, location: string, currentActivity: string): Promise<void> {
+    if (!currentActivity || currentActivity === 'idle' || currentActivity === '') {
+      return; // Don't observe idle or empty activities
+    }
+
+    try {
+      // Find agents within observation range
+      const nearbyAgents = await this.findNearbyAgents(location, this.observationRange);
+      
+      if (nearbyAgents.length === 0) {
+        return;
+      }
+
+      console.log(`👀 [OBSERVATION] ${nearbyAgents.length} NPCs observing ${playerName}'s current activity: ${currentActivity}`);
+      
+      // Generate observations for each nearby agent
+      let observationsCreated = 0;
+      for (const agent of nearbyAgents) {
+        // Check if agent already has a recent memory of this player's activity
+        const recentMemoryCheck = await this.pool.query(`
+          SELECT id FROM agent_memories 
+          WHERE agent_id = $1 
+          AND related_players @> $2::text[]
+          AND content LIKE $3
+          AND timestamp >= NOW() - INTERVAL '5 minutes'
+          LIMIT 1
+        `, [agent.id, `{${playerId}}`, `%${currentActivity}%`]);
+
+        if (recentMemoryCheck.rows.length > 0) {
+          continue; // Skip if agent already observed this activity recently
+        }
+
+        // Generate observation
+        const observation = await this.generateCurrentActivityObservation(agent, playerId, playerName, currentActivity, location);
+        
+        if (observation) {
+          await this.storeObservation(observation);
+          observationsCreated++;
+          console.log(`📝 [OBSERVATION] Created memory for NPC ${agent.name} about ${playerName}'s activity: ${currentActivity}`);
+        }
+      }
+      
+      if (observationsCreated > 0) {
+        console.log(`✅ [OBSERVATION] Created ${observationsCreated} memories for player activity observation`);
+      }
+    } catch (error) {
+      console.error('Error observing player current activity:', error);
+    }
+  }
+
+  /**
+   * Generate observation for player's current activity
+   */
+  private async generateCurrentActivityObservation(
+    agent: { id: string; name: string; current_x: number; current_y: number; location: string },
+    playerId: string,
+    playerName: string,
+    currentActivity: string,
+    location: string
+  ): Promise<AgentObservation | null> {
+    
+    const observationText = `I noticed ${playerName} is ${currentActivity} nearby`;
+    const importance = 6; // Medium importance for observed activities
+    const tags = ['current_activity_observation', 'player_activity', 'proximity_observation'];
+    
+    // Add contextual information based on agent's current activity
+    const agentActivity = await this.getAgentActivity(agent.id);
+    let fullObservation = observationText;
+    if (agentActivity) {
+      fullObservation += ` while I was ${agentActivity}`;
+    }
+    
+    // Add temporal context
+    const timeOfDay = this.getTimeOfDay();
+    fullObservation += ` ${timeOfDay}`;
+    
+    return {
+      agent_id: agent.id,
+      observation: fullObservation,
+      location: location,
+      related_players: [playerId],
+      related_agents: [],
+      importance,
+      tags
+    };
   }
 
   /**

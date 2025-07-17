@@ -30,6 +30,7 @@ export class InputManager {
     private inputSequence: number = 0;
     private callbacks: InputCallbacks = {};
     private isDialogueActive: boolean = false;
+    private isMovementBlocked: boolean = false;
 
     constructor(scene: Scene) {
         this.scene = scene;
@@ -132,8 +133,8 @@ export class InputManager {
     public update() {
         const currentInput = this.getInputState();
         
-        // Skip movement processing if dialogue is active
-        if (this.isDialogueActive) {
+        // Skip movement processing if dialogue is active or movement is blocked
+        if (this.isDialogueActive || this.isMovementBlocked) {
             // Still update last input state to avoid stuck keys when dialogue closes
             this.lastInputState = { ...currentInput };
             return;
@@ -181,6 +182,11 @@ export class InputManager {
     public setDialogueActive(isActive: boolean) {
         this.isDialogueActive = isActive;
         console.log(`[INPUT] Dialogue state set to: ${isActive ? 'active' : 'inactive'}`);
+    }
+
+    public setMovementBlocked(blocked: boolean) {
+        this.isMovementBlocked = blocked;
+        console.log(`[INPUT] Movement blocked: ${blocked}`);
     }
 
     public destroy() {

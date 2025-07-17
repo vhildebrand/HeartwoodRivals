@@ -5,6 +5,7 @@ export class PlayerController {
     private scene: Scene;
     private sprites: Map<string, Phaser.Physics.Arcade.Sprite>;
     private nameLabels: Map<string, Phaser.GameObjects.Text>;
+    private activityLabels: Map<string, Phaser.GameObjects.Text>;
     private movementControllers: Map<string, MovementController>;
     private myPlayerId: string | null = null;
 
@@ -12,12 +13,21 @@ export class PlayerController {
         this.scene = scene;
         this.sprites = new Map();
         this.nameLabels = new Map();
+        this.activityLabels = new Map();
         this.movementControllers = new Map();
         console.log("PlayerController: Initialized");
     }
 
     public setMyPlayerId(playerId: string) {
         this.myPlayerId = playerId;
+    }
+    
+    public updatePlayerActivity(sessionId: string, activity: string) {
+        const activityLabel = this.activityLabels.get(sessionId);
+        if (activityLabel) {
+            activityLabel.setText(activity || "No activity set");
+            console.log(`PlayerController: Updated activity for ${sessionId} to: ${activity}`);
+        }
     }
 
     public createAnimations() {
@@ -111,6 +121,16 @@ export class PlayerController {
             nameLabel.setOrigin(0.5, 0.5);
             nameLabel.setDepth(15);
             
+            // Create activity label below name
+            const activityLabel = this.scene.add.text(playerData.x, playerData.y - 8, "No activity set", {
+                fontSize: '8px',
+                color: '#AAAAAA',
+                backgroundColor: '#000000',
+                padding: { x: 2, y: 1 }
+            });
+            activityLabel.setOrigin(0.5, 0.5);
+            activityLabel.setDepth(15);
+            
             // Create movement controller
             movementController = new MovementController(this.scene);
             movementController.setPosition(playerData.x, playerData.y);
@@ -121,6 +141,7 @@ export class PlayerController {
             // Store components
             this.sprites.set(sessionId, sprite);
             this.nameLabels.set(sessionId, nameLabel);
+            this.activityLabels.set(sessionId, activityLabel);
             this.movementControllers.set(sessionId, movementController);
             
             console.log(`PlayerController: Created player ${sessionId} at (${playerData.x}, ${playerData.y})`);
@@ -148,6 +169,14 @@ export class PlayerController {
                 if (distance > 3) {
                     movementController!.setTargetPosition(playerData.x, playerData.y);
                 }
+            }
+        }
+        
+        // Update activity label with server data
+        const activityLabel = this.activityLabels.get(sessionId);
+        if (activityLabel && playerData.currentActivity) {
+            if (activityLabel.text !== playerData.currentActivity) {
+                activityLabel.setText(playerData.currentActivity);
             }
         }
         
@@ -203,6 +232,12 @@ export class PlayerController {
             this.nameLabels.delete(sessionId);
         }
         
+        const activityLabel = this.activityLabels.get(sessionId);
+        if (activityLabel) {
+            activityLabel.destroy();
+            this.activityLabels.delete(sessionId);
+        }
+        
         this.movementControllers.delete(sessionId);
         console.log(`PlayerController: Removed player ${sessionId}`);
     }
@@ -227,10 +262,22 @@ export class PlayerController {
                 if (nameLabel) {
                     nameLabel.setPosition(newPosition.x, newPosition.y - 20);
                 }
+                
+                // Update activity label position
+                const activityLabel = this.activityLabels.get(sessionId);
+                if (activityLabel) {
+                    activityLabel.setPosition(newPosition.x, newPosition.y - 8);
+                }
             } else {
                 // For moving players, just update name label position to match sprite
                 if (nameLabel && sprite) {
                     nameLabel.setPosition(sprite.x, sprite.y - 20);
+                }
+                
+                // Update activity label position for moving players
+                const activityLabel = this.activityLabels.get(sessionId);
+                if (activityLabel && sprite) {
+                    activityLabel.setPosition(sprite.x, sprite.y - 8);
                 }
             }
         });

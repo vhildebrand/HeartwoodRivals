@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hotkey Prevention Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        
+        .test-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .test-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .hotkey-info {
+            background-color: #e2e3e5;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .instructions {
+            background-color: #cce5ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🎮 Hotkey Prevention Test</h1>
+        
+        <div class="instructions">
+            <strong>Instructions:</strong>
+            <ol>
+                <li>Click in any input field below and type the letter "T" or "Y"</li>
+                <li>Check that the hotkey status shows "BLOCKED" when typing in inputs</li>
+                <li>Click outside the input fields and press T or Y</li>
+                <li>Check that the hotkey status shows "ALLOWED" when not typing in inputs</li>
+            </ol>
+        </div>
+        
+        <div class="hotkey-info">
+            <strong>Game Hotkeys:</strong>
+            <ul>
+                <li><kbd>T</kbd> - Say something out loud</li>
+                <li><kbd>Y</kbd> - Update activity</li>
+            </ul>
+        </div>
+        
+        <div id="hotkeyStatus" class="status warning">
+            Hotkey Status: Ready for testing
+        </div>
+        
+        <h3>Test Input Fields:</h3>
+        
+        <label>Text Input:</label>
+        <input type="text" class="test-input" placeholder="Type 'T' or 'Y' here - hotkeys should be blocked">
+        
+        <label>Password Input:</label>
+        <input type="password" class="test-input" placeholder="Type 'T' or 'Y' here - hotkeys should be blocked">
+        
+        <label>Email Input:</label>
+        <input type="email" class="test-input" placeholder="Type 'T' or 'Y' here - hotkeys should be blocked">
+        
+        <label>Search Input:</label>
+        <input type="search" class="test-input" placeholder="Type 'T' or 'Y' here - hotkeys should be blocked">
+        
+        <label>Textarea:</label>
+        <textarea class="test-input" rows="3" placeholder="Type 'T' or 'Y' here - hotkeys should be blocked"></textarea>
+        
+        <label>Contenteditable Div:</label>
+        <div contenteditable="true" class="test-input" style="min-height: 40px; background-color: #fafafa;">
+            Type 'T' or 'Y' here - hotkeys should be blocked
+        </div>
+        
+        <h3>Test Results:</h3>
+        <div id="testResults"></div>
+    </div>
+
+    <script>
+        // Simulate the game's hotkey detection function
+        function isTypingInHtmlInput() {
+            const activeElement = document.activeElement;
+            
+            if (!activeElement) {
+                return false;
+            }
+            
+            // Check if typing in input fields
+            if (activeElement.tagName === 'INPUT') {
+                const inputType = activeElement.type;
+                // Allow hotkeys for buttons, checkboxes, etc., but not text inputs
+                return inputType === 'text' || inputType === 'password' || inputType === 'email' || 
+                       inputType === 'search' || inputType === 'url' || inputType === 'tel' || 
+                       inputType === 'number' || inputType === 'textarea';
+            }
+            
+            // Check if typing in textarea
+            if (activeElement.tagName === 'TEXTAREA') {
+                return true;
+            }
+            
+            // Check if typing in contenteditable element
+            if (activeElement.getAttribute('contenteditable') === 'true') {
+                return true;
+            }
+            
+            // Check if element has role="textbox"
+            if (activeElement.getAttribute('role') === 'textbox') {
+                return true;
+            }
+            
+            return false;
+        }
+        
+        // Test hotkey detection
+        function testHotkey(key) {
+            const isBlocked = isTypingInHtmlInput();
+            const statusElement = document.getElementById('hotkeyStatus');
+            const resultsElement = document.getElementById('testResults');
+            
+            if (isBlocked) {
+                statusElement.className = 'status success';
+                statusElement.textContent = `Hotkey "${key}" - BLOCKED (typing in input field)`;
+                resultsElement.innerHTML += `<div class="success">✅ Hotkey "${key}" correctly blocked while typing in input field</div>`;
+            } else {
+                statusElement.className = 'status warning';
+                statusElement.textContent = `Hotkey "${key}" - ALLOWED (not typing in input field)`;
+                resultsElement.innerHTML += `<div class="warning">⚠️ Hotkey "${key}" would be allowed (not typing in input field)</div>`;
+            }
+        }
+        
+        // Listen for T and Y keys
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'T' || event.key === 't') {
+                event.preventDefault(); // Prevent actual typing for demo
+                testHotkey('T');
+            } else if (event.key === 'Y' || event.key === 'y') {
+                event.preventDefault(); // Prevent actual typing for demo
+                testHotkey('Y');
+            }
+        });
+        
+        // Update status when focus changes
+        document.addEventListener('focusin', function(event) {
+            const statusElement = document.getElementById('hotkeyStatus');
+            if (isTypingInHtmlInput()) {
+                statusElement.className = 'status success';
+                statusElement.textContent = 'Hotkeys - BLOCKED (typing in input field)';
+            } else {
+                statusElement.className = 'status warning';
+                statusElement.textContent = 'Hotkeys - ALLOWED (not typing in input field)';
+            }
+        });
+        
+        document.addEventListener('focusout', function(event) {
+            const statusElement = document.getElementById('hotkeyStatus');
+            statusElement.className = 'status warning';
+            statusElement.textContent = 'Hotkeys - ALLOWED (not typing in input field)';
+        });
+    </script>
+</body>
+</html> 

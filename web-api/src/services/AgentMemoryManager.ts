@@ -1164,9 +1164,13 @@ Your reflection:`;
         const MAX_METACOGNITION_PER_DAY = 1;
         
         if (todayMetacognitionCount >= MAX_METACOGNITION_PER_DAY) {
-          console.log(`⏰ [METACOGNITION] ${agent_id} - Daily metacognition limit reached (${todayMetacognitionCount}/${MAX_METACOGNITION_PER_DAY}), skipping non-urgent event`);
+          console.log(`⏰ [METACOGNITION] ${agent_id} - Daily metacognition limit reached (${todayMetacognitionCount}/${MAX_METACOGNITION_PER_DAY}), skipping non-urgent event (importance: ${importance_score})`);
           return; // Skip metacognition to save API costs
         }
+        
+        console.log(`✅ [METACOGNITION] ${agent_id} - Daily limit check passed (${todayMetacognitionCount}/${MAX_METACOGNITION_PER_DAY}), proceeding with non-urgent event (importance: ${importance_score})`);
+      } else {
+        console.log(`🚨 [METACOGNITION] ${agent_id} - Urgent event bypassing daily limits (importance: ${importance_score})`);
       }
       
       // Queue metacognitive evaluation using Redis
@@ -1179,6 +1183,11 @@ Your reflection:`;
 
       await this.redisClient.lPush('metacognition_queue', queueItem);
       console.log(`🧠 [MEMORY->METACOGNITION] Queued metacognitive check for ${agent_id} (importance: ${importance_score}, urgent: ${isUrgentEvent})`);
+      
+      // Log urgent events more prominently
+      if (isUrgentEvent) {
+        console.log(`🚨 [URGENT METACOGNITION] ${agent_id} queued for urgent metacognitive evaluation (importance: ${importance_score})`);
+      }
     } catch (error) {
       console.error(`❌ [MEMORY->METACOGNITION] Error queuing metacognitive check:`, error);
     }
