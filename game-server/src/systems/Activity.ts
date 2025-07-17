@@ -783,7 +783,20 @@ export class Activity {
    * Get user-friendly display text for UI
    */
   public getDisplayText(): string {
-    return this.getActivityDisplayText();
+    const baseDisplayText = this.getActivityDisplayText();
+    
+    // Show destination when moving to a location
+    if (this.state === ActivityState.MOVING_TO_LOCATION) {
+      const targetLocation = this.context.targetLocation;
+      if (targetLocation) {
+        return `Moving to ${targetLocation.displayName} for: ${baseDisplayText}`;
+      } else {
+        return `Moving for: ${baseDisplayText}`;
+      }
+    }
+    
+    // For other states, show the base activity text
+    return baseDisplayText;
   }
 
   /**

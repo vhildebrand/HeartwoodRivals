@@ -439,7 +439,7 @@ Respond in the following JSON format:
     {
       "time": "HH:MM",
       "activity": "activity_type",
-      "description": "specific task description",
+      "description": "SPECIFIC detailed task description including what you'll do and why (e.g., 'visit the mansion to investigate salt-resistant seeds', 'meet with Isabella to discuss crop problems')",
       "reason": "compelling reason based on recent experiences",
       "priority": 1-10
     }
@@ -506,6 +506,13 @@ CRITICAL: If this situation is truly urgent/exciting and relevant to your role, 
 
 Focus on IMMEDIATE ACTION based on your professional duties AND personal interests/desires.
 
+CRITICAL: When creating schedule modifications, your description must include the SPECIFIC emergency details from the player message. Examples:
+- Instead of "emergency response" → "respond to fire at the church"
+- Instead of "medical work" → "treat injured person at the hospital"
+- Instead of "police response" → "investigate break-in at the bakery"
+- Instead of "social" → "meet old friend John at the tavern"
+- Instead of "visit" → "visit Sarah at the mansion to discuss seeds"
+
 AVAILABLE ACTIVITIES:
 - "emergency_response" - For medical emergencies (doctors, nurses, medical staff)
 - "fire_response" - For fire emergencies (fire chief, firefighters)
@@ -528,7 +535,7 @@ Respond in the following JSON format:
     {
       "time": "NOW",
       "activity": "appropriate_activity",
-      "description": "specific immediate action to take",
+      "description": "SPECIFIC detailed description including the exact emergency/situation details (e.g., 'respond to fire at the church', 'treat medical emergency at the hospital', 'investigate break-in at the bakery')",
       "reason": "urgent/exciting situation requiring immediate response",
       "priority": 10
     }
@@ -666,20 +673,25 @@ IMPORTANT: If this situation is urgent/exciting and relevant to your role OR per
    */
   private parseEmergencyLocation(description: string): string | null {
     const locationPatterns = [
-      /at the (.+?)(?:\s|$)/i,
-      /at (.+?)(?:\s|$)/i,
-      /in the (.+?)(?:\s|$)/i,
-      /in (.+?)(?:\s|$)/i,
-      /near the (.+?)(?:\s|$)/i,
-      /near (.+?)(?:\s|$)/i,
-      /by the (.+?)(?:\s|$)/i,
-      /by (.+?)(?:\s|$)/i
+      /visit the (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /to the (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /at the (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /in the (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /near the (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /by the (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /visit (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /to (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /at (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /in (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /near (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i,
+      /by (.+?)(?:\sto\s|\sand\s|\,|\.|$)/i
     ];
 
     for (const pattern of locationPatterns) {
       const match = description.match(pattern);
       if (match) {
         let locationName = match[1].trim();
+        console.log(`🎯 [LOCATION PARSING] Pattern: ${pattern} matched "${locationName}" from: "${description}"`);
         
         // Clean up common suffixes and convert to location ID format
         locationName = locationName.replace(/\s+/g, '_').toLowerCase();
@@ -711,10 +723,13 @@ IMPORTANT: If this situation is urgent/exciting and relevant to your role OR per
           'mansion': 'mansion'
         };
         
-        return locationMappings[locationName] || locationName;
+        const mappedLocation = locationMappings[locationName] || locationName;
+        console.log(`🎯 [LOCATION PARSING] Final mapped location: "${mappedLocation}" (from "${locationName}")`);
+        return mappedLocation;
       }
     }
     
+    console.log(`🎯 [LOCATION PARSING] No location found in: "${description}"`);
     return null;
   }
 
