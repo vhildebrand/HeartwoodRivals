@@ -325,7 +325,7 @@ export class HeartwoodRoom extends Room<GameState> {
         console.log(`  Button: ${message.button}`);
         console.log(`  Timestamp: ${new Date(message.timestamp).toISOString()}`);
 
-        // You can add game logic here later, such as:
+        // add game logic here later, such as:
         // - Tile interaction
         // - Item placement
         // - Building construction
