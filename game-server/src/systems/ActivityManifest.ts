@@ -23,7 +23,10 @@ export enum MovementPattern {
   WANDER = 'WANDER',         // Random movement within an area
   PACE = 'PACE',             // Back and forth movement
   CIRCLE = 'CIRCLE',         // Circular movement pattern
-  STATIC = 'STATIC'          // No movement
+  STATIC = 'STATIC',         // No movement
+  LAPS = 'LAPS',             // Running/walking laps around an area
+  ZIGZAG = 'ZIGZAG',         // Zigzag pattern for thorough coverage
+  PERIMETER = 'PERIMETER'    // Follow the perimeter of an area
 }
 
 export enum Duration {
@@ -32,11 +35,26 @@ export enum Duration {
   UNTIL_INTERRUPTED = 'UNTIL_INTERRUPTED' // Until interrupted by higher priority
 }
 
+export interface ActivityParameters {
+  description?: string;        // Custom display text
+  location?: string;          // Specific location ID
+  locationTags?: string[];    // Alternative location tags
+  movementPattern?: MovementPattern; // For movement activities
+  workType?: string;          // Type of work (smithing, baking, etc.)
+  mealType?: string;          // Type of meal (breakfast, lunch, dinner)
+  exerciseType?: string;      // Type of exercise (run, walk, training)
+  socialType?: string;        // Type of social interaction
+  patrolRoute?: string;       // Specific patrol route
+  emergencyType?: string;     // Type of emergency response
+  specificLocation?: string; // For activities that require a very specific location
+  [key: string]: any;         // Additional parameters
+}
+
 export interface ActivityManifestEntry {
   activityType: ActivityType;
-  locationTags?: string[];           // Tags to find appropriate locations
-  targetLocationId?: string;         // Specific location ID
-  movementPattern?: MovementPattern;
+  locationTags?: string[];           // Default tags to find appropriate locations
+  targetLocationId?: string;         // Default specific location ID
+  movementPattern?: MovementPattern; // Default movement pattern
   animation?: string;                // Animation key to play
   duration: Duration | string;       // How long the activity lasts
   priority?: number;                 // 1-10 scale, higher = more important
@@ -44,15 +62,19 @@ export interface ActivityManifestEntry {
   requiredEnergy?: number;           // Energy cost (1-100)
   moodImpact?: { [mood: string]: number }; // How this affects agent mood
   stateTransitions?: string[];       // What states this activity can transition to
-  description?: string;              // Human-readable description
+  description?: string;              // Default human-readable description
+  acceptsParameters?: boolean;       // Whether this activity accepts parameters
+  requiredParameters?: string[];     // Required parameter names
 }
 
 export class ActivityManifest {
   private static instance: ActivityManifest;
   private activities: Map<string, ActivityManifestEntry> = new Map();
+  private aliases: Map<string, string> = new Map(); // Maps old activity names to new ones
 
   private constructor() {
     this.loadActivities();
+    this.loadAliases();
   }
 
   public static getInstance(): ActivityManifest {
@@ -63,704 +85,294 @@ export class ActivityManifest {
   }
 
   /**
-   * Load all activity definitions based on agent schedules
+   * Load consolidated activity definitions
    */
   private loadActivities(): void {
-    
-    // === WAKE UP & MORNING ACTIVITIES ===
-    this.addActivity('wake_up', {
+    // === CORE EATING ACTIVITY ===
+    this.addActivity('eat', {
       activityType: ActivityType.STATIONARY,
-      locationTags: ['home', 'rest'],
-      duration: Duration.SCHEDULED,
-      priority: 9,
-      description: 'Waking up and starting the day'
-    });
-
-    this.addActivity('morning_meditation', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['home', 'quiet'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Morning meditation and reflection'
-    });
-
-    this.addActivity('morning_prayers', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['church', 'home'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Morning prayers and spiritual practice'
-    });
-
-    this.addActivity('morning_walk', {
-      activityType: ActivityType.ROUTINE_MOVEMENT,
-      movementPattern: MovementPattern.WANDER,
-      locationTags: ['outdoor', 'nature'],
-      duration: Duration.SCHEDULED,
-      priority: 5,
-      description: 'Morning walk for exercise and fresh air'
-    });
-
-    this.addActivity('sunrise_beach_run', {
-      activityType: ActivityType.ROUTINE_MOVEMENT,
-      movementPattern: MovementPattern.PATROL,
-      locationTags: ['beach', 'outdoor'],
-      duration: Duration.SCHEDULED,
-      priority: 5,
-      description: 'Running on the beach at sunrise'
-    });
-
-    // === EATING ACTIVITIES ===
-    this.addActivity('breakfast', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['food', 'eating', 'home'],
+      locationTags: ['food', 'eating'],
       duration: Duration.SCHEDULED,
       priority: 8,
-      description: 'Having breakfast'
+      description: 'Eating a meal',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    this.addActivity('lunch', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['food', 'eating'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Having lunch'
-    });
-
-    this.addActivity('dinner', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['food', 'eating'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Having dinner'
-    });
-
-    this.addActivity('lunch_at_tavern', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['tavern', 'food'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Having lunch at the tavern'
-    });
-
-    this.addActivity('dinner_at_tavern', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['tavern', 'food'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Having dinner at the tavern'
-    });
-
-    // === WORK ACTIVITIES ===
+    // === CORE WORK ACTIVITY ===
     this.addActivity('work', {
       activityType: ActivityType.STATIONARY,
       locationTags: ['work', 'business'],
       duration: Duration.SCHEDULED,
       priority: 6,
-      description: 'General work activities'
+      description: 'Working',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    this.addActivity('smithing', {
+    // === CORE SLEEP ACTIVITY ===
+    this.addActivity('sleep', {
       activityType: ActivityType.STATIONARY,
-      locationTags: ['forge', 'crafting', 'blacksmith'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Blacksmith work at the forge'
-    });
-
-    this.addActivity('baking', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['bakery', 'food', 'cooking'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Baking bread and pastries'
-    });
-
-    this.addActivity('woodworking', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['woodworker_shop', 'crafting'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Woodworking and furniture making'
-    });
-
-    this.addActivity('sewing', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['tailor_shop', 'sewing'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Sewing and tailoring work'
-    });
-
-    this.addActivity('teaching', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['school', 'education'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Teaching students'
-    });
-
-    this.addActivity('medical_work', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['hospital', 'medical'],
-      duration: Duration.SCHEDULED,
-      priority: 8,
-      description: 'Medical practice and patient care'
-    });
-
-    this.addActivity('emergency_response', {
-      activityType: ActivityType.GOTO_LOCATION,
-      locationTags: ['emergency', 'medical', 'urgent'],
-      duration: Duration.UNTIL_INTERRUPTED,
-      priority: 10,
-      interruptible: false,
-      description: 'Emergency response to urgent medical situations'
-    });
-
-    this.addActivity('fire_response', {
-      activityType: ActivityType.GOTO_LOCATION,
-      locationTags: ['emergency', 'fire', 'urgent'],
-      duration: Duration.UNTIL_INTERRUPTED,
-      priority: 10,
-      interruptible: false,
-      description: 'Emergency response to fire emergencies'
-    });
-
-    this.addActivity('police_response', {
-      activityType: ActivityType.GOTO_LOCATION,
-      locationTags: ['emergency', 'crime', 'urgent'],
-      duration: Duration.UNTIL_INTERRUPTED,
-      priority: 10,
-      interruptible: false,
-      description: 'Emergency response to criminal situations'
-    });
-
-    // === IMMEDIATE ACTION ACTIVITIES ===
-    this.addActivity('social', {
-      activityType: ActivityType.GOTO_LOCATION,
-      locationTags: ['social', 'entertainment', 'meeting'],
-      duration: Duration.UNTIL_INTERRUPTED,
-      priority: 8,
-      interruptible: false,
-      description: 'Immediate social interaction or gathering'
-    });
-
-    this.addActivity('visit', {
-      activityType: ActivityType.GOTO_LOCATION,
-      locationTags: ['social', 'meeting', 'home'],
-      duration: Duration.UNTIL_INTERRUPTED,
-      priority: 8,
-      interruptible: false,
-      description: 'Immediate visit to a person or place'
-    });
-
-    this.addActivity('entertainment', {
-      activityType: ActivityType.GOTO_LOCATION,
-      locationTags: ['entertainment', 'music', 'performance'],
-      duration: Duration.UNTIL_INTERRUPTED,
-      priority: 8,
-      interruptible: false,
-      description: 'Immediate attendance at entertainment event'
-    });
-
-    this.addActivity('library_work', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['library', 'books'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Library management and helping patrons'
-    });
-
-    this.addActivity('farming', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['farm', 'outdoor', 'agricultural'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Farming and agricultural work'
-    });
-
-    this.addActivity('gardening', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['garden', 'outdoor', 'agricultural', 'farm'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Gardening and plant care'
-    });
-
-    this.addActivity('fishing', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['fishing_dock', 'water'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Fishing activities'
-    });
-
-    this.addActivity('dj_work', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['dj_stage', 'entertainment'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'DJ performance and music work'
-    });
-
-    this.addActivity('lighthouse_keeping', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['lighthouse', 'navigation'],
+      locationTags: ['home', 'rest'],
       duration: Duration.SCHEDULED,
       priority: 9,
-      description: 'Lighthouse operation and maintenance'
+      description: 'Sleeping',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    this.addActivity('boat_work', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['shipyard', 'maritime'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Boat building and repair'
-    });
-
-    this.addActivity('apothecary_work', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['apothecary', 'medicine'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Herbal medicine and remedy preparation'
-    });
-
-    this.addActivity('tavern_work', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['tavern', 'service'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Tavern service and hospitality'
-    });
-
-    this.addActivity('store_work', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['store', 'business'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Store management and customer service'
-    });
-
-    // === ADDITIONAL MISSING ACTIVITIES ===
-    this.addActivity('farm_work', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['farm', 'outdoor', 'agricultural'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'General farm work and agricultural activities'
-    });
-
-    this.addActivity('crafting', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['crafting', 'workshop', 'work'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'General crafting and workshop activities'
-    });
-
-    this.addActivity('business', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['business', 'office', 'commercial'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Business activities and commercial work'
-    });
-
-    this.addActivity('sailing', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['harbor', 'maritime', 'boats', 'water'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Sailing and maritime activities'
-    });
-
-    this.addActivity('legal_work', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['office', 'legal', 'court', 'professional'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Legal work and court proceedings'
-    });
-
-    this.addActivity('administration', {
-      activityType: ActivityType.ADMINISTRATION,
-      locationTags: ['office', 'administration', 'government'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Administrative tasks and paperwork'
-    });
-
-    this.addActivity('meetings', {
-      activityType: ActivityType.SOCIAL_INTERACTION,
-      locationTags: ['meeting', 'office', 'business'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Business meetings and conferences'
-    });
-
+    // === CORE EXERCISE ACTIVITY ===
     this.addActivity('exercise', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['gym', 'fitness', 'training'],
+      activityType: ActivityType.ROUTINE_MOVEMENT,
+      movementPattern: MovementPattern.LAPS,
+      locationTags: ['outdoor', 'fitness'],
       duration: Duration.SCHEDULED,
       priority: 5,
-      description: 'Physical exercise and fitness training'
+      description: 'Exercising',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    this.addActivity('religious_service', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['church', 'worship', 'spiritual'],
-      duration: Duration.SCHEDULED,
-      priority: 8,
-      description: 'Religious services and worship'
+    // === CORE TRAVEL ACTIVITY ===
+    this.addActivity('travel', {
+      activityType: ActivityType.GOTO_LOCATION,
+      duration: Duration.UNTIL_ARRIVAL,
+      priority: 5,
+      description: 'Traveling to destination',
+      acceptsParameters: true,
+      requiredParameters: ['location']
     });
 
-    this.addActivity('counseling', {
+    // === CORE SOCIAL ACTIVITY ===
+    this.addActivity('socialize', {
       activityType: ActivityType.SOCIAL_INTERACTION,
-      locationTags: ['church', 'office', 'private'],
+      locationTags: ['social', 'meeting'],
       duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Counseling and spiritual guidance'
+      priority: 6,
+      description: 'Socializing',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    // === MAINTENANCE ACTIVITIES ===
-    this.addActivity('equipment_maintenance', {
+    // === CORE MAINTENANCE ACTIVITY ===
+    this.addActivity('maintain', {
       activityType: ActivityType.MAINTENANCE,
       locationTags: ['work', 'equipment'],
       duration: Duration.SCHEDULED,
       priority: 5,
-      description: 'Equipment maintenance and repair'
+      description: 'Performing maintenance',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    this.addActivity('forge_maintenance', {
-      activityType: ActivityType.MAINTENANCE,
-      locationTags: ['forge', 'blacksmith'],
+    // === CORE OBSERVATION ACTIVITY ===
+    this.addActivity('observe', {
+      activityType: ActivityType.OBSERVATION,
+      locationTags: ['watchtower', 'lighthouse'],
       duration: Duration.SCHEDULED,
-      priority: 5,
-      description: 'Forge maintenance and preparation'
+      priority: 6,
+      description: 'Observing surroundings',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    this.addActivity('tool_maintenance', {
-      activityType: ActivityType.MAINTENANCE,
-      locationTags: ['work', 'tools'],
-      duration: Duration.SCHEDULED,
-      priority: 5,
-      description: 'Tool maintenance and organization'
-    });
-
-    this.addActivity('shop_cleaning', {
-      activityType: ActivityType.MAINTENANCE,
-      locationTags: ['shop', 'business'],
+    // === CORE STUDY ACTIVITY ===
+    this.addActivity('study', {
+      activityType: ActivityType.STATIONARY,
+      locationTags: ['library', 'quiet'],
       duration: Duration.SCHEDULED,
       priority: 4,
-      description: 'Cleaning and organizing shop'
+      description: 'Studying or reading',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    this.addActivity('equipment_check', {
-      activityType: ActivityType.MAINTENANCE,
-      locationTags: ['work', 'equipment'],
+    // === CORE WORSHIP ACTIVITY ===
+    this.addActivity('worship', {
+      activityType: ActivityType.STATIONARY,
+      locationTags: ['church', 'spiritual'],
       duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Checking equipment functionality'
+      priority: 7,
+      description: 'Worshipping or praying',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    // === PATROL & SECURITY ACTIVITIES ===
+    // === CORE PATROL ACTIVITY ===
     this.addActivity('patrol', {
       activityType: ActivityType.ROUTINE_MOVEMENT,
       movementPattern: MovementPattern.PATROL,
       locationTags: ['public', 'security'],
       duration: Duration.SCHEDULED,
       priority: 7,
-      description: 'Security patrol of area'
+      description: 'Patrolling area',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    this.addActivity('town_patrol', {
-      activityType: ActivityType.ROUTINE_MOVEMENT,
-      movementPattern: MovementPattern.PATROL,
-      locationTags: ['town', 'public'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Patrolling the town'
+    // === CORE EMERGENCY ACTIVITY ===
+    this.addActivity('emergency', {
+      activityType: ActivityType.GOTO_LOCATION,
+      duration: Duration.UNTIL_INTERRUPTED,
+      priority: 10,
+      interruptible: false,
+      description: 'Emergency response',
+      acceptsParameters: true,
+      requiredParameters: ['location', 'emergencyType']
     });
 
-    this.addActivity('harbor_patrol', {
-      activityType: ActivityType.ROUTINE_MOVEMENT,
-      movementPattern: MovementPattern.PATROL,
-      locationTags: ['harbor', 'maritime'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Patrolling the harbor area'
-    });
-
-    this.addActivity('fire_safety_inspection', {
-      activityType: ActivityType.ROUTINE_MOVEMENT,
-      movementPattern: MovementPattern.PATROL,
-      locationTags: ['town', 'safety'],
-      duration: Duration.SCHEDULED,
-      priority: 8,
-      description: 'Fire safety inspections around town'
-    });
-
-    // === OBSERVATION & MONITORING ===
-    this.addActivity('weather_observation', {
-      activityType: ActivityType.OBSERVATION,
-      locationTags: ['lighthouse', 'outdoor'],
-      duration: Duration.SCHEDULED,
-      priority: 8,
-      description: 'Observing weather conditions'
-    });
-
-    this.addActivity('sea_monitoring', {
-      activityType: ActivityType.OBSERVATION,
-      locationTags: ['lighthouse', 'water'],
-      duration: Duration.SCHEDULED,
-      priority: 8,
-      description: 'Monitoring sea conditions'
-    });
-
-    this.addActivity('watch_duty', {
-      activityType: ActivityType.OBSERVATION,
-      locationTags: ['lighthouse', 'watchtower'],
-      duration: Duration.SCHEDULED,
-      priority: 8,
-      description: 'Standing watch and observation'
-    });
-
-    // === TRAINING & EDUCATION ===
-    this.addActivity('training', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['gym', 'training'],
-      duration: Duration.SCHEDULED,
-      priority: 5,
-      description: 'Physical training and exercise'
-    });
-
-    this.addActivity('fire_training', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['fire_station', 'training'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Fire department training'
-    });
-
-    this.addActivity('maritime_training', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['harbor', 'maritime'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Maritime rescue training'
-    });
-
-    this.addActivity('crew_training', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['work', 'training'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Training crew members'
-    });
-
-    // === SOCIAL ACTIVITIES ===
-    this.addActivity('socializing', {
-      activityType: ActivityType.SOCIAL_INTERACTION,
-      locationTags: ['social', 'gathering'],
-      duration: Duration.SCHEDULED,
-      priority: 5,
-      description: 'Socializing with others'
-    });
-
-    this.addActivity('community_meeting', {
-      activityType: ActivityType.SOCIAL_INTERACTION,
-      locationTags: ['town_hall', 'meeting'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Attending community meetings'
-    });
-
-    this.addActivity('meeting', {
-      activityType: ActivityType.SOCIAL_INTERACTION,
-      locationTags: ['meeting', 'business'],
-      duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Business or official meetings'
-    });
-
-    this.addActivity('consultation', {
-      activityType: ActivityType.SOCIAL_INTERACTION,
-      locationTags: ['business', 'professional'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Professional consultations'
-    });
-
-    this.addActivity('collaboration', {
-      activityType: ActivityType.SOCIAL_INTERACTION,
-      locationTags: ['work', 'social'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Collaborating with others'
-    });
-
-    // === LEISURE & PERSONAL ACTIVITIES ===
-    this.addActivity('reading', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['library', 'quiet', 'home'],
-      duration: Duration.SCHEDULED,
-      priority: 3,
-      description: 'Reading books or documents'
-    });
-
-    this.addActivity('personal_time', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['home', 'rest'],
-      duration: Duration.SCHEDULED,
-      priority: 4,
-      description: 'Personal time and relaxation'
-    });
-
-    this.addActivity('beach_walk', {
-      activityType: ActivityType.ROUTINE_MOVEMENT,
-      movementPattern: MovementPattern.WANDER,
-      locationTags: ['beach', 'outdoor'],
-      duration: Duration.SCHEDULED,
-      priority: 3,
-      description: 'Walking on the beach'
-    });
-
-    this.addActivity('evening_stroll', {
-      activityType: ActivityType.ROUTINE_MOVEMENT,
-      movementPattern: MovementPattern.WANDER,
-      locationTags: ['town', 'outdoor'],
-      duration: Duration.SCHEDULED,
-      priority: 3,
-      description: 'Evening stroll around town'
-    });
-
-    this.addActivity('music_practice', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['music', 'instruments', 'practice', 'home'],
-      duration: Duration.SCHEDULED,
-      priority: 5,
-      description: 'Practicing musical skills and performance'
-    });
-
-    this.addActivity('research', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['library', 'research', 'science'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Research and study activities'
-    });
-
-    this.addActivity('planning', {
-      activityType: ActivityType.ADMINISTRATION,
-      locationTags: ['office', 'work'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Planning and administrative work'
-    });
-
-    // === SLEEP & REST ===
-    this.addActivity('sleep', {
-      activityType: ActivityType.STATIONARY,
-      locationTags: ['home', 'rest'],
-      duration: Duration.SCHEDULED,
-      priority: 9,
-      description: 'Sleeping and resting'
-    });
-
+    // === CORE REST ACTIVITY ===
     this.addActivity('rest', {
       activityType: ActivityType.STATIONARY,
       locationTags: ['home', 'rest'],
       duration: Duration.SCHEDULED,
-      priority: 5,
-      description: 'Taking a rest break'
+      priority: 4,
+      description: 'Resting',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    this.addActivity('prepare_for_bed', {
+    // === CORE ADMINISTRATION ACTIVITY ===
+    this.addActivity('admin', {
+      activityType: ActivityType.ADMINISTRATION,
+      locationTags: ['office', 'business'],
+      duration: Duration.SCHEDULED,
+      priority: 5,
+      description: 'Administrative tasks',
+      acceptsParameters: true,
+      requiredParameters: []
+    });
+
+    // === CORE PERSONAL ACTIVITY ===
+    this.addActivity('personal', {
       activityType: ActivityType.STATIONARY,
-      locationTags: ['home', 'rest'],
+      locationTags: ['home', 'private'],
       duration: Duration.SCHEDULED,
-      priority: 7,
-      description: 'Preparing for bed'
+      priority: 3,
+      description: 'Personal activities',
+      acceptsParameters: true,
+      requiredParameters: []
     });
 
-    // === DELIVERY & TRANSPORT ===
-    this.addActivity('delivery', {
-      activityType: ActivityType.GOTO_LOCATION,
-      locationTags: ['business', 'trade'],
-      duration: Duration.SCHEDULED,
-      priority: 6,
-      description: 'Making deliveries'
-    });
+    console.log(`🎭 [ACTIVITY MANIFEST] Loaded ${this.activities.size} consolidated activities`);
+  }
 
-    this.addActivity('visit_store', {
-      activityType: ActivityType.GOTO_LOCATION,
-      locationTags: ['store', 'business'],
-      duration: Duration.SCHEDULED,
-      priority: 5,
-      description: 'Visiting a store'
-    });
+  /**
+   * Load aliases to map old activity names to new consolidated ones
+   */
+  private loadAliases(): void {
+    // Eating aliases
+    this.aliases.set('breakfast', 'eat');
+    this.aliases.set('lunch', 'eat');
+    this.aliases.set('dinner', 'eat');
+    this.aliases.set('lunch_at_tavern', 'eat');
+    this.aliases.set('dinner_at_tavern', 'eat');
 
-         // === GENERAL MOVEMENT ===
-     this.addActivity('walk_to_harbor', {
-       activityType: ActivityType.GOTO_LOCATION,
-       locationTags: ['harbor', 'maritime'],
-       duration: Duration.UNTIL_ARRIVAL,
-       priority: 5,
-       description: 'Walking to the harbor'
-     });
+    // Work aliases
+    this.aliases.set('smithing', 'work');
+    this.aliases.set('baking', 'work');
+    this.aliases.set('woodworking', 'work');
+    this.aliases.set('sewing', 'work');
+    this.aliases.set('teaching', 'work');
+    this.aliases.set('medical_work', 'work');
+    this.aliases.set('library_work', 'work');
+    this.aliases.set('farming', 'work');
+    this.aliases.set('farm_work', 'work');
+    this.aliases.set('gardening', 'work');
+    this.aliases.set('fishing', 'work');
+    this.aliases.set('dj_work', 'work');
+    this.aliases.set('lighthouse_keeping', 'work');
+    this.aliases.set('boat_work', 'work');
+    this.aliases.set('apothecary_work', 'work');
+    this.aliases.set('tavern_work', 'work');
+    this.aliases.set('store_work', 'work');
+    this.aliases.set('crafting', 'work');
+    this.aliases.set('business', 'work');
+    this.aliases.set('sailing', 'work');
+    this.aliases.set('legal_work', 'work');
+    this.aliases.set('general_work', 'work');
+    this.aliases.set('music_work', 'work');
 
-     this.addActivity('go_to_town_square', {
-       activityType: ActivityType.GOTO_LOCATION,
-       targetLocationId: 'town_square',
-       duration: Duration.UNTIL_ARRIVAL,
-       priority: 5,
-       description: 'Going to the town square'
-     });
+    // Exercise aliases
+    this.aliases.set('morning_walk', 'exercise');
+    this.aliases.set('sunrise_beach_run', 'exercise');
+    this.aliases.set('beach_walk', 'exercise');
+    this.aliases.set('evening_stroll', 'exercise');
+    this.aliases.set('training', 'exercise');
+    this.aliases.set('fire_training', 'exercise');
+    this.aliases.set('maritime_training', 'exercise');
+    this.aliases.set('crew_training', 'exercise');
 
-     // === FALLBACK ACTIVITIES ===
-     this.addActivity('general_work', {
-       activityType: ActivityType.STATIONARY,
-       locationTags: ['work', 'business', 'office'],
-       duration: Duration.SCHEDULED,
-       priority: 5,
-       description: 'General work activities'
-     });
+    // Travel aliases
+    this.aliases.set('walk_to_harbor', 'travel');
+    this.aliases.set('go_to_town_square', 'travel');
+    this.aliases.set('delivery', 'travel');
+    this.aliases.set('visit_store', 'travel');
+    this.aliases.set('visit', 'travel');
 
-     this.addActivity('organize', {
-       activityType: ActivityType.STATIONARY,
-       locationTags: ['work', 'shop', 'office'],
-       duration: Duration.SCHEDULED,
-       priority: 4,
-       description: 'Organizing and tidying up'
-     });
+    // Social aliases
+    this.aliases.set('socializing', 'socialize');
+    this.aliases.set('community_meeting', 'socialize');
+    this.aliases.set('meeting', 'socialize');
+    this.aliases.set('meetings', 'socialize');
+    this.aliases.set('consultation', 'socialize');
+    this.aliases.set('collaboration', 'socialize');
+    this.aliases.set('counseling', 'socialize');
+    this.aliases.set('social', 'socialize');
+    this.aliases.set('performance', 'socialize');
 
-     this.addActivity('review', {
-       activityType: ActivityType.STATIONARY,
-       locationTags: ['office', 'work', 'home'],
-       duration: Duration.SCHEDULED,
-       priority: 5,
-       description: 'Reviewing documents or plans'
-     });
+    // Maintenance aliases
+    this.aliases.set('equipment_maintenance', 'maintain');
+    this.aliases.set('forge_maintenance', 'maintain');
+    this.aliases.set('tool_maintenance', 'maintain');
+    this.aliases.set('shop_cleaning', 'maintain');
+    this.aliases.set('equipment_check', 'maintain');
+    this.aliases.set('organize', 'maintain');
 
-     this.addActivity('check', {
-       activityType: ActivityType.STATIONARY,
-       locationTags: ['work', 'equipment'],
-       duration: Duration.SCHEDULED,
-       priority: 5,
-       description: 'Checking equipment or status'
-     });
+    // Observation aliases
+    this.aliases.set('weather_observation', 'observe');
+    this.aliases.set('sea_monitoring', 'observe');
+    this.aliases.set('watch_duty', 'observe');
 
-     this.addActivity('prepare', {
-       activityType: ActivityType.STATIONARY,
-       locationTags: ['work', 'home'],
-       duration: Duration.SCHEDULED,
-       priority: 5,
-       description: 'Preparing for activities'
-     });
+    // Study aliases
+    this.aliases.set('reading', 'study');
+    this.aliases.set('research', 'study');
+    this.aliases.set('music_practice', 'study');
 
-    console.log(`🎭 [ACTIVITY MANIFEST] Loaded ${this.activities.size} activities`);
+    // Worship aliases
+    this.aliases.set('morning_prayers', 'worship');
+    this.aliases.set('morning_meditation', 'worship');
+    this.aliases.set('religious_service', 'worship');
+
+    // Patrol aliases
+    this.aliases.set('town_patrol', 'patrol');
+    this.aliases.set('harbor_patrol', 'patrol');
+    this.aliases.set('fire_safety_inspection', 'patrol');
+
+    // Emergency aliases
+    this.aliases.set('emergency_response', 'emergency');
+    this.aliases.set('fire_response', 'emergency');
+    this.aliases.set('police_response', 'emergency');
+
+    // Rest aliases
+    this.aliases.set('wake_up', 'rest');
+    this.aliases.set('prepare_for_bed', 'rest');
+    this.aliases.set('personal_time', 'personal');
+    this.aliases.set('relaxation', 'rest');
+    this.aliases.set('break', 'rest');
+
+    // Administration aliases
+    this.aliases.set('administration', 'admin');
+    this.aliases.set('planning', 'admin');
+    this.aliases.set('review', 'admin');
+    this.aliases.set('check', 'admin');
+    this.aliases.set('prepare', 'admin');
+    this.aliases.set('documentation', 'admin');
+
+    // Entertainment aliases
+    this.aliases.set('entertainment', 'socialize');
+
+    console.log(`🔄 [ACTIVITY MANIFEST] Loaded ${this.aliases.size} activity aliases`);
   }
 
   /**
@@ -771,15 +383,26 @@ export class ActivityManifest {
   }
 
   /**
-   * Get activity definition by name or alias
+   * Get activity definition by name, checking aliases first
    */
   public getActivity(activityName: string): ActivityManifestEntry | null {
     const originalName = activityName.trim();
     const normalizedName = this.normalizeActivityName(activityName);
     
-    // Check direct match first with original name
+    // Check direct match first
     if (this.activities.has(originalName)) {
       return this.activities.get(originalName)!;
+    }
+    
+    // Check aliases
+    if (this.aliases.has(originalName)) {
+      const aliasTarget = this.aliases.get(originalName)!;
+      return this.activities.get(aliasTarget)!;
+    }
+    
+    if (this.aliases.has(normalizedName)) {
+      const aliasTarget = this.aliases.get(normalizedName)!;
+      return this.activities.get(aliasTarget)!;
     }
     
     // Check direct match with normalized name
@@ -794,6 +417,295 @@ export class ActivityManifest {
     }
     
     return null;
+  }
+
+  /**
+   * Resolve activity name through aliases
+   */
+  public resolveActivityName(activityName: string): string {
+    const originalName = activityName.trim();
+    const normalizedName = this.normalizeActivityName(activityName);
+    
+    // Check direct match first
+    if (this.activities.has(originalName)) {
+      return originalName;
+    }
+    
+    // Check aliases
+    if (this.aliases.has(originalName)) {
+      return this.aliases.get(originalName)!;
+    }
+    
+    if (this.aliases.has(normalizedName)) {
+      return this.aliases.get(normalizedName)!;
+    }
+    
+    // Check direct match with normalized name
+    if (this.activities.has(normalizedName)) {
+      return normalizedName;
+    }
+    
+    // Try fuzzy matching as last resort
+    const fuzzyMatch = this.findFuzzyMatch(normalizedName);
+    if (fuzzyMatch) {
+      return fuzzyMatch;
+    }
+    
+    return originalName; // Return original if no match found
+  }
+
+  /**
+   * Create activity parameters from legacy activity name
+   */
+  public createParametersFromLegacyName(originalName: string, resolvedName: string): ActivityParameters {
+    const parameters: ActivityParameters = {};
+    
+    // Extract parameters based on original name patterns
+    const lowerOriginal = originalName.toLowerCase();
+    
+    // Meal type extraction
+    if (lowerOriginal.includes('breakfast')) {
+      parameters.mealType = 'breakfast';
+      parameters.description = 'Having breakfast';
+    } else if (lowerOriginal.includes('lunch')) {
+      parameters.mealType = 'lunch';
+      parameters.description = 'Having lunch';
+    } else if (lowerOriginal.includes('dinner')) {
+      parameters.mealType = 'dinner';
+      parameters.description = 'Having dinner';
+    }
+    
+    // Location extraction
+    if (lowerOriginal.includes('tavern')) {
+      parameters.locationTags = ['tavern', 'food'];
+      parameters.description = parameters.description ? parameters.description + ' at the tavern' : 'At the tavern';
+    } else if (lowerOriginal.includes('beach')) {
+      parameters.locationTags = ['beach', 'outdoor'];
+      parameters.description = parameters.description ? parameters.description + ' at the beach' : 'At the beach';
+    } else if (lowerOriginal.includes('harbor')) {
+      parameters.locationTags = ['harbor', 'maritime'];
+      parameters.description = parameters.description ? parameters.description + ' at the harbor' : 'At the harbor';
+    }
+    
+    // Exercise type extraction
+    if (lowerOriginal.includes('run')) {
+      parameters.exerciseType = 'run';
+      parameters.movementPattern = MovementPattern.LAPS;
+      parameters.description = 'Going for a run';
+    } else if (lowerOriginal.includes('walk')) {
+      parameters.exerciseType = 'walk';
+      parameters.movementPattern = MovementPattern.WANDER;
+      parameters.description = 'Going for a walk';
+    } else if (lowerOriginal.includes('stroll')) {
+      parameters.exerciseType = 'stroll';
+      parameters.movementPattern = MovementPattern.WANDER;
+      parameters.description = 'Going for a stroll';
+    }
+    
+    // Work type extraction
+    if (lowerOriginal.includes('smithing') || lowerOriginal.includes('forge')) {
+      parameters.workType = 'smithing';
+      parameters.locationTags = ['forge', 'blacksmith'];
+      parameters.description = 'Working at the forge';
+    } else if (lowerOriginal.includes('baking') || lowerOriginal.includes('bakery')) {
+      parameters.workType = 'baking';
+      parameters.locationTags = ['bakery', 'cooking'];
+      parameters.description = 'Baking bread and pastries';
+    } else if (lowerOriginal.includes('teaching') || lowerOriginal.includes('school')) {
+      parameters.workType = 'teaching';
+      parameters.locationTags = ['school', 'education'];
+      parameters.description = 'Teaching students';
+    } else if (lowerOriginal.includes('medical') || lowerOriginal.includes('hospital')) {
+      parameters.workType = 'medical';
+      parameters.locationTags = ['hospital', 'medical'];
+      parameters.description = 'Providing medical care';
+    }
+    
+    // Time-based descriptions
+    if (lowerOriginal.includes('morning')) {
+      parameters.description = parameters.description ? 'Morning ' + parameters.description.toLowerCase() : 'Morning activities';
+    } else if (lowerOriginal.includes('evening')) {
+      parameters.description = parameters.description ? 'Evening ' + parameters.description.toLowerCase() : 'Evening activities';
+    } else if (lowerOriginal.includes('sunrise')) {
+      parameters.description = parameters.description ? 'Sunrise ' + parameters.description.toLowerCase() : 'Sunrise activities';
+    }
+    
+    return parameters;
+  }
+
+  /**
+   * Extract specific location from schedule description
+   * This provides much more precise location constraints than generic tags
+   */
+  public extractLocationFromDescription(description: string): ActivityParameters {
+    const parameters: ActivityParameters = {};
+    const lowerDesc = description.toLowerCase();
+    
+    // Location keyword mappings to specific location IDs
+    const locationKeywords: { [key: string]: string } = {
+      // Specific buildings/locations
+      'gym': 'gym',
+      'bakery': 'bakery',
+      'lighthouse': 'lighthouse',
+      'forge': 'blacksmith_shop',
+      'blacksmith': 'blacksmith_shop',
+      'tavern': 'tavern',
+      'hospital': 'hospital',
+      'school': 'school',
+      'library': 'library',
+      'church': 'church',
+      'town hall': 'town_hall',
+      'dock': 'fishing_dock',
+      'shipyard': 'shipyard',
+      'farm': 'farm',
+      'lighthouse keeper': 'lighthouse',
+      'apothecary': 'apothecary',
+      'tailor': 'tailor_shop',
+      'woodworker': 'woodworker_shop',
+      'merchant': 'merchant_stand',
+      
+      // Areas
+      'beach': 'beach',
+      'harbor': 'harbor',
+      'town square': 'town_square',
+      'market': 'market',
+      'park': 'park',
+      'forest': 'forest',
+      'coastline': 'coastline',
+      'pier': 'pier',
+      
+      // Equipment/activity specific
+      'ovens': 'bakery',
+      'anvil': 'blacksmith_shop',
+      'altar': 'church',
+      'books': 'library',
+      'patients': 'hospital',
+      'students': 'school',
+      'stage': 'performance_stage',
+      'training': 'gym',
+      'workout': 'gym',
+      'fitness': 'gym',
+      
+      // Activity-specific mappings
+      'bread': 'bakery',
+      'baking': 'bakery',
+      'pastries': 'bakery',
+      'laboratory': 'hospital',
+      'experiments': 'hospital',
+      'patient': 'hospital',
+      'rounds': 'hospital',
+      'care': 'hospital',
+      'watch': 'lighthouse',
+      'shipping': 'shipyard',
+      'boats': 'shipyard',
+      'vessels': 'shipyard',
+      'prayer': 'church',
+      'prayers': 'church',
+      'service': 'church',
+      'worship': 'church',
+      'sermon': 'church'
+    };
+    
+    // Multi-word location phrases (check these first)
+    const multiWordPhrases = [
+      'town hall',
+      'town square',
+      'fishing dock',
+      'lighthouse keeper',
+      'tailor shop',
+      'woodworker shop',
+      'merchant stand',
+      'performance stage',
+      'blacksmith shop'
+    ];
+    
+    // Check for multi-word phrases first
+    for (const phrase of multiWordPhrases) {
+      if (lowerDesc.includes(phrase)) {
+        const locationId = locationKeywords[phrase];
+        if (locationId) {
+          parameters.specificLocation = locationId;
+          parameters.description = description; // Keep original description
+          break;
+        }
+      }
+    }
+    
+    // If no multi-word phrase found, check single words
+    if (!parameters.specificLocation) {
+      for (const [keyword, locationId] of Object.entries(locationKeywords)) {
+        if (lowerDesc.includes(keyword)) {
+          if (locationId) {
+            parameters.specificLocation = locationId;
+            parameters.description = description; // Keep original description
+            break;
+          }
+        }
+      }
+    }
+    
+    // Special context-based location detection
+    if (!parameters.specificLocation) {
+      // Equipment maintenance could be location-specific based on context
+      if (lowerDesc.includes('equipment')) {
+        if (lowerDesc.includes('gym')) {
+          parameters.specificLocation = 'gym';
+        } else if (lowerDesc.includes('ship') || lowerDesc.includes('boat')) {
+          parameters.specificLocation = 'shipyard';
+        } else if (lowerDesc.includes('forge')) {
+          parameters.specificLocation = 'blacksmith_shop';
+        } else if (lowerDesc.includes('lighthouse')) {
+          parameters.specificLocation = 'lighthouse';
+        }
+      }
+      
+      // Serving/opening/closing patterns
+      if (lowerDesc.includes('open') || lowerDesc.includes('serve') || lowerDesc.includes('close')) {
+        if (lowerDesc.includes('bakery')) {
+          parameters.specificLocation = 'bakery';
+        } else if (lowerDesc.includes('gym')) {
+          parameters.specificLocation = 'gym';
+        } else if (lowerDesc.includes('tavern')) {
+          parameters.specificLocation = 'tavern';
+        } else if (lowerDesc.includes('shop')) {
+          // Try to determine which shop
+          if (lowerDesc.includes('tailor')) {
+            parameters.specificLocation = 'tailor_shop';
+          } else if (lowerDesc.includes('blacksmith')) {
+            parameters.specificLocation = 'blacksmith_shop';
+          } else if (lowerDesc.includes('woodworker')) {
+            parameters.specificLocation = 'woodworker_shop';
+          }
+        }
+      }
+      
+      // Work preparation patterns
+      if (lowerDesc.includes('prepare') || lowerDesc.includes('setup') || lowerDesc.includes('set up')) {
+        if (lowerDesc.includes('lighthouse')) {
+          parameters.specificLocation = 'lighthouse';
+        } else if (lowerDesc.includes('gym')) {
+          parameters.specificLocation = 'gym';
+        } else if (lowerDesc.includes('forge')) {
+          parameters.specificLocation = 'blacksmith_shop';
+        } else if (lowerDesc.includes('ovens')) {
+          parameters.specificLocation = 'bakery';
+        }
+      }
+    }
+    
+    // Add fallback location tags if no specific location found
+    if (!parameters.specificLocation) {
+      // Work-related fallbacks
+      if (lowerDesc.includes('maintenance') || lowerDesc.includes('repair') || lowerDesc.includes('clean')) {
+        parameters.locationTags = ['work', 'maintenance'];
+      } else if (lowerDesc.includes('serve') || lowerDesc.includes('customer')) {
+        parameters.locationTags = ['business', 'service'];
+      } else if (lowerDesc.includes('prepare') || lowerDesc.includes('setup')) {
+        parameters.locationTags = ['work', 'preparation'];
+      }
+    }
+    
+    return parameters;
   }
 
   /**
@@ -901,10 +813,10 @@ export class ActivityManifest {
   }
 
   /**
-   * Debug: Print all activities
+   * Debug: Print all activities and aliases
    */
   public debugPrintActivities(): void {
-    console.log('\n🎭 [ACTIVITY MANIFEST] All Activities:');
+    console.log('\n🎭 [ACTIVITY MANIFEST] Consolidated Activities:');
     for (const [key, activity] of this.activities) {
       console.log(`  ${key}: ${activity.activityType} - ${activity.description}`);
       if (activity.locationTags) {
@@ -913,6 +825,11 @@ export class ActivityManifest {
       if (activity.targetLocationId) {
         console.log(`    Target Location: ${activity.targetLocationId}`);
       }
+    }
+    
+    console.log('\n🔄 [ACTIVITY MANIFEST] Activity Aliases:');
+    for (const [alias, target] of this.aliases) {
+      console.log(`  ${alias} → ${target}`);
     }
   }
 } 

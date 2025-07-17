@@ -6,14 +6,14 @@
 
 import { SpawnedAgent } from './AgentSpawner';
 import { Activity, ActivityState } from './Activity';
-import { ActivityManifest } from './ActivityManifest';
+import { ActivityManifest, ActivityParameters } from './ActivityManifest';
 import { WorldLocationRegistry } from './WorldLocationRegistry';
 import { AgentState } from './AgentStateMachine';
 
 export interface ActivityRequest {
   activityName: string;
   priority?: number;
-  parameters?: { [key: string]: any };
+  parameters?: ActivityParameters;
   interruptCurrent?: boolean;
 }
 
@@ -58,10 +58,10 @@ export class ActivityManager {
       this.processNextActivity();
     }
     
-    // Update agent schema with current status for debug display
-    const currentStatus = this.getStatus();
-    if (this.agent.schema.currentActivity !== currentStatus) {
-      this.agent.schema.currentActivity = currentStatus;
+    // Update agent schema with rich display text for client display
+    const currentDisplayText = this.getDisplayText();
+    if (this.agent.schema.currentActivity !== currentDisplayText) {
+      this.agent.schema.currentActivity = currentDisplayText;
     }
   }
 
@@ -69,10 +69,11 @@ export class ActivityManager {
    * Request a new activity for the agent
    */
   public requestActivity(request: ActivityRequest): ActivityResult {
-    console.log(`🎭 [ACTIVITY MANAGER] ${this.agent.data.name} requesting activity: ${request.activityName}`);
+    const resolvedName = this.activityManifest.resolveActivityName(request.activityName);
+    console.log(`🎭 [ACTIVITY MANAGER] ${this.agent.data.name} requesting activity: ${request.activityName} → ${resolvedName}`);
     
     // Validate the activity exists
-    const manifest = this.activityManifest.getActivity(request.activityName);
+    const manifest = this.activityManifest.getActivity(resolvedName);
     if (!manifest) {
       return {
         success: false,
@@ -106,17 +107,30 @@ export class ActivityManager {
    */
   private startActivity(request: ActivityRequest): ActivityResult {
     try {
-      const activity = new Activity(this.agent, request.activityName, request.parameters);
+      // Create merged parameters including legacy parameters
+      const legacyParameters = this.activityManifest.createParametersFromLegacyName(
+        request.activityName, 
+        this.activityManifest.resolveActivityName(request.activityName)
+      );
+      
+      // Merge parameters with request parameters taking precedence over legacy
+      const mergedParameters: ActivityParameters = {
+        ...legacyParameters,
+        ...request.parameters,
+        // Ensure request parameters override legacy parameters
+        ...(request.parameters || {})
+      };
+      
+      const activity = new Activity(this.agent, request.activityName, mergedParameters);
       this.currentActivity = activity;
       
-      const manifest = this.activityManifest.getActivity(request.activityName);
-      
-      console.log(`🎬 [ACTIVITY MANAGER] ${this.agent.data.name} starting activity: ${request.activityName}`);
+      const resolvedName = this.activityManifest.resolveActivityName(request.activityName);
+      console.log(`🎬 [ACTIVITY MANAGER] ${this.agent.data.name} starting activity: ${request.activityName} → ${resolvedName}`);
       
       return {
         success: true,
         message: `Started activity: ${request.activityName}`,
-        activityId: activity.getContext().activityName,
+        activityId: activity.getContext().resolvedActivityName,
         estimatedDuration: -1 // Duration determined by schedule
       };
       
@@ -139,7 +153,7 @@ export class ActivityManager {
     const context = activity.getContext();
     const wasSuccessful = activity.wasSuccessful();
     
-    console.log(`🏁 [ACTIVITY MANAGER] ${this.agent.data.name} completed activity: ${context.activityName} (${wasSuccessful ? 'SUCCESS' : 'FAILED'})`);
+    console.log(`🏁 [ACTIVITY MANAGER] ${this.agent.data.name} completed activity: ${context.originalActivityName} → ${context.resolvedActivityName} (${wasSuccessful ? 'SUCCESS' : 'FAILED'})`);
     
     // Add to history
     this.activityHistory.push(activity);
@@ -255,23 +269,22 @@ export class ActivityManager {
    */
   public getStatus(): string {
     if (this.currentActivity) {
-      const activity = this.currentActivity;
-      const activityName = activity.getContext().activityName;
-      const state = activity.getState();
-      const progress = Math.round(activity.getProgress() * 100);
-      
-      // Show destination when moving to a location
-      if (state === 'MOVING_TO_LOCATION') {
-        const targetLocation = activity.getContext().targetLocation;
-        if (targetLocation) {
-          return `Moving to ${targetLocation.displayName}`;
-        } else {
-          return `Moving to location`;
-        }
-      }
-      
-      // Show current activity with progress
-      return `${activityName} (${progress}%)`;
+      return this.currentActivity.getDetailedStatus();
+    }
+    
+    if (this.activityQueue.length > 0) {
+      return `Idle (${this.activityQueue.length} queued)`;
+    }
+    
+    return 'Idle';
+  }
+
+  /**
+   * Get simple display text for UI (shows rich descriptions)
+   */
+  public getDisplayText(): string {
+    if (this.currentActivity) {
+      return this.currentActivity.getDisplayText();
     }
     
     if (this.activityQueue.length > 0) {
@@ -325,14 +338,33 @@ export class ActivityManager {
     // Get the custom description for this activity from the agent's schedule
     const customDescription = this.getCustomDescriptionForActivity(activityName, scheduledTime);
     
+    // Extract location information from the description if available
+    const locationParameters = customDescription 
+      ? this.activityManifest.extractLocationFromDescription(customDescription)
+      : {};
+    
+    // Merge all parameters: legacy + location extraction + schedule description (highest priority)
+    const parameters: ActivityParameters = {
+      scheduledTime,
+      ...locationParameters,
+      // Schedule description should override location extraction descriptions
+      ...(customDescription && { customDescription }),
+      // Don't let location extraction override the schedule description
+      ...(customDescription && { description: customDescription })
+    };
+    
+    // Log location extraction results
+    if (locationParameters.specificLocation) {
+      console.log(`🎯 [ACTIVITY MANAGER] Extracted specific location: ${locationParameters.specificLocation} from "${customDescription}"`);
+    } else if (locationParameters.locationTags) {
+      console.log(`🏷️ [ACTIVITY MANAGER] Extracted location tags: ${locationParameters.locationTags.join(', ')} from "${customDescription}"`);
+    }
+    
     return this.requestActivity({
       activityName,
       priority: 8, // High priority for scheduled activities
       interruptCurrent: true,
-      parameters: { 
-        scheduledTime,
-        customDescription 
-      }
+      parameters
     });
   }
 
@@ -359,7 +391,8 @@ export class ActivityManager {
    */
   public completeCurrentActivity(): void {
     if (this.currentActivity) {
-      console.log(`⏰ [ACTIVITY MANAGER] Completing current activity for ${this.agent.data.name}: ${this.currentActivity.getContext().activityName}`);
+      const context = this.currentActivity.getContext();
+      console.log(`⏰ [ACTIVITY MANAGER] Completing current activity for ${this.agent.data.name}: ${context.originalActivityName} → ${context.resolvedActivityName}`);
       this.currentActivity.interrupt(); // This will trigger completion
     }
   }
@@ -368,17 +401,33 @@ export class ActivityManager {
    * Get debug information
    */
   public getDebugInfo(): { [key: string]: any } {
+    const currentActivity = this.currentActivity;
     return {
       agentId: this.agent.data.id,
       agentName: this.agent.data.name,
-      currentActivity: this.currentActivity ? {
-        name: this.currentActivity.getContext().activityName,
-        state: this.currentActivity.getState(),
-        progress: this.currentActivity.getProgress(),
-        duration: this.currentActivity.getDuration()
+      currentActivity: currentActivity ? {
+        originalName: currentActivity.getContext().originalActivityName,
+        resolvedName: currentActivity.getContext().resolvedActivityName,
+        displayText: currentActivity.getDisplayText(),
+        detailedStatus: currentActivity.getDetailedStatus(),
+        state: currentActivity.getState(),
+        progress: currentActivity.getProgress(),
+        progressPercent: Math.round(currentActivity.getProgress() * 100),
+        duration: currentActivity.getDuration(),
+        durationSeconds: Math.round(currentActivity.getDuration() / 1000),
+        scheduledTime: currentActivity.getContext().parameters.scheduledTime,
+        specificLocation: currentActivity.getContext().parameters.specificLocation,
+        targetLocation: currentActivity.getContext().targetLocation?.displayName,
+        parameters: currentActivity.getContext().parameters
       } : null,
       queueSize: this.activityQueue.length,
+      nextQueuedActivity: this.activityQueue.length > 0 ? this.activityQueue[0].activityName : null,
       historySize: this.activityHistory.length,
+      lastCompletedActivity: this.activityHistory.length > 0 ? {
+        name: this.activityHistory[this.activityHistory.length - 1].getContext().originalActivityName,
+        displayText: this.activityHistory[this.activityHistory.length - 1].getDisplayText(),
+        wasSuccessful: this.activityHistory[this.activityHistory.length - 1].wasSuccessful()
+      } : null,
       isAvailable: this.isAvailable(),
       status: this.getStatus(),
       suggestedActivities: this.getSuggestedActivities()

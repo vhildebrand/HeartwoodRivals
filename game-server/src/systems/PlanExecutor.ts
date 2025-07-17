@@ -149,7 +149,7 @@ export class PlanExecutor {
    * Execute a specific action for an agent using the new activity system
    */
   public async executeAction(agent: SpawnedAgent, action: ScheduledAction): Promise<ActionResult> {
-    console.log(`🎬 [SCHEDULE] Executing action for ${agent.data.name}: "${action.action}" at ${action.time}`);
+    // console.log(`🎬 [SCHEDULE] Executing action for ${agent.data.name}: "${action.action}" at ${action.time}`);
     
     try {
       // Check if agent is available for this action
