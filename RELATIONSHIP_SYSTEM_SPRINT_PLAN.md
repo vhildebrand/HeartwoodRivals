@@ -53,22 +53,23 @@ This document details the sprint-by-sprint plan for implementing the **Competiti
 
 ---
 
-### **Sprint 3: The Gossip System**
+### **Sprint 3: Conversational Gossip Analysis**
 
-**Goal**: Implement the full gossip mechanic, allowing players to actively influence NPC opinions and player reputations.
+**Goal**: Enhance the AI to detect and analyze gossip within natural conversation, allowing players to influence NPC opinions and reputations through dialogue.
 
 **Timeline**: 2 weeks
 
 | Task ID | Task                                                                     | Service      | Priority | Status    |
 | :------ | :----------------------------------------------------------------------- | :----------- | :------- | :-------- |
-| RS-301  | **Backend**: Implement `POST /v1/agents/:agentId/gossip` endpoint        | `web-api`    | **High** | `Pending` |
-| RS-302  | **Backend**: Implement gossip logic in `LLMWorker` (credibility, impact)   | `web-api`    | **High** | `Pending` |
-| RS-303  | **Backend**: `ReputationManager` updates scores based on `gossip_logs`       | `web-api`    | `Medium` | `Pending` |
-| RS-304  | **Frontend**: Add "Spread Gossip" dialogue option, gated by `trust_level`    | `client`     | **High** | `Pending` |
-| RS-305  | **Testing**: E2E test: player spreads gossip, verify all DB changes        | `e2e`        | **High** | `Pending` |
-| RS-306  | **Backend**: Implement cooldown mechanism for gossip endpoint              | `web-api`    | `Medium` | `Pending` |
+| RS-301  | **Backend**: Enhance `LLMWorker` with a post-response analysis step        | `web-api`    | **High** | `Pending` |
+| RS-302  | **Backend**: Develop LLM prompt to detect gossip, subject, and sentiment   | `web-api`    | **High** | `Pending` |
+| RS-303  | **Backend**: Log detected gossip and its credibility to `gossip_logs`      | `web-api`    | `Medium` | `Pending` |
+| RS-304  | **Backend**: `ReputationManager` updates scores based on analyzed gossip   | `web-api`    | `Medium` | `Pending` |
+| RS-305  | **Testing**: E2E test: Player makes a statement, verify gossip is logged   | `e2e`        | **High** | `Pending` |
+| RS-306  | **Testing**: Verify NPC creates the correct memory from the conversation | `e2e`        | `High` | `Pending` |
 
-**Deliverable**: Players can now use the gossip system. Spreading information will create memories for NPCs and affect player reputations.
+
+**Deliverable**: Players can now influence each other's reputations by talking about them to NPCs. The AI will interpret these conversations and create corresponding memories and reputation adjustments. There will be no UI change.
 
 ---
 
@@ -121,8 +122,8 @@ This document details the sprint-by-sprint plan for implementing the **Competiti
 | Task ID | Task                                                                   | Service       | Priority | Status    |
 | :------ | :--------------------------------------------------------------------- | :------------ | :------- | :-------- |
 | RS-601  | **Balancing**: Tune all numerical values (affection, reputation, thresholds) | `config`      | **High** | `Pending` |
-| RS-602  | **Backend**: Enhance Metacognition to better handle conflicting gossip | `web-api`     | **High** | `Pending` |
-| RS-603  | **UI/UX**: Improve player feedback without using explicit numbers        | `client`      | `Medium` | `Pending` |
+| RS-602  | **Backend**: Enhance Metacognition to better handle conflicting information | `web-api`     | **High** | `Pending` |
+| RS-603  | **UI/UX**: Improve player feedback with more nuanced dialogue variations    | `client`      | `Medium` | `Pending` |
 | RS-604  | **QA**: Full regression and exploratory testing of the social system     | `all`         | **High** | `Pending` |
 | RS-605  | **Docs**: Update `PRD.md` and `DesignDoc.md` with final implementation   | `docs`        | `Medium` | `Pending` |
 
