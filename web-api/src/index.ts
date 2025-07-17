@@ -12,6 +12,7 @@ import { AgentMemoryManager } from './services/AgentMemoryManager';
 import { AgentObservationSystem } from './services/AgentObservationSystem';
 import { ReflectionProcessor } from './services/ReflectionProcessor';
 import { MetacognitionProcessor } from './services/MetacognitionProcessor';
+import { ReputationManager } from './services/ReputationManager';
 import { loadAgents } from './utils/loadAgents';
 
 // Load environment variables
@@ -53,8 +54,12 @@ async function initializeConnections() {
     const memoryManager = new AgentMemoryManager(pool, redisClient);
     console.log('✅ Agent Memory Manager initialized');
     
+    // Initialize Reputation Manager
+    const reputationManager = new ReputationManager(pool, redisClient);
+    console.log('✅ Reputation Manager initialized');
+    
     // Initialize Observation System
-    const observationSystem = new AgentObservationSystem(pool, redisClient, memoryManager);
+    const observationSystem = new AgentObservationSystem(pool, redisClient, memoryManager, reputationManager);
     await observationSystem.initialize();
     console.log('✅ Agent Observation System initialized');
     

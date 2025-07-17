@@ -287,6 +287,41 @@ export class AgentMemoryManager {
   }
 
   /**
+   * Store an observation with pre-defined tags (for witnessable social events)
+   */
+  async storeObservationWithTags(
+    agent_id: string,
+    observation: string,
+    location: string,
+    related_agents: string[] = [],
+    related_players: string[] = [],
+    importance: number = 5,
+    tags: string[] = []
+  ): Promise<number> {
+    
+    const memory: Memory = {
+      agent_id,
+      memory_type: 'observation',
+      content: observation,
+      importance_score: importance,
+      emotional_relevance: this.calculateEmotionalRelevance(observation),
+      tags,
+      related_agents,
+      related_players,
+      location
+    };
+
+    const result = await this.storeMemory(memory);
+    
+    // Log if memory was filtered out
+    if (result === -1) {
+      console.log(`🚫 Filtered observation for ${agent_id}: "${observation.substring(0, 50)}..."`);
+    }
+    
+    return result;
+  }
+
+  /**
    * Generate embedding for text using OpenAI
    */
   private async generateEmbedding(text: string): Promise<number[]> {

@@ -1,4 +1,4 @@
-# Sprint Plan: Competitive Social & Relationship System
+v# Sprint Plan: Competitive Social & Relationship System
 
 ## 1. High-Level Roadmap
 
@@ -67,15 +67,21 @@ This document details the sprint-by-sprint plan for implementing the **Competiti
 | RS-304  | **Backend**: `ReputationManager` updates scores based on analyzed gossip   | `web-api`    | `Medium` | `Pending` |
 | RS-305  | **Testing**: E2E test: Player makes a statement, verify gossip is logged   | `e2e`        | **High** | `Pending` |
 | RS-306  | **Testing**: Verify NPC creates the correct memory from the conversation | `e2e`        | `High` | `Pending` |
+| RS-307  | **Frontend**: Implement player "say something out loud" text interface    | `client`     | **High** | `Pending` |
+| RS-308  | **Frontend**: Implement player "update activity" text interface           | `client`     | **High** | `Pending` |
+| RS-309  | **Backend**: Process player public speech as witnessable events           | `game-server` | **High** | `Pending` |
+| RS-310  | **Backend**: Process player activity updates as witnessable events        | `game-server` | **High** | `Pending` |
+| RS-311  | **Testing**: E2E test: Player says something publicly, nearby NPCs witness | `e2e`        | **High** | `Pending` |
+| RS-312  | **Testing**: E2E test: Player updates activity, nearby NPCs create memories | `e2e`        | `High` | `Pending` |
 
 
-**Deliverable**: Players can now influence each other's reputations by talking about them to NPCs. The AI will interpret these conversations and create corresponding memories and reputation adjustments. There will be no UI change.
+**Deliverable**: Players can now influence each other's reputations by talking about them to NPCs. The AI will interpret these conversations and create corresponding memories and reputation adjustments. Players can also make public statements and activity updates that nearby NPCs will witness and remember. There will be no UI change for gossip, but new text interfaces will be added for public actions.
 
 ---
 
 ### **Sprint 4: The Romantic Contention Model**
 
-**Goal**: Implement the core state machine for NPC romantic decision-making, including the AI triggers for reflection and metacognition.
+**Goal**: Implement the core state machine for NPC romantic decision-making, including the AI triggers for reflection and metacognition, plus NPC-initiated conversations.
 
 **Timeline**: 2 weeks
 
@@ -88,8 +94,16 @@ This document details the sprint-by-sprint plan for implementing the **Competiti
 | RS-405  | **Backend**: Implement `Exclusive` state logic and `dating` relationship flag      | `web-api`    | `Medium` | `Pending` |
 | RS-406  | **Testing**: Unit tests for `RelationshipManager` state transition logic         | `web-api`    | `High` | `Pending` |
 | RS-407  | **Testing**: Integration test to verify AI jobs are queued on state changes        | `e2e`        | `Medium` | `Pending` |
+| RS-408  | **Backend**: Implement NPC-initiated conversation system with players            | `game-server` | **High** | `Pending` |
+| RS-409  | **Backend**: Implement NPC-to-NPC conversation system                            | `game-server` | **High** | `Pending` |
+| RS-410  | **Backend**: Create conversation trigger logic based on social events            | `game-server` | **High** | `Pending` |
+| RS-411  | **Frontend**: UI/UX for NPC-initiated conversations with players                 | `client`     | **High** | `Pending` |
+| RS-412  | **Frontend**: Visual representation of NPC-to-NPC conversations                  | `client`     | `Medium` | `Pending` |
+| RS-413  | **Testing**: E2E test: NPC initiates conversation with player based on event     | `e2e`        | **High** | `Pending` |
+| RS-414  | **Testing**: E2E test: NPCs have conversations with each other                   | `e2e`        | **High** | `Pending` |
 
-**Deliverable**: NPCs are now internally aware of their social standing with players. They will trigger advanced AI processing when faced with complex romantic situations, but their behavior will not yet change.
+
+**Deliverable**: NPCs are now internally aware of their social standing with players. They will trigger advanced AI processing when faced with complex romantic situations, and can now initiate conversations with players and each other based on social events and relationship states. Their behavior will not yet change significantly beyond conversations.
 
 ---
 

@@ -1,14 +1,16 @@
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 import { AgentMemoryManager } from './AgentMemoryManager';
+import { ReputationManager } from './ReputationManager';
 
 interface PlayerAction {
   player_id: string;
-  action_type: 'move' | 'interact' | 'chat' | 'join' | 'leave';
+  action_type: 'move' | 'interact' | 'chat' | 'join' | 'leave' | 'gift_giving' | 'player_pushing' | 'item_destruction' | 'helping' | 'rude_behavior' | 'generous_act' | 'social_event';
   location: string;
   target?: string;
   data?: any;
   timestamp: Date;
+  is_witnessable?: boolean; // Flag for socially significant events
 }
 
 interface AgentObservation {
@@ -18,23 +20,27 @@ interface AgentObservation {
   related_players: string[];
   related_agents: string[];
   importance: number;
+  tags: string[];
 }
 
 export class AgentObservationSystem {
   private pool: Pool;
   private redisClient: ReturnType<typeof createClient>;
   private memoryManager: AgentMemoryManager;
+  private reputationManager: ReputationManager;
   private readonly OBSERVATION_RANGE = 5; // tiles
   private readonly OBSERVATION_CHANNEL = 'player_actions';
   
   constructor(
     pool: Pool, 
     redisClient: ReturnType<typeof createClient>, 
-    memoryManager: AgentMemoryManager
+    memoryManager: AgentMemoryManager,
+    reputationManager: ReputationManager
   ) {
     this.pool = pool;
     this.redisClient = redisClient;
     this.memoryManager = memoryManager;
+    this.reputationManager = reputationManager;
   }
 
   /**
@@ -87,6 +93,81 @@ export class AgentObservationSystem {
   }
 
   /**
+   * Record a witnessable social event (convenience method)
+   */
+  async recordWitnessableEvent(
+    player_id: string,
+    action_type: 'gift_giving' | 'player_pushing' | 'item_destruction' | 'helping' | 'rude_behavior' | 'generous_act' | 'social_event',
+    location: string,
+    eventData: any
+  ): Promise<void> {
+    const action: PlayerAction = {
+      player_id,
+      action_type,
+      location,
+      data: eventData,
+      timestamp: new Date(),
+      is_witnessable: true
+    };
+
+    await this.recordPlayerAction(action);
+  }
+
+  /**
+   * Update player reputation based on witnessed social events
+   */
+  private async updateReputationFromWitnessedEvent(observation: AgentObservation): Promise<void> {
+    try {
+      for (const player_id of observation.related_players) {
+        let reputationChange = 0;
+        let reason = '';
+
+        // Determine reputation change based on tags
+        if (observation.tags.includes('positive_action')) {
+          reputationChange = 2; // Positive actions increase reputation
+          
+          if (observation.tags.includes('generosity')) {
+            reputationChange = 3; // Generous acts have more impact
+            reason = 'Generous action witnessed';
+          } else if (observation.tags.includes('helping')) {
+            reputationChange = 2;
+            reason = 'Helpful action witnessed';
+          } else {
+            reason = 'Positive action witnessed';
+          }
+          
+        } else if (observation.tags.includes('negative_action')) {
+          reputationChange = -2; // Negative actions decrease reputation
+          
+          if (observation.tags.includes('aggression')) {
+            reputationChange = -3; // Aggressive acts have more negative impact
+            reason = 'Aggressive behavior witnessed';
+          } else if (observation.tags.includes('destructive')) {
+            reputationChange = -3;
+            reason = 'Destructive behavior witnessed';
+          } else {
+            reason = 'Negative action witnessed';
+          }
+        }
+
+        // Apply reputation change if significant
+        if (reputationChange !== 0) {
+          await this.reputationManager.updatePlayerReputation({
+            character_id: player_id,
+            score_change: reputationChange,
+            reason: `${reason} by ${observation.agent_id}`,
+            source: observation.agent_id
+          });
+          
+          console.log(`📊 Updated reputation for ${player_id} by ${reputationChange} (${reason})`);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating reputation from witnessed event:', error);
+    }
+  }
+
+  /**
    * Generate an observation for an agent based on a player action
    */
   private async generateObservation(
@@ -94,19 +175,88 @@ export class AgentObservationSystem {
     action: PlayerAction
   ): Promise<AgentObservation | null> {
     
-    // Only process chat actions - skip all other action types for now
-    if (action.action_type !== 'chat') {
-      return null;
-    }
-    
     // Get player name from action data or fallback to ID
     const playerName = action.data?.name || `Player_${action.player_id.substring(0, 8)}`;
     
     let observationText = '';
-    let importance = 7; // Chat messages are important
+    let importance = 7; // Default importance
+    let tags: string[] = [];
     
-    // Only handle chat actions
-    observationText = `${playerName} said something at ${action.location}`;
+    // Handle different action types
+    switch (action.action_type) {
+      case 'chat':
+        observationText = `${playerName} said something at ${action.location}`;
+        importance = 7;
+        tags = ['chat', 'social_interaction'];
+        break;
+        
+      case 'gift_giving':
+        const gift = action.data?.gift || 'something';
+        const recipient = action.data?.recipient || 'someone';
+        observationText = `I saw ${playerName} give ${gift} to ${recipient}. It seemed like a very kind gesture.`;
+        importance = 9; // High importance for witnessed social events
+        tags = ['witnessable_social_event', 'gift_giving', 'positive_action', 'generosity'];
+        break;
+        
+      case 'player_pushing':
+        const target = action.data?.target || 'another person';
+        observationText = `I witnessed ${playerName} push ${target}. This seemed aggressive and inappropriate.`;
+        importance = 9; // High importance for witnessed social events  
+        tags = ['witnessable_social_event', 'player_pushing', 'negative_action', 'aggression'];
+        break;
+        
+      case 'item_destruction':
+        const item = action.data?.item || 'something';
+        observationText = `I saw ${playerName} destroy ${item}. This was destructive and concerning behavior.`;
+        importance = 9; // High importance for witnessed social events
+        tags = ['witnessable_social_event', 'item_destruction', 'negative_action', 'destructive'];
+        break;
+        
+      case 'helping':
+        const helpType = action.data?.helpType || 'someone';
+        observationText = `I observed ${playerName} helping ${helpType}. This was a thoughtful and caring action.`;
+        importance = 9; // High importance for witnessed social events
+        tags = ['witnessable_social_event', 'helping', 'positive_action', 'caring'];
+        break;
+        
+      case 'rude_behavior':
+        const rudeAction = action.data?.rudeAction || 'behaving rudely';
+        observationText = `I witnessed ${playerName} ${rudeAction}. This was inappropriate and disrespectful.`;
+        importance = 9; // High importance for witnessed social events
+        tags = ['witnessable_social_event', 'rude_behavior', 'negative_action', 'disrespectful'];
+        break;
+        
+      case 'generous_act':
+        const generousAction = action.data?.generousAction || 'doing something generous';
+        observationText = `I saw ${playerName} ${generousAction}. This was a wonderful display of generosity.`;
+        importance = 9; // High importance for witnessed social events
+        tags = ['witnessable_social_event', 'generous_act', 'positive_action', 'generous'];
+        break;
+        
+      case 'social_event':
+        const eventType = action.data?.eventType || 'participating in a social event';
+        observationText = `I observed ${playerName} ${eventType}. This was an interesting social interaction.`;
+        importance = 8; // Medium-high importance for social events
+        tags = ['witnessable_social_event', 'social_event', 'social_interaction'];
+        break;
+        
+      case 'move':
+        // Skip movement observations for now to avoid noise
+        return null;
+        
+      case 'join':
+      case 'leave':
+        // Handle basic join/leave events
+        const joinLeaveAction = action.action_type === 'join' ? 'joined' : 'left';
+        observationText = `${playerName} ${joinLeaveAction} the area`;
+        importance = 5; // Lower importance for basic events
+        tags = ['player_movement', action.action_type];
+        break;
+        
+      default:
+        // Skip unknown action types
+        return null;
+    }
     
     // Add contextual information based on agent's current activity
     const agentActivity = await this.getAgentActivity(agent.id);
@@ -123,8 +273,9 @@ export class AgentObservationSystem {
       observation: observationText,
       location: action.location,
       related_players: [action.player_id],
-      related_agents: [],
-      importance
+      related_agents: action.data?.related_agents || [],
+      importance,
+      tags
     };
   }
 
@@ -168,17 +319,24 @@ export class AgentObservationSystem {
    * Store an observation in the agent's memory
    */
   private async storeObservation(observation: AgentObservation): Promise<void> {
-    const memoryId = await this.memoryManager.storeObservation(
+    const memoryId = await this.memoryManager.storeObservationWithTags(
       observation.agent_id,
       observation.observation,
       observation.location,
       observation.related_agents,
       observation.related_players,
-      observation.importance
+      observation.importance,
+      observation.tags
     );
     
     if (memoryId !== -1) {
-      console.log(`📝 Stored observation ${memoryId} for ${observation.agent_id}: "${observation.observation.substring(0, 50)}..."`);
+      const witnessableTag = observation.tags.includes('witnessable_social_event') ? '[WITNESSED] ' : '';
+      console.log(`📝 Stored observation ${memoryId} for ${observation.agent_id}: ${witnessableTag}"${observation.observation.substring(0, 50)}..."`);
+      
+      // Update reputation for witnessable social events
+      if (observation.tags.includes('witnessable_social_event') && observation.related_players.length > 0) {
+        await this.updateReputationFromWitnessedEvent(observation);
+      }
     }
     // Filtered observations are already logged by the memory manager
   }

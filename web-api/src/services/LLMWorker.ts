@@ -3,6 +3,7 @@ import { createClient } from 'redis';
 import Queue from 'bull';
 import OpenAI from 'openai';
 import { AgentMemoryManager } from './AgentMemoryManager';
+import { ReputationManager } from './ReputationManager';
 
 export class LLMWorker {
   private pool: Pool;
@@ -10,6 +11,7 @@ export class LLMWorker {
   private conversationQueue: Queue.Queue;
   private openai: OpenAI;
   private memoryManager: AgentMemoryManager;
+  private reputationManager: ReputationManager;
 
   constructor(pool: Pool, redisClient: ReturnType<typeof createClient>) {
     this.pool = pool;
@@ -22,6 +24,9 @@ export class LLMWorker {
 
     // Initialize memory manager
     this.memoryManager = new AgentMemoryManager(pool, redisClient);
+
+    // Initialize reputation manager
+    this.reputationManager = new ReputationManager(pool, redisClient);
 
     // Initialize conversation queue
     this.conversationQueue = new Queue('conversation', {
@@ -93,6 +98,7 @@ export class LLMWorker {
 
   private async constructPrompt(constitution: string, npcName: string, playerMessage: string, npcId?: string, characterId?: string): Promise<string> {
     let contextualMemories = '';
+    let reputationContext = '';
     
     // For Sprint 5, include reflections and contextual memories
     if (npcId) {
@@ -139,6 +145,33 @@ export class LLMWorker {
       }
     }
 
+    // Get player reputation information
+    if (characterId) {
+      try {
+        const playerReputation = await this.reputationManager.getPlayerReputation(characterId);
+        if (playerReputation) {
+          const reputationScore = playerReputation.reputation_score;
+          let reputationDescription = '';
+          
+          if (reputationScore >= 75) {
+            reputationDescription = 'This player has an excellent reputation in the community. They are known for their kindness and helpful nature.';
+          } else if (reputationScore >= 60) {
+            reputationDescription = 'This player has a good reputation. They are generally well-regarded by others.';
+          } else if (reputationScore >= 40) {
+            reputationDescription = 'This player has a neutral reputation. They are neither particularly well-known nor problematic.';
+          } else if (reputationScore >= 25) {
+            reputationDescription = 'This player has a somewhat poor reputation. Some community members have concerns about their behavior.';
+          } else {
+            reputationDescription = 'This player has a poor reputation in the community. They are known for problematic behavior.';
+          }
+          
+          reputationContext = `\n=== PLAYER REPUTATION ===\n${reputationDescription} (Community standing: ${reputationScore}/100)\n=== END OF REPUTATION ===\n`;
+        }
+      } catch (error) {
+        console.error(`Error retrieving reputation for player ${characterId}:`, error);
+      }
+    }
+
     const prompt = `${constitution}
 
 IMPORTANT INSTRUCTIONS:
@@ -151,13 +184,16 @@ IMPORTANT INSTRUCTIONS:
 - You have access to your memories and past conversations with this player
 - Use the information from your experiences below to inform your response
 - When the player references past conversations, you should remember and respond accordingly
+- Adjust your greeting and tone based on the player's reputation in the community
 
 IMPORTANT: Here are your recent memories and experiences - use this information to respond:
 ${contextualMemories}
 
+${reputationContext}
+
 The player approaches you and says: "${playerMessage}"
 
-Based on your memories above, how do you respond?`;
+Based on your memories and knowledge of this player's reputation, how do you respond?`;
 
     return prompt;
   }

@@ -3,13 +3,15 @@ import { Pool } from 'pg';
 import { createClient } from 'redis';
 import { AgentMemoryManager } from '../services/AgentMemoryManager';
 import { AgentObservationSystem } from '../services/AgentObservationSystem';
+import { ReputationManager } from '../services/ReputationManager'; // ✅ Add this import
 
 export function memoryRoutes(pool: Pool, redisClient: ReturnType<typeof createClient>) {
   const router = express.Router();
   
   // Initialize services
   const memoryManager = new AgentMemoryManager(pool, redisClient);
-  const observationSystem = new AgentObservationSystem(pool, redisClient, memoryManager);
+  const reputationManager = new ReputationManager(pool, redisClient); // ✅ Add this line
+  const observationSystem = new AgentObservationSystem(pool, redisClient, memoryManager, reputationManager); // ✅ Add 4th parameter
 
   // Test endpoint: Store a test observation
   router.post('/test-observation', async (req, res) => {

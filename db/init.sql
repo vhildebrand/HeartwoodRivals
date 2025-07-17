@@ -77,7 +77,28 @@ CREATE TABLE agent_player_relationships (
     trust_level INT DEFAULT 0,
     interaction_frequency INT DEFAULT 0,
     last_interaction TIMESTAMPTZ,
+    contention_state VARCHAR(20) DEFAULT 'open', -- ('open', 'conflicted', 'focused', 'exclusive')
+    relationship_status VARCHAR(50) DEFAULT 'acquaintance', -- ('acquaintance', 'friend', 'close_friend', 'romantic_interest', 'dating', 'estranged')
     PRIMARY KEY (agent_id, character_id)
+);
+
+-- Player Reputations (for social influence system)
+CREATE TABLE player_reputations (
+    character_id UUID PRIMARY KEY REFERENCES characters(id),
+    reputation_score INT DEFAULT 50, -- Starts at a neutral 50 on a 0-100 scale
+    last_updated TIMESTAMPTZ DEFAULT now()
+);
+
+-- Gossip Logs (for social manipulation tracking)
+CREATE TABLE gossip_logs (
+    id BIGSERIAL PRIMARY KEY,
+    source_character_id UUID REFERENCES characters(id) NOT NULL,
+    target_character_id UUID REFERENCES characters(id) NOT NULL, -- The player being gossiped about
+    npc_listener_id VARCHAR(50) REFERENCES agents(id) NOT NULL,
+    content TEXT NOT NULL,
+    is_positive BOOLEAN NOT NULL,
+    credibility_score INT DEFAULT 50, -- How much the NPC believes it (0-100)
+    timestamp TIMESTAMPTZ DEFAULT now()
 );
 
 -- Agent Schedules
@@ -173,3 +194,17 @@ WITH (lists = 100);
 -- Create composite index for efficient agent-specific queries
 CREATE INDEX idx_agent_memories_agent_time ON agent_memories(agent_id, timestamp DESC);
 CREATE INDEX idx_agent_memories_agent_importance ON agent_memories(agent_id, importance_score DESC);
+
+-- Indexes for new relationship system tables
+CREATE INDEX idx_player_reputations_character_id ON player_reputations(character_id);
+CREATE INDEX idx_player_reputations_reputation_score ON player_reputations(reputation_score);
+
+CREATE INDEX idx_gossip_logs_source_character_id ON gossip_logs(source_character_id);
+CREATE INDEX idx_gossip_logs_target_character_id ON gossip_logs(target_character_id);
+CREATE INDEX idx_gossip_logs_npc_listener_id ON gossip_logs(npc_listener_id);
+CREATE INDEX idx_gossip_logs_timestamp ON gossip_logs(timestamp);
+
+-- Composite indexes for common relationship system queries
+CREATE INDEX idx_gossip_logs_target_npc_time ON gossip_logs(target_character_id, npc_listener_id, timestamp);
+CREATE INDEX idx_agent_player_relationships_contention ON agent_player_relationships(contention_state);
+CREATE INDEX idx_agent_player_relationships_status ON agent_player_relationships(relationship_status);
