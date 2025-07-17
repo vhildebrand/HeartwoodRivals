@@ -68,6 +68,12 @@ export class GameScene extends Scene {
         
         // Connect to server
         this.connectToServer();
+
+        // Listen for dialogue close events to disable movement blocking
+        this.game.events.on('closeDialogue', () => {
+            console.log(`💬 [GAME] Dialogue closed - re-enabling movement`);
+            this.inputManager.setDialogueActive(false);
+        });
     }
 
     private createWorld() {
@@ -322,6 +328,7 @@ export class GameScene extends Scene {
         const nearbyNpc = this.getNearbyNPC(mySprite.x, mySprite.y);
         if (nearbyNpc) {
             console.log(`Opening dialogue with ${nearbyNpc.name}`);
+            this.inputManager.setDialogueActive(true);
             this.game.events.emit('openDialogue', nearbyNpc.id, nearbyNpc.name);
         }
     }

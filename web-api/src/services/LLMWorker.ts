@@ -48,9 +48,9 @@ export class LLMWorker {
       // Construct the prompt for the LLM
       const prompt = await this.constructPrompt(constitution, npcName, playerMessage, npcId, characterId);
 
-      // Call OpenAI API with urgency assessment
+      // Call OpenAI API
       const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Using the faster, cheaper model for Sprint 3
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -61,30 +61,21 @@ export class LLMWorker {
             content: playerMessage
           }
         ],
-        max_tokens: 200, // Increased for urgency assessment
+        max_tokens: 150, // Reduced from 200 since no urgency assessment needed
         temperature: 0.8,
       });
 
-      const fullResponse = completion.choices[0]?.message?.content?.trim();
+      const npcResponse = completion.choices[0]?.message?.content?.trim();
 
-      if (!fullResponse) {
+      if (!npcResponse) {
         throw new Error('Empty response from OpenAI');
       }
-
-      // Parse the response to extract dialogue and urgency assessment
-      const { npcResponse, urgencyLevel, urgencyReason } = this.parseResponseWithUrgency(fullResponse);
 
       // Log the conversation to database
       await this.logConversation(characterId, npcId, playerMessage, npcResponse);
 
       // Store conversation as agent memory
       await this.storeConversationMemory(npcId, characterId, playerMessage, npcResponse);
-
-      // If high urgency, trigger immediate metacognitive evaluation
-      if (urgencyLevel >= 6) {
-        console.log(`🚨 HIGH URGENCY DETECTED: ${npcName} - Level ${urgencyLevel} - "${urgencyReason}"`);
-        await this.triggerUrgentMetacognition(npcId, urgencyLevel, playerMessage, urgencyReason);
-      }
 
       // Return the response
       return {
@@ -166,33 +157,7 @@ ${contextualMemories}
 
 The player approaches you and says: "${playerMessage}"
 
-Based on your memories above, how do you respond?
-
-URGENCY ASSESSMENT: After your response, assess how urgently this situation requires your immediate attention and action based on your character's role and responsibilities. Consider:
-- Does this require dropping everything and acting immediately?
-- Is this an emergency situation that affects you or others?
-- Is this something you REALLY want to do or are excited about? (old friend in town, favorite performer, special opportunity)
-- Should you change your plans for today based on this information?
-- Does this align with your personal interests and desires?
-
-Use this urgency scale:
-- 10: Life-threatening emergency requiring immediate action
-- 9: Urgent emergency or crisis situation
-- 8: Very urgent professional duty or emergency
-- 7: Something you REALLY want to do (favorite performer, old friend, special opportunity)
-- 6: Important opportunity or something you're excited about
-- 5: Moderately important, can wait a few hours
-- 4: Routine matter, can wait until later today
-- 3: Low priority, can wait until tomorrow
-- 2: Very low priority
-- 1: No urgency at all
-
-Remember: You can drop everything for things you're truly excited about, not just emergencies!
-
-Format your response as:
-DIALOGUE: [your character's response]
-URGENCY: [1-10 scale where 10 = drop everything immediately, 1 = no urgency]
-REASON: [brief explanation of urgency level]`;
+Based on your memories above, how do you respond?`;
 
     return prompt;
   }
@@ -325,81 +290,5 @@ REASON: [brief explanation of urgency level]`;
     }
   }
 
-  /**
-   * Parse LLM response to extract dialogue and urgency assessment
-   */
-  private parseResponseWithUrgency(fullResponse: string): { npcResponse: string; urgencyLevel: number; urgencyReason: string } {
-    try {
-      // Default values
-      let npcResponse = fullResponse;
-      let urgencyLevel = 1;
-      let urgencyReason = 'No specific urgency detected';
 
-      // Try to parse structured response
-      const dialogueMatch = fullResponse.match(/DIALOGUE:\s*(.+?)(?=URGENCY:|$)/is);
-      const urgencyMatch = fullResponse.match(/URGENCY:\s*(\d+)/i);
-      const reasonMatch = fullResponse.match(/REASON:\s*(.+?)$/is);
-
-      if (dialogueMatch) {
-        npcResponse = dialogueMatch[1].trim();
-      }
-
-      if (urgencyMatch) {
-        urgencyLevel = Math.max(1, Math.min(10, parseInt(urgencyMatch[1])));
-      }
-
-      if (reasonMatch) {
-        urgencyReason = reasonMatch[1].trim();
-      }
-
-      // If no structured response found, use the full response as dialogue
-      if (!dialogueMatch && !urgencyMatch) {
-        npcResponse = fullResponse;
-        urgencyLevel = 1;
-        urgencyReason = 'Standard conversation, no urgency assessment provided';
-      }
-
-      return { npcResponse, urgencyLevel, urgencyReason };
-    } catch (error) {
-      console.error('Error parsing response with urgency:', error);
-      return { 
-        npcResponse: fullResponse, 
-        urgencyLevel: 1, 
-        urgencyReason: 'Error parsing urgency assessment' 
-      };
-    }
-  }
-
-  /**
-   * Trigger immediate metacognitive evaluation for urgent situations
-   */
-  private async triggerUrgentMetacognition(npcId: string, urgencyLevel: number, playerMessage: string, urgencyReason: string): Promise<void> {
-    try {
-      // Store urgent situation as high-importance memory
-      await this.memoryManager.storeObservation(
-        npcId,
-        `URGENT SITUATION: ${urgencyReason} - Player said: "${playerMessage}"`,
-        'emergency_alert',
-        [], // related_agents
-        [], // related_players
-        10 // maximum importance for urgent situations
-      );
-
-      // Queue immediate metacognitive evaluation with high priority
-      const queueItem = JSON.stringify({
-        agent_id: npcId,
-        trigger_reason: 'urgent_conversation',
-        urgency_level: urgencyLevel,
-        urgency_reason: urgencyReason,
-        player_message: playerMessage,
-        timestamp: Date.now(),
-        immediate: true // Flag for immediate processing
-      });
-
-      await this.redisClient.lPush('metacognition_urgent_queue', queueItem);
-      console.log(`🚨 [URGENT] Queued immediate metacognitive evaluation for ${npcId} (urgency: ${urgencyLevel})`);
-    } catch (error) {
-      console.error('Error triggering urgent metacognition:', error);
-    }
-  }
 } 

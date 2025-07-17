@@ -15,11 +15,17 @@ export class DialogueManager {
     private inputBox: Phaser.GameObjects.Rectangle | null = null;
     private inputText: Phaser.GameObjects.Text | null = null;
     private typingIndicator: Phaser.GameObjects.Text | null = null;
+    private endConversationButton: Phaser.GameObjects.Rectangle | null = null;
+    private endConversationText: Phaser.GameObjects.Text | null = null;
     private currentMessage: string = '';
     private chatLog: string[] = [];
     private isWaitingForResponse: boolean = false;
     private currentJobId: string | null = null;
     private responseCheckTimer: Phaser.Time.TimerEvent | null = null;
+    
+    // Conversation tracking
+    private conversationStartTime: number | null = null;
+    private conversationHistory: Array<{message: string, sender: 'player' | 'npc', timestamp: number}> = [];
 
     constructor(scene: Scene) {
         this.scene = scene;
@@ -101,6 +107,36 @@ export class DialogueManager {
         );
         this.dialogueContainer.add(this.inputText);
 
+        // End conversation button
+        this.endConversationButton = this.scene.add.rectangle(
+            width - 100,
+            height - 290,
+            140,
+            35,
+            0x8B0000,
+            1
+        );
+        this.endConversationButton.setStrokeStyle(2, 0xFFFFFF);
+        this.endConversationButton.setInteractive();
+        this.endConversationButton.on('pointerdown', () => {
+            this.endConversation();
+        });
+        this.dialogueContainer.add(this.endConversationButton);
+
+        // End conversation button text
+        this.endConversationText = this.scene.add.text(
+            width - 100,
+            height - 290,
+            'End Conversation',
+            {
+                fontSize: '12px',
+                color: '#FFFFFF',
+                align: 'center'
+            }
+        );
+        this.endConversationText.setOrigin(0.5, 0.5);
+        this.dialogueContainer.add(this.endConversationText);
+
         // Typing indicator
         this.typingIndicator = this.scene.add.text(
             width - 150,
@@ -147,6 +183,10 @@ export class DialogueManager {
         this.chatLog = [];
         this.isWaitingForResponse = false;
         
+        // Start conversation tracking
+        this.conversationStartTime = Date.now();
+        this.conversationHistory = [];
+        
         if (this.dialogueContainer) {
             this.dialogueContainer.setVisible(true);
         }
@@ -158,6 +198,9 @@ export class DialogueManager {
         this.updateChatHistory();
         this.updateInputText();
         this.updateTypingIndicator();
+        
+        // Send conversation begin event
+        this.sendConversationBeginEvent();
     }
 
     closeDialogue() {
@@ -168,6 +211,10 @@ export class DialogueManager {
         this.isWaitingForResponse = false;
         this.currentJobId = null;
         
+        // Clear conversation tracking
+        this.conversationStartTime = null;
+        this.conversationHistory = [];
+        
         if (this.dialogueContainer) {
             this.dialogueContainer.setVisible(false);
         }
@@ -176,6 +223,21 @@ export class DialogueManager {
             this.responseCheckTimer.destroy();
             this.responseCheckTimer = null;
         }
+
+        // Emit close dialogue event
+        this.scene.game.events.emit('closeDialogue');
+    }
+
+    endConversation() {
+        if (!this.isActive || !this.currentNpcId) {
+            return;
+        }
+
+        // Send conversation end event with full conversation history
+        this.sendConversationEndEvent();
+        
+        // Close the dialogue
+        this.closeDialogue();
     }
 
     private async sendMessage() {
@@ -189,6 +251,14 @@ export class DialogueManager {
         
         // Add player message to chat log
         this.chatLog.push(`You: ${message}`);
+        
+        // Add to conversation history
+        this.conversationHistory.push({
+            message: message,
+            sender: 'player',
+            timestamp: Date.now()
+        });
+        
         this.updateChatHistory();
         this.updateInputText();
         this.updateTypingIndicator();
@@ -252,6 +322,14 @@ export class DialogueManager {
             
             if (data.status === 'completed') {
                 this.chatLog.push(`${this.currentNpcName}: ${data.response.response}`);
+                
+                // Add NPC response to conversation history
+                this.conversationHistory.push({
+                    message: data.response.response,
+                    sender: 'npc',
+                    timestamp: Date.now()
+                });
+                
                 this.isWaitingForResponse = false;
                 this.currentJobId = null;
                 
@@ -316,4 +394,59 @@ export class DialogueManager {
     isDialogueActive(): boolean {
         return this.isActive;
     }
+
+    private sendConversationBeginEvent() {
+        if (!this.currentNpcId || !this.playerCharacterId) return;
+        
+        console.log(`💬 [DIALOGUE] Conversation started with ${this.currentNpcName}`);
+        
+        // In the future, this could send an HTTP request to the server
+        // to notify about conversation start
+        // For now, we'll just log it
+    }
+
+    private sendConversationEndEvent() {
+        if (!this.currentNpcId || !this.playerCharacterId || !this.conversationStartTime) return;
+        
+        const conversationDuration = Date.now() - this.conversationStartTime;
+        
+        console.log(`💬 [DIALOGUE] Conversation ended with ${this.currentNpcName} (duration: ${conversationDuration}ms)`);
+        console.log(`💬 [DIALOGUE] Conversation history:`, this.conversationHistory);
+        
+        // Send conversation end event to server for post-conversation reflection
+        this.sendConversationEndToServer();
+    }
+
+    private async sendConversationEndToServer() {
+        if (!this.currentNpcId || !this.playerCharacterId || !this.conversationStartTime) return;
+        
+        try {
+            const conversationData = {
+                npcId: this.currentNpcId,
+                npcName: this.currentNpcName,
+                characterId: this.playerCharacterId,
+                conversationHistory: this.conversationHistory,
+                startTime: this.conversationStartTime,
+                endTime: Date.now(),
+                duration: Date.now() - this.conversationStartTime
+            };
+            
+            // Send to server for post-conversation reflection
+            const response = await fetch('http://localhost:3000/npc/conversation-end', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(conversationData)
+            });
+            
+            if (response.ok) {
+                console.log(`💬 [DIALOGUE] Conversation data sent to server for reflection`);
+            }
+        } catch (error) {
+            console.error('Error sending conversation end data:', error);
+        }
+    }
+
+
 } 

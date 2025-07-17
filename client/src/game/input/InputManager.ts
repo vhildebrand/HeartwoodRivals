@@ -29,6 +29,7 @@ export class InputManager {
     private lastInputState: any;
     private inputSequence: number = 0;
     private callbacks: InputCallbacks = {};
+    private isDialogueActive: boolean = false;
 
     constructor(scene: Scene) {
         this.scene = scene;
@@ -131,6 +132,13 @@ export class InputManager {
     public update() {
         const currentInput = this.getInputState();
         
+        // Skip movement processing if dialogue is active
+        if (this.isDialogueActive) {
+            // Still update last input state to avoid stuck keys when dialogue closes
+            this.lastInputState = { ...currentInput };
+            return;
+        }
+        
         // Check for input changes
         ['up', 'down', 'left', 'right'].forEach(direction => {
             if (currentInput[direction] && !this.lastInputState[direction]) {
@@ -168,6 +176,11 @@ export class InputManager {
         
         // Update last input state
         this.lastInputState = { ...currentInput };
+    }
+
+    public setDialogueActive(isActive: boolean) {
+        this.isDialogueActive = isActive;
+        console.log(`[INPUT] Dialogue state set to: ${isActive ? 'active' : 'inactive'}`);
     }
 
     public destroy() {

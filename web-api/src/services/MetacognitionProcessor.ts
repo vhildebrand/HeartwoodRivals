@@ -67,6 +67,15 @@ export class MetacognitionProcessor {
         console.error('❌ [METACOGNITION] Error in processing loop:', error);
       }
     }, 30000);
+
+    // Process conversation reflection queue every 10 seconds
+    setInterval(async () => {
+      try {
+        await this.processNextConversationReflection();
+      } catch (error) {
+        console.error('❌ [METACOGNITION] Error in conversation reflection loop:', error);
+      }
+    }, 10000);
   }
 
   /**
@@ -108,6 +117,25 @@ export class MetacognitionProcessor {
   }
 
   /**
+   * Process the next conversation reflection from the queue
+   */
+  private async processNextConversationReflection(): Promise<void> {
+    try {
+      const queuedItem = await this.redisClient.brPop('conversation_reflection_queue', 0.1);
+      if (!queuedItem) {
+        return; // No items in conversation reflection queue
+      }
+
+      const { npcId, npcName, characterId, conversationHistory, startTime, endTime, duration } = JSON.parse(queuedItem.element);
+      console.log(`💬 [CONVERSATION_REFLECTION] Processing reflection for ${npcName} (${npcId}), ${conversationHistory.length} messages`);
+
+      await this.evaluateConversationForUrgency(npcId, npcName, characterId, conversationHistory, duration);
+    } catch (error) {
+      console.error('❌ [CONVERSATION_REFLECTION] Error processing conversation reflection:', error);
+    }
+  }
+
+  /**
    * Manually trigger metacognitive evaluation for an agent
    */
   public async triggerMetacognition(agent_id: string, trigger_reason: string = 'manual'): Promise<void> {
@@ -119,6 +147,24 @@ export class MetacognitionProcessor {
 
     await this.redisClient.lPush('metacognition_queue', queueItem);
     console.log(`🧠 [METACOGNITION] Queued metacognitive evaluation for ${agent_id}`);
+  }
+
+  /**
+   * Manually trigger urgent metacognitive evaluation for an agent
+   */
+  public async triggerUrgentMetacognition(agent_id: string, urgency_level: number, urgency_reason: string, player_message: string): Promise<void> {
+    const queueItem = JSON.stringify({
+      agent_id,
+      trigger_reason: 'urgent_conversation_reflection',
+      urgency_level,
+      urgency_reason,
+      player_message,
+      timestamp: Date.now(),
+      immediate: true
+    });
+
+    await this.redisClient.lPush('metacognition_urgent_queue', queueItem);
+    console.log(`🚨 [URGENT METACOGNITION] Queued urgent metacognitive evaluation for ${agent_id} (urgency: ${urgency_level})`);
   }
 
   /**
@@ -841,6 +887,170 @@ IMPORTANT: If this situation is urgent/exciting and relevant to your role OR per
     } catch (error) {
       console.error('❌ [METACOGNITION] Error getting queue status:', error);
       return { queue_length: 0, is_processing: false };
+    }
+  }
+
+  /**
+   * Evaluate a completed conversation for urgency and potential schedule changes
+   */
+  private async evaluateConversationForUrgency(
+    npcId: string, 
+    npcName: string, 
+    characterId: string, 
+    conversationHistory: Array<{message: string, sender: 'player' | 'npc', timestamp: number}>,
+    duration: number
+  ): Promise<void> {
+    try {
+      // Get agent info
+      const agentResult = await this.pool.query(
+        'SELECT id, name, constitution, primary_goal, secondary_goals FROM agents WHERE id = $1',
+        [npcId]
+      );
+      
+      if (agentResult.rows.length === 0) {
+        console.log(`⚠️ [CONVERSATION_REFLECTION] Agent ${npcId} not found`);
+        return;
+      }
+      
+      const agentInfo = agentResult.rows[0];
+
+      // Extract just the conversation content for analysis
+      const conversationText = conversationHistory
+        .map(msg => `${msg.sender === 'player' ? 'Player' : agentInfo.name}: ${msg.message}`)
+        .join('\n');
+
+      console.log(`💬 [CONVERSATION_REFLECTION] Analyzing conversation for ${agentInfo.name}:`);
+      console.log(`💬 [CONVERSATION_REFLECTION] Conversation:\n${conversationText}`);
+
+      // Use LLM to analyze the conversation for urgency
+      const urgencyAnalysis = await this.analyzeConversationUrgency(agentInfo, conversationText);
+
+      if (urgencyAnalysis.urgencyLevel >= 6) {
+        console.log(`🚨 [CONVERSATION_REFLECTION] HIGH URGENCY detected for ${agentInfo.name}: Level ${urgencyAnalysis.urgencyLevel}`);
+        console.log(`🚨 [CONVERSATION_REFLECTION] Reason: ${urgencyAnalysis.reason}`);
+        
+        // Store as high-importance memory
+        await this.memoryManager.storeObservation(
+          npcId,
+          `IMPORTANT CONVERSATION: ${urgencyAnalysis.reason}`,
+          'conversation_urgent',
+          [],
+          [characterId],
+          9 // High importance for urgent conversations
+        );
+
+        // Trigger URGENT metacognitive evaluation (not regular)
+        await this.triggerUrgentMetacognition(npcId, urgencyAnalysis.urgencyLevel, urgencyAnalysis.reason, conversationText);
+      } else {
+        console.log(`✅ [CONVERSATION_REFLECTION] No urgent action needed for ${agentInfo.name} (urgency: ${urgencyAnalysis.urgencyLevel})`);
+        
+        // Store as regular memory
+        await this.memoryManager.storeObservation(
+          npcId,
+          `Had a conversation with player about: ${urgencyAnalysis.summary}`,
+          'conversation',
+          [],
+          [characterId],
+          6 // Regular importance
+        );
+      }
+    } catch (error) {
+      console.error(`❌ [CONVERSATION_REFLECTION] Error evaluating conversation for ${npcId}:`, error);
+    }
+  }
+
+  /**
+   * Analyze conversation content for urgency using LLM
+   */
+  private async analyzeConversationUrgency(
+    agent: any, 
+    conversationText: string
+  ): Promise<{urgencyLevel: number, reason: string, summary: string}> {
+    try {
+      const prompt = `You are ${agent.name}, analyzing a conversation you just had with a player.
+
+YOUR IDENTITY: ${agent.constitution}
+YOUR GOALS: 
+- Primary: ${agent.primary_goal}
+- Secondary: ${agent.secondary_goals?.join(', ') || 'None specified'}
+
+CONVERSATION CONTENT:
+${conversationText}
+
+Analyze this conversation and determine if it contains any information that requires immediate action or schedule changes.
+
+Consider:
+- Does this mention specific time-sensitive opportunities?
+- Are there emergency situations that need immediate attention?
+- Did the player mention something you're genuinely excited about or really want to do?
+- Does this align with your personal goals and interests?
+- Should you change your plans for today based on this conversation?
+
+MOST CONVERSATIONS SHOULD BE LOW URGENCY. Only rate high urgency (6+) if:
+- There's a specific time-sensitive opportunity mentioned
+- It's an emergency or crisis situation
+- The player mentioned something you're truly excited about
+- It directly advances your primary goal in a time-sensitive way
+
+Rate the urgency on a scale of 1-10:
+- 10: Life-threatening emergency requiring immediate action
+- 9: Urgent emergency or crisis situation
+- 8: Very urgent professional duty or emergency
+- 7: Something you REALLY want to do (special opportunity, exciting event)
+- 6: Important opportunity that requires schedule adjustment
+- 5: Moderately important, can wait a few hours
+- 4: Routine matter, can wait until later today
+- 3: Low priority, can wait until tomorrow
+- 2: Very low priority
+- 1: No urgency at all
+
+Respond with JSON format:
+{
+  "urgencyLevel": [1-10],
+  "reason": "[brief explanation of why this urgency level]",
+  "summary": "[brief summary of what the conversation was about]"
+}`;
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 300,
+        temperature: 0.7,
+      });
+
+      const responseText = response.choices[0]?.message?.content?.trim();
+      if (!responseText) {
+        throw new Error('Empty response from OpenAI');
+      }
+
+      // Parse JSON response - handle markdown code blocks
+      let cleanedResponse = responseText;
+      
+      // Remove markdown code blocks if present
+      if (cleanedResponse.includes('```json')) {
+        cleanedResponse = cleanedResponse.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      } else if (cleanedResponse.includes('```')) {
+        cleanedResponse = cleanedResponse.replace(/```\s*/, '').replace(/```\s*$/, '');
+      }
+      
+      // Clean up any extra whitespace
+      cleanedResponse = cleanedResponse.trim();
+      
+      const analysis = JSON.parse(cleanedResponse);
+      
+      // Validate and sanitize response
+      return {
+        urgencyLevel: Math.max(1, Math.min(10, analysis.urgencyLevel || 1)),
+        reason: analysis.reason || 'No specific reason provided',
+        summary: analysis.summary || 'General conversation'
+      };
+    } catch (error) {
+      console.error('❌ [CONVERSATION_REFLECTION] Error analyzing conversation urgency:', error);
+      return {
+        urgencyLevel: 1,
+        reason: 'Error analyzing conversation - defaulting to low urgency',
+        summary: 'Conversation analysis failed'
+      };
     }
   }
 } 
