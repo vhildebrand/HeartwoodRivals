@@ -131,8 +131,24 @@ export class PlayerController {
             //     console.log("PlayerController: Current player highlighted in green");
             // }
         } else {
-            // Update existing player with smooth movement
-            movementController!.setTargetPosition(playerData.x, playerData.y);
+            // Update existing player
+            if (playerData.isMoving) {
+                // For moving players, trust server position directly to avoid interpolation conflicts
+                sprite.setPosition(playerData.x, playerData.y);
+                movementController!.setPosition(playerData.x, playerData.y);
+            } else {
+                // For stationary players, use smooth interpolation for corrections
+                const currentPos = movementController!.getPosition();
+                const distance = Math.sqrt(
+                    Math.pow(playerData.x - currentPos.x, 2) + 
+                    Math.pow(playerData.y - currentPos.y, 2)
+                );
+                
+                // Only interpolate if the correction is significant
+                if (distance > 3) {
+                    movementController!.setTargetPosition(playerData.x, playerData.y);
+                }
+            }
         }
         
         // Update animation
@@ -194,16 +210,28 @@ export class PlayerController {
     public update(deltaTime: number) {
         // Update all movement controllers and sync sprites and name labels
         this.movementControllers.forEach((controller, sessionId) => {
-            const newPosition = controller.update(deltaTime);
             const sprite = this.sprites.get(sessionId);
             const nameLabel = this.nameLabels.get(sessionId);
             
-            if (sprite) {
-                sprite.setPosition(newPosition.x, newPosition.y);
-            }
+            // Only update position from MovementController if player is not moving
+            // (for moving players, position is set directly from server in updatePlayer)
+            const isMoving = sprite?.getData('isMoving') || false;
             
-            if (nameLabel) {
-                nameLabel.setPosition(newPosition.x, newPosition.y - 20);
+            if (!isMoving) {
+                const newPosition = controller.update(deltaTime);
+                
+                if (sprite) {
+                    sprite.setPosition(newPosition.x, newPosition.y);
+                }
+                
+                if (nameLabel) {
+                    nameLabel.setPosition(newPosition.x, newPosition.y - 20);
+                }
+            } else {
+                // For moving players, just update name label position to match sprite
+                if (nameLabel && sprite) {
+                    nameLabel.setPosition(sprite.x, sprite.y - 20);
+                }
             }
         });
     }

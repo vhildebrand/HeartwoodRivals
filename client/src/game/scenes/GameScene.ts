@@ -9,6 +9,7 @@ export class GameScene extends Scene {
     private room: any;
     private myPlayerId: string | null = null;
     private wallsLayer: Phaser.Tilemaps.TilemapLayer | null = null;
+    private cameraFollowingPlayer: boolean = false; // Track if camera is already following
     
     // New architecture components
     private inputManager: InputManager;
@@ -99,8 +100,8 @@ export class GameScene extends Scene {
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         
         // Set camera zoom and smoothing
-        this.cameras.main.setZoom(2); // Zoom in 3x
-        this.cameras.main.setLerp(0.25, 0.25); // Reduced camera smoothing for better responsiveness
+        this.cameras.main.setZoom(2); // Zoom in 2x
+        this.cameras.main.setLerp(0.1, 0.1); // Smoother camera movement
         
         // Set the camera viewport to the game size
         this.cameras.main.setViewport(0, 0, this.cameras.main.width, this.cameras.main.height);
@@ -456,6 +457,8 @@ export class GameScene extends Scene {
             this.myPlayerId = this.room.sessionId;
             if (this.myPlayerId) {
                 this.playerController.setMyPlayerId(this.myPlayerId);
+                // Reset camera following flag when player joins
+                this.cameraFollowingPlayer = false;
                 // Emit player ID for UI Scene to set up dialogue manager
                 this.game.events.emit('playerIdSet', this.myPlayerId);
             }
@@ -531,11 +534,13 @@ export class GameScene extends Scene {
     }
 
     private updateCameraFollow() {
-        if (this.myPlayerId) {
+        if (this.myPlayerId && !this.cameraFollowingPlayer) {
             const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
             if (mySprite) {
-                // Make the camera follow the current player more responsively
-                this.cameras.main.startFollow(mySprite, true, 0.2, 0.2);
+                // Set camera to follow the player only once
+                this.cameras.main.startFollow(mySprite, true, 0.1, 0.1);
+                this.cameraFollowingPlayer = true;
+                console.log("Camera now following player");
             }
         }
     }

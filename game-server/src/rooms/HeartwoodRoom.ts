@@ -271,6 +271,23 @@ export class HeartwoodRoom extends Room<GameState> {
         //console.log(`Player ${player.name} stopped moving`);
     }
 
+    private calculateDirectionFromVelocity(velocityX: number, velocityY: number): number {
+        // If no movement, return down as default
+        if (velocityX === 0 && velocityY === 0) {
+            return DIRECTIONS.down;
+        }
+        
+        // For diagonal movement, prioritize the direction with the larger velocity component
+        // This ensures the animation matches the primary direction of movement
+        if (Math.abs(velocityX) > Math.abs(velocityY)) {
+            // Horizontal movement is dominant
+            return velocityX > 0 ? DIRECTIONS.right : DIRECTIONS.left;
+        } else {
+            // Vertical movement is dominant (or equal)
+            return velocityY > 0 ? DIRECTIONS.down : DIRECTIONS.up;
+        }
+    }
+
     private handleMovementContinuous(player: Player, directions: string[]) {
         if (directions.length === 0) {
             this.handleMovementStop(player);
@@ -280,14 +297,12 @@ export class HeartwoodRoom extends Room<GameState> {
         // Calculate combined velocity from all active directions
         let combinedVelocityX = 0;
         let combinedVelocityY = 0;
-        let lastDirection = 0;
         
         directions.forEach(direction => {
             const delta = MOVEMENT_DELTAS[direction as keyof typeof MOVEMENT_DELTAS];
             if (delta) {
                 combinedVelocityX += delta.x * MOVEMENT_SPEED;
                 combinedVelocityY += delta.y * MOVEMENT_SPEED;
-                lastDirection = DIRECTIONS[direction as keyof typeof DIRECTIONS];
             }
         });
 
@@ -296,15 +311,22 @@ export class HeartwoodRoom extends Room<GameState> {
             combinedVelocityX *= 0.707;
             combinedVelocityY *= 0.707;
         }
+        
+        // Round velocities to reduce floating point precision issues
+        combinedVelocityX = Math.round(combinedVelocityX * 100) / 100;
+        combinedVelocityY = Math.round(combinedVelocityY * 100) / 100;
+
+        // Calculate proper direction based on combined velocity
+        const calculatedDirection = this.calculateDirectionFromVelocity(combinedVelocityX, combinedVelocityY);
 
         // Update player with continuous movement
         player.velocityX = combinedVelocityX;
         player.velocityY = combinedVelocityY;
-        player.direction = lastDirection;
+        player.direction = calculatedDirection;
         player.isMoving = true;
         player.lastUpdate = Date.now();
         
-        //console.log(`Player ${player.name} continuous movement: velocities (${player.velocityX}, ${player.velocityY})`);
+        //console.log(`Player ${player.name} continuous movement: velocities (${player.velocityX}, ${player.velocityY}), direction: ${calculatedDirection}`);
     }
 
     // Legacy methods removed - now handled by unified handlePlayerInput system
@@ -851,8 +873,8 @@ export class HeartwoodRoom extends Room<GameState> {
 
         // Calculate movement delta based on velocity and time
         const deltaSeconds = deltaTime / 1000;
-        const deltaX = player.velocityX * deltaSeconds;
-        const deltaY = player.velocityY * deltaSeconds;
+        const deltaX = Math.round(player.velocityX * deltaSeconds * 100) / 100;
+        const deltaY = Math.round(player.velocityY * deltaSeconds * 100) / 100;
         
         // Calculate new position
         const newX = player.x + deltaX;
@@ -873,9 +895,9 @@ export class HeartwoodRoom extends Room<GameState> {
             const oldX = player.x;
             const oldY = player.y;
             
-            // Update player position
-            player.x = newX;
-            player.y = newY;
+            // Update player position with precision rounding to reduce jitter
+            player.x = Math.round(newX * 100) / 100; // Round to 2 decimal places
+            player.y = Math.round(newY * 100) / 100;
             player.lastUpdate = Date.now();
             
             // Check if player moved to a new tile and publish movement event
