@@ -286,3 +286,140 @@ CREATE INDEX idx_thought_limits_agent_date ON thought_limits(agent_id, date);
 CREATE INDEX idx_thought_processing_queue_agent_id ON thought_processing_queue(agent_id);
 CREATE INDEX idx_thought_processing_queue_status ON thought_processing_queue(status);
 CREATE INDEX idx_thought_processing_queue_priority ON thought_processing_queue(priority DESC);
+
+-- ============================================
+-- SPEED DATING SYSTEM SCHEMA
+-- ============================================
+
+-- Add personality_seed column to agents table for procedural generation
+ALTER TABLE agents ADD COLUMN personality_seed TEXT;
+
+-- Speed dating events table
+CREATE TABLE speed_dating_events (
+    id BIGINT PRIMARY KEY, -- Custom IDs from game server
+    event_name VARCHAR(100) NOT NULL,
+    event_date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    max_participants INT DEFAULT 10,
+    status VARCHAR(20) DEFAULT 'scheduled', -- 'scheduled', 'active', 'completed', 'cancelled'
+    location VARCHAR(100) DEFAULT 'town_square',
+    season_theme VARCHAR(100), -- Theme for the social season
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Event participants (both players and NPCs)
+CREATE TABLE event_participants (
+    id BIGSERIAL PRIMARY KEY,
+    event_id BIGINT REFERENCES speed_dating_events(id) ON DELETE CASCADE,
+    participant_type VARCHAR(10) NOT NULL, -- 'player' or 'npc'
+    participant_id VARCHAR(50) NOT NULL, -- character_id or agent_id
+    registration_time TIMESTAMPTZ DEFAULT now(),
+    attendance_status VARCHAR(20) DEFAULT 'registered', -- 'registered', 'present', 'absent'
+    UNIQUE(event_id, participant_id)
+);
+
+-- Individual speed dating matches within an event
+CREATE TABLE speed_dating_matches (
+    id BIGINT PRIMARY KEY, -- Custom IDs from game server
+    event_id BIGINT REFERENCES speed_dating_events(id) ON DELETE CASCADE,
+    player_id VARCHAR(50) NOT NULL, -- Player session ID from game server
+    npc_id VARCHAR(50) REFERENCES agents(id),
+    match_order INT NOT NULL, -- Order in the gauntlet (1st, 2nd, 3rd, etc.)
+    start_time TIMESTAMPTZ,
+    end_time TIMESTAMPTZ,
+    duration_seconds INT DEFAULT 300, -- 5 minutes per date
+    status VARCHAR(20) DEFAULT 'scheduled', -- 'scheduled', 'active', 'completed', 'skipped'
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Real-time vibe scores during dates
+CREATE TABLE date_vibe_scores (
+    id BIGSERIAL PRIMARY KEY,
+    match_id BIGINT REFERENCES speed_dating_matches(id) ON DELETE CASCADE,
+    player_message TEXT NOT NULL,
+    npc_response TEXT,
+    vibe_score INT NOT NULL, -- -10 to +10 scale
+    vibe_reason VARCHAR(100), -- Brief explanation of score
+    keyword_matches TEXT[], -- Keywords that triggered the score
+    timestamp TIMESTAMPTZ DEFAULT now()
+);
+
+-- Post-date LLM assessments
+CREATE TABLE date_assessments (
+    id BIGSERIAL PRIMARY KEY,
+    match_id BIGINT REFERENCES speed_dating_matches(id) ON DELETE CASCADE,
+    conversation_transcript TEXT NOT NULL,
+    overall_score INT NOT NULL, -- 0-100 scale
+    chemistry_score INT NOT NULL, -- 0-100 scale
+    compatibility_score INT NOT NULL, -- 0-100 scale
+    personality_match_score INT NOT NULL, -- 0-100 scale
+    assessment_reasoning TEXT NOT NULL,
+    highlighted_moments TEXT[], -- Key positive/negative moments
+    npc_perspective TEXT, -- How the NPC felt about the date
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Gauntlet results and NPC rankings
+CREATE TABLE gauntlet_results (
+    id BIGSERIAL PRIMARY KEY,
+    event_id BIGINT REFERENCES speed_dating_events(id) ON DELETE CASCADE,
+    player_id VARCHAR(50) NOT NULL, -- Player session ID from game server
+    npc_id VARCHAR(50) REFERENCES agents(id),
+    final_rank INT NOT NULL, -- NPC's ranking of this player (1 = best)
+    overall_impression TEXT NOT NULL, -- NPC's overall thoughts
+    attraction_level INT NOT NULL, -- 1-10 scale
+    compatibility_rating INT NOT NULL, -- 1-10 scale
+    relationship_potential VARCHAR(50), -- 'not_interested', 'friends', 'romantic_interest', 'soulmate'
+    confessional_statement TEXT NOT NULL, -- NPC's "confessional" about the player
+    reasoning TEXT NOT NULL, -- Detailed explanation of ranking
+    memorable_moments TEXT[], -- What stood out to the NPC
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(event_id, player_id, npc_id)
+);
+
+-- Social season data for themed events
+CREATE TABLE social_seasons (
+    id BIGSERIAL PRIMARY KEY,
+    season_name VARCHAR(100) NOT NULL,
+    theme VARCHAR(100) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    description TEXT,
+    personality_modifiers JSONB, -- JSON object with personality trait modifiers
+    status VARCHAR(20) DEFAULT 'active', -- 'active', 'completed', 'cancelled'
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Dating system configuration
+CREATE TABLE dating_system_config (
+    id BIGSERIAL PRIMARY KEY,
+    config_key VARCHAR(100) UNIQUE NOT NULL,
+    config_value TEXT NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Insert default dating system configuration
+INSERT INTO dating_system_config (config_key, config_value, description) VALUES
+('date_duration_seconds', '300', 'Default duration for each speed date (5 minutes)'),
+('vibe_meter_sensitivity', '0.7', 'Sensitivity for real-time vibe scoring (0-1)'),
+('max_participants_per_event', '10', 'Maximum participants per speed dating event'),
+('gauntlet_reflection_prompt', 'You are {npc_name}. You just finished a speed dating gauntlet where you met several potential romantic partners. Reflect on each person you met and rank them based on your personal preferences, chemistry, and compatibility. Consider your personality traits: {personality_traits}, your likes: {likes}, and your dislikes: {dislikes}. For each person, provide: 1) A ranking (1 being your top choice), 2) Your overall impression, 3) Attraction level (1-10), 4) Compatibility rating (1-10), 5) Relationship potential, and 6) A confessional statement about what you really thought.', 'LLM prompt for post-gauntlet NPC reflection'),
+('scoring_prompt', 'You are an expert at analyzing romantic compatibility and chemistry. You have been given a conversation transcript between {npc_name} and {player_name} from a speed dating session. {npc_name} has the following traits: {npc_traits}, likes: {npc_likes}, and dislikes: {npc_dislikes}. Analyze the conversation for: 1) Overall chemistry and connection (0-100), 2) Compatibility based on shared interests and values (0-100), 3) Personality match and communication style (0-100), 4) Overall date success score (0-100). Provide reasoning for each score and highlight the most positive and negative moments.', 'LLM prompt for post-date scoring');
+
+-- Create indexes for dating system performance
+CREATE INDEX idx_speed_dating_events_date_status ON speed_dating_events(event_date, status);
+CREATE INDEX idx_event_participants_event_id ON event_participants(event_id);
+CREATE INDEX idx_event_participants_participant_id ON event_participants(participant_id);
+CREATE INDEX idx_speed_dating_matches_event_id ON speed_dating_matches(event_id);
+CREATE INDEX idx_speed_dating_matches_player_npc ON speed_dating_matches(player_id, npc_id);
+CREATE INDEX idx_speed_dating_matches_status ON speed_dating_matches(status);
+CREATE INDEX idx_date_vibe_scores_match_id ON date_vibe_scores(match_id);
+CREATE INDEX idx_date_vibe_scores_timestamp ON date_vibe_scores(timestamp);
+CREATE INDEX idx_date_assessments_match_id ON date_assessments(match_id);
+CREATE INDEX idx_gauntlet_results_event_player ON gauntlet_results(event_id, player_id);
+CREATE INDEX idx_gauntlet_results_npc_rank ON gauntlet_results(npc_id, final_rank);
+CREATE INDEX idx_social_seasons_dates ON social_seasons(start_date, end_date);
+CREATE INDEX idx_dating_system_config_key ON dating_system_config(config_key);

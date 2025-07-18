@@ -3,6 +3,7 @@ import { Game, Types } from "phaser";
 import { GameScene } from "./scenes/GameScene";
 import { PreloaderScene } from "./scenes/PreloaderScene";
 import { UIScene } from "./scenes/UIScene";
+import { SpeedDatingScene } from "./scenes/SpeedDatingScene";
 
 // Define the game configuration
 const config: Types.Core.GameConfig = {
@@ -23,7 +24,7 @@ const config: Types.Core.GameConfig = {
             debug: false, // Set to false for production
         },
     },
-    scene: [PreloaderScene, GameScene, UIScene], // The order scenes are loaded
+    scene: [PreloaderScene, GameScene, UIScene, SpeedDatingScene], // The order scenes are loaded
 };
 
 // Export function that creates and returns the game instance

@@ -22,6 +22,12 @@ export class UIScene extends Scene {
     private realtimeNPCData: Map<string, any> = new Map();
     private locationsData: any = null;
     
+    // Speed dating countdown UI
+    private speedDatingCountdown: Phaser.GameObjects.Container | null = null;
+    private countdownText: Phaser.GameObjects.Text | null = null;
+    private countdownBackground: Phaser.GameObjects.Rectangle | null = null;
+    private countdownVisible: boolean = false;
+    
     // Player text interface
     private playerTextContainer: Phaser.GameObjects.Container | null = null;
     private speechInputActive: boolean = false;
@@ -49,7 +55,214 @@ export class UIScene extends Scene {
         // Add a semi-transparent rectangle at the top for a UI bar
         this.add.rectangle(0, 0, this.cameras.main.width, 50, 0x000000, 0.5)
             .setOrigin(0, 0);
+        
+        // Create game time and speed UI
+        this.createGameTimeUI();
+        
+        // Create debug panel
+        this.createDebugPanel();
+        
+        // Create player text interface
+        this.createPlayerTextInterface();
+        
+        // Create speed dating countdown UI
+        this.createSpeedDatingCountdownUI();
+        
+        // Set up event listeners
+        this.setupEventListeners();
+        
+        // Start periodic updates
+        this.startPeriodicUpdates();
+        
+        console.log("🎮 [UI] UIScene initialization complete");
+    }
 
+    private createSpeedDatingCountdownUI() {
+        console.log("💕 [UI] Creating speed dating countdown UI");
+        
+        // Create container for speed dating countdown
+        this.speedDatingCountdown = this.add.container(0, 0);
+        
+        // Background (full screen overlay)
+        this.countdownBackground = this.add.rectangle(
+            this.cameras.main.centerX,
+            this.cameras.main.centerY,
+            this.cameras.main.width,
+            this.cameras.main.height,
+            0x000000,
+            0.8
+        );
+        
+        // Event announcement
+        const eventTitle = this.add.text(
+            this.cameras.main.centerX,
+            this.cameras.main.centerY - 150,
+            '💕 SPEED DATING GAUNTLET STARTING! 💕',
+            {
+                fontSize: '36px',
+                color: '#e24a90',
+                fontFamily: 'Arial',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+        
+        // Countdown text
+        this.countdownText = this.add.text(
+            this.cameras.main.centerX,
+            this.cameras.main.centerY,
+            '60',
+            {
+                fontSize: '72px',
+                color: '#ffffff',
+                fontFamily: 'Arial',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+        
+        // Instructions
+        const instructions = this.add.text(
+            this.cameras.main.centerX,
+            this.cameras.main.centerY + 150,
+            'Get ready to charm the NPCs of Beacon Bay!\nYour social skills are about to be put to the test.',
+            {
+                fontSize: '18px',
+                color: '#ffffff',
+                fontFamily: 'Arial',
+                align: 'center'
+            }
+        ).setOrigin(0.5);
+        
+        // Add all elements to container
+        this.speedDatingCountdown.add([
+            this.countdownBackground,
+            eventTitle,
+            this.countdownText,
+            instructions
+        ]);
+        
+        // Initially hide the countdown
+        this.speedDatingCountdown.setVisible(false);
+        
+        // Set depth to ensure it's on top
+        this.speedDatingCountdown.setDepth(1000);
+    }
+
+    private setupEventListeners() {
+        // Listen for speed dating countdown events
+        this.game.events.on('speed_dating_countdown', (data: any) => {
+            console.log('💕 [UI] Speed dating countdown started:', data);
+            this.startSpeedDatingCountdown(data.countdownSeconds || 60);
+        });
+        
+        // Listen for speed dating start (hide countdown)
+        this.game.events.on('speed_dating_start', (data: any) => {
+            console.log('💕 [UI] Speed dating started, hiding countdown');
+            this.hideSpeedDatingCountdown();
+        });
+        
+        // Existing event listeners...
+        this.game.events.on('playerIdSet', (playerId: string) => {
+            console.log("🎮 [UI] Player ID set:", playerId);
+            // Any player-specific UI setup can go here
+        });
+    }
+
+    private startSpeedDatingCountdown(seconds: number) {
+        console.log(`💕 [UI] Starting speed dating countdown: ${seconds} seconds`);
+        
+        // Show countdown UI
+        this.speedDatingCountdown?.setVisible(true);
+        this.countdownVisible = true;
+        
+        let timeLeft = seconds;
+        
+        // Create countdown timer
+        const countdownTimer = this.time.addEvent({
+            delay: 1000,
+            repeat: seconds - 1,
+            callback: () => {
+                timeLeft--;
+                
+                if (this.countdownText) {
+                    this.countdownText.setText(timeLeft.toString());
+                    
+                    // Add pulsing effect
+                    this.tweens.add({
+                        targets: this.countdownText,
+                        scaleX: 1.2,
+                        scaleY: 1.2,
+                        duration: 200,
+                        yoyo: true,
+                        ease: 'Power2'
+                    });
+                    
+                    // Change color when getting close
+                    if (timeLeft <= 10) {
+                        this.countdownText.setColor('#ff4444');
+                    } else if (timeLeft <= 30) {
+                        this.countdownText.setColor('#ffaa00');
+                    }
+                }
+                
+                if (timeLeft === 0) {
+                    this.hideSpeedDatingCountdown();
+                }
+            }
+        });
+    }
+
+    private hideSpeedDatingCountdown() {
+        if (this.speedDatingCountdown && this.countdownVisible) {
+            console.log('💕 [UI] Hiding speed dating countdown');
+            
+            this.tweens.add({
+                targets: this.speedDatingCountdown,
+                alpha: 0,
+                duration: 500,
+                ease: 'Power2',
+                onComplete: () => {
+                    this.speedDatingCountdown?.setVisible(false);
+                    this.speedDatingCountdown?.setAlpha(1);
+                    this.countdownVisible = false;
+                }
+            });
+        }
+    }
+
+    private startPeriodicUpdates() {
+        console.log("🎮 [UI] Starting periodic updates");
+        
+        // Initialize dialogue manager
+        this.dialogueManager = new DialogueManager(this);
+        
+        // Listen for dialogue events from GameScene
+        this.game.events.on('openDialogue', (npcId: string, npcName: string) => {
+            console.log(`💬 [UI] Opening dialogue with NPC: ${npcName} (ID: ${npcId})`);
+            this.dialogueManager?.openDialogue(npcId, npcName);
+        });
+        
+        this.game.events.on('closeDialogue', () => {
+            console.log(`💬 [UI] Closing dialogue`);
+            this.dialogueManager?.closeDialogue();
+        });
+        
+        // Listen for game state updates to update clock
+        this.game.events.on('gameStateUpdate', (gameState: any) => {
+            this.updateClockDisplay(gameState);
+        });
+        
+        // Listen for real-time NPC data from GameScene
+        this.game.events.on('npcDataUpdate', (npcData: Map<string, any>) => {
+            this.realtimeNPCData = npcData;
+            if (this.debugPanelVisible) {
+                this.refreshNPCList();
+            }
+        });
+        
+        console.log("🎮 [UI] Periodic updates initialized");
+    }
+
+    private createGameTimeUI() {
         // Add game title
         const titleText = this.add.text(10, 10, "Competitive Dating Simulator", {
             fontSize: "20px",
@@ -83,47 +296,6 @@ export class UIScene extends Scene {
         debugToggleButton.on('pointerdown', () => {
             this.toggleDebugPanel();
         });
-
-        // Create debug panel (initially hidden)
-        this.createDebugPanel();
-
-        // Create player text interface (public speech and activity updates)
-        this.createPlayerTextInterface();
-
-        // Initialize dialogue manager
-        this.dialogueManager = new DialogueManager(this);
-
-        // Listen for player ID updates from GameScene
-        this.game.events.on('playerIdSet', (playerId: string) => {
-            console.log(`👤 [UI] Setting player character ID: ${playerId}`);
-            this.dialogueManager?.setPlayerCharacterId(playerId);
-        });
-
-        // Listen for dialogue events from GameScene
-        this.game.events.on('openDialogue', (npcId: string, npcName: string) => {
-            console.log(`💬 [UI] Opening dialogue with NPC: ${npcName} (ID: ${npcId})`);
-            this.dialogueManager?.openDialogue(npcId, npcName);
-        });
-
-        this.game.events.on('closeDialogue', () => {
-            console.log(`💬 [UI] Closing dialogue`);
-            this.dialogueManager?.closeDialogue();
-        });
-
-        // Listen for game state updates to update clock
-        this.game.events.on('gameStateUpdate', (gameState: any) => {
-            this.updateClockDisplay(gameState);
-        });
-
-        // Listen for real-time NPC data from GameScene
-        this.game.events.on('npcDataUpdate', (npcData: Map<string, any>) => {
-            this.realtimeNPCData = npcData;
-            if (this.debugPanelVisible) {
-                this.refreshNPCList();
-            }
-        });
-
-        console.log("🎮 [UI] UIScene created and running in parallel with clock display");
     }
 
     private createPlayerTextInterface() {

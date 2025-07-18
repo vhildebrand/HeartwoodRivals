@@ -557,6 +557,9 @@ export class GameScene extends Scene {
                 console.error("Room error:", code, message);
             });
             
+            // Set up speed dating event listeners
+            this.setupSpeedDatingEventListeners();
+            
         } catch (error) {
             console.error("Failed to connect to Colyseus server:", error);
             if (error instanceof Error) {
@@ -797,6 +800,113 @@ export class GameScene extends Scene {
         if (nearbyNpc) {
             // Show interaction indicator above the NPC
             const npcData = this.npcs.get(nearbyNpc.id);
+            if (npcData) {
+                this.interactionIndicator.setPosition(
+                    npcData.sprite.x - 40, 
+                    npcData.sprite.y - 30
+                );
+                this.interactionIndicator.setVisible(true);
+            }
+        } else {
+            this.interactionIndicator.setVisible(false);
+        }
+    }
+
+    private setupSpeedDatingEventListeners() {
+        if (!this.room) return;
+        
+        console.log("🎮 [GAME_SCENE] Setting up speed dating event listeners");
+        
+        // Speed dating countdown started
+        this.room.onMessage('speed_dating_countdown', (data: any) => {
+            console.log('💕 [GAME_SCENE] Speed dating countdown started:', data);
+            
+            // Launch speed dating scene
+            this.scene.launch('SpeedDatingScene');
+            
+            // Forward event to speed dating scene
+            this.game.events.emit('speed_dating_countdown', data);
+        });
+        
+        // Speed dating gauntlet started
+        this.room.onMessage('speed_dating_start', (data: any) => {
+            console.log('💕 [GAME_SCENE] Speed dating gauntlet started:', data);
+            
+            // Pause regular game updates
+            this.scene.pause();
+            
+            // Forward event to speed dating scene
+            this.game.events.emit('speed_dating_start', data);
+        });
+        
+        // Speed dating match started
+        this.room.onMessage('speed_dating_match_start', (data: any) => {
+            console.log('💕 [GAME_SCENE] Speed dating match started:', data);
+            this.game.events.emit('speed_dating_match_start', data);
+        });
+        
+        // Speed dating vibe update
+        this.room.onMessage('speed_dating_vibe_update', (data: any) => {
+            console.log('💕 [GAME_SCENE] Speed dating vibe update:', data);
+            this.game.events.emit('speed_dating_vibe_update', data);
+        });
+        
+        // Speed dating match ended
+        this.room.onMessage('speed_dating_match_end', (data: any) => {
+            console.log('💕 [GAME_SCENE] Speed dating match ended:', data);
+            this.game.events.emit('speed_dating_match_end', data);
+        });
+        
+        // Speed dating gauntlet completed
+        this.room.onMessage('speed_dating_complete', (data: any) => {
+            console.log('💕 [GAME_SCENE] Speed dating gauntlet completed:', data);
+            
+            // Resume regular game updates
+            this.scene.resume();
+            
+            // Forward event to speed dating scene
+            this.game.events.emit('speed_dating_complete', data);
+        });
+        
+        // NPC response to player message
+        this.room.onMessage('speed_dating_npc_response', (data: any) => {
+            console.log('💕 [GAME_SCENE] NPC response:', data);
+            this.game.events.emit('speed_dating_npc_response', data);
+        });
+    }
+
+    private checkNearbyNPCs() {
+        if (!this.myPlayerId) return;
+        
+        const player = this.playerController.players.get(this.myPlayerId);
+        if (!player) return;
+        
+        const nearbyNPCs: any[] = [];
+        const interactionRange = 100;
+        
+        this.npcs.forEach((npc, id) => {
+            const distance = Phaser.Math.Distance.Between(
+                player.sprite.x, player.sprite.y,
+                npc.sprite.x, npc.sprite.y
+            );
+            
+            if (distance <= interactionRange) {
+                nearbyNPCs.push({
+                    id: id,
+                    name: npc.name,
+                    distance: distance
+                });
+            }
+        });
+        
+        // Sort by distance
+        nearbyNPCs.sort((a, b) => a.distance - b.distance);
+        
+        // Update interaction indicator
+        if (nearbyNPCs.length > 0 && this.interactionIndicator) {
+            const closestNPC = nearbyNPCs[0];
+            const npcData = this.npcs.get(closestNPC.id);
+            
             if (npcData) {
                 this.interactionIndicator.setPosition(
                     npcData.sprite.x - 40, 

@@ -11,6 +11,7 @@ import { PlanExecutor } from "../systems/PlanExecutor";
 import { AgentMovementSystem } from "../systems/AgentMovementSystem";
 import { PlanningSystem } from "../systems/PlanningSystem";
 import { ThoughtSystem } from "../systems/ThoughtSystem";
+import { SpeedDatingManager } from "../systems/SpeedDatingManager";
 
 // Database pool interface
 interface DatabasePool {
@@ -51,6 +52,7 @@ export class HeartwoodRoom extends Room<GameState> {
     private agentMovementSystem!: AgentMovementSystem;
     private planningSystem!: PlanningSystem;
     private thoughtSystem!: ThoughtSystem;
+    private speedDatingManager!: SpeedDatingManager;
     private databasePool!: DatabasePool;
     private agents: Map<string, SpawnedAgent> = new Map();
     private lastPlanningDay: number = 0;
@@ -193,6 +195,11 @@ export class HeartwoodRoom extends Room<GameState> {
 
         this.onMessage("player_activity", (client: Client, message: { message: string; location: string; timestamp: number }) => {
             this.handlePlayerActivity(client, message);
+        });
+
+        // Speed dating message handler
+        this.onMessage("speed_dating_message", (client: Client, message: { matchId: string; message: string }) => {
+            this.handleSpeedDatingMessage(client, message);
         });
         
         // Start the game loop
@@ -518,6 +525,21 @@ export class HeartwoodRoom extends Room<GameState> {
         });
     }
 
+    private handleSpeedDatingMessage(client: Client, message: { matchId: string; message: string }) {
+        if (!this.speedDatingManager) {
+            console.error('❌ [SPEED_DATING] SpeedDatingManager not available');
+            return;
+        }
+
+        console.log(`💕 [SPEED_DATING] Player ${client.sessionId} sent message: "${message.message}"`);
+        
+        // Process the message through the speed dating manager
+        this.speedDatingManager.processDateConversation(
+            client.sessionId,
+            message.message
+        );
+    }
+
     private formatTimeMinutes(minutes: number): string {
         const hours = Math.floor(minutes / 60);
         const mins = Math.floor(minutes % 60);
@@ -681,6 +703,20 @@ export class HeartwoodRoom extends Room<GameState> {
                 console.error('❌ Failed to spawn agents:', spawnError);
             }
             
+            // Initialize Speed Dating Manager
+            this.speedDatingManager = new SpeedDatingManager(this.agents, (eventType: string, data: any) => {
+                this.broadcast(eventType, data);
+            });
+            console.log('💕 [SERVER] Speed Dating Manager initialized');
+            
+            // Schedule daily speed dating event at 6:15am
+            this.gameTime.scheduleEvent('daily_speed_dating', '06:15', () => {
+                console.log('💕 [SERVER] Starting daily speed dating event at 6:15am');
+                this.startSpeedDatingEvent();
+            }, true); // recurring = true for daily events
+            
+            console.log('💕 [SERVER] Daily speed dating event scheduled for 6:15am');
+            
             // Update game state with time
             this.updateGameTimeState();
             
@@ -709,6 +745,52 @@ export class HeartwoodRoom extends Room<GameState> {
             
             this.state.currentGameTime = newTime;
             this.state.gameDay = newDay;
+        }
+    }
+
+    private async startSpeedDatingEvent() {
+        if (!this.speedDatingManager) {
+            console.error('❌ [SPEED_DATING] SpeedDatingManager not initialized');
+            return;
+        }
+
+        // Check if an event is already in progress
+        const currentEventStatus = this.speedDatingManager.getEventStatus();
+        if (currentEventStatus.status !== 'no_event') {
+            console.warn(`⚠️ [SPEED_DATING] Event already in progress (status: ${currentEventStatus.status}), skipping new event`);
+            return;
+        }
+
+        try {
+            console.log('💕 [SPEED_DATING] Starting speed dating event...');
+            
+            // Create event
+            await this.speedDatingManager.initializeEvent({
+                eventName: `Daily Romance - Day ${this.gameTime.getCurrentDay()}`,
+                location: 'town_square',
+                seasonTheme: 'Harvest Romance'
+            });
+            
+            // Register all online players
+            const playerIds = Array.from(this.state.players.keys());
+            for (const playerId of playerIds) {
+                await this.speedDatingManager.registerPlayer(playerId);
+                console.log(`💕 [SPEED_DATING] Registered player: ${playerId}`);
+            }
+            
+            // Register a selection of NPCs (limit to 6 for better experience)
+            const availableNPCs = Array.from(this.agents.keys()).slice(0, 6);
+            await this.speedDatingManager.registerNPCs(availableNPCs);
+            console.log(`💕 [SPEED_DATING] Registered ${availableNPCs.length} NPCs`);
+            
+            // Start countdown (15 seconds as specified in requirements)
+            // The SpeedDatingManager will handle all countdown broadcasts
+            this.speedDatingManager.startCountdown();
+            
+            console.log('💕 [SPEED_DATING] Speed dating countdown started!');
+            
+        } catch (error) {
+            console.error('❌ [SPEED_DATING] Failed to start speed dating event:', error);
         }
     }
 

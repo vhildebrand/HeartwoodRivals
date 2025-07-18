@@ -136,14 +136,28 @@ export class GameTime {
    * Process time events (should be called regularly)
    */
   public processEvents(): void {
+    const currentDay = this.getCurrentDay();
+    
     for (const [id, event] of this.timeEvents) {
       if (!event.executed && this.isTime(event.time)) {
-        event.callback();
-        
+        // For recurring events, check if we already executed today
         if (event.recurring) {
-          // Reset for next occurrence
-          event.executed = false;
+          const lastExecutedKey = `${id}_last_executed`;
+          const lastExecutedDay = (event as any)[lastExecutedKey];
+          
+          if (lastExecutedDay === currentDay) {
+            // Already executed today, skip
+            continue;
+          }
+          
+          // Execute the event
+          event.callback();
+          
+          // Mark as executed for this day
+          (event as any)[lastExecutedKey] = currentDay;
         } else {
+          // Non-recurring event
+          event.callback();
           event.executed = true;
         }
       }

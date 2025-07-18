@@ -9,6 +9,7 @@ import { reflectionRoutes } from './routes/reflectionRoutes';
 import { metacognitionRoutes } from './routes/metacognitionRoutes';
 import { thoughtRoutes } from './routes/thoughtRoutes';
 import { npcAwarenessRoutes } from './routes/npcAwarenessRoutes';
+import { datingRoutes } from './routes/datingRoutes';
 import { LLMWorker } from './services/LLMWorker';
 import { AgentMemoryManager } from './services/AgentMemoryManager';
 import { AgentObservationSystem } from './services/AgentObservationSystem';
@@ -106,6 +107,7 @@ app.use('/reflection', reflectionRoutes(pool, redisClient));
 app.use('/metacognition', metacognitionRoutes(pool, redisClient));
 app.use('/thought', thoughtRoutes(pool, redisClient));
 app.use('/awareness', npcAwarenessRoutes(pool, redisClient));
+app.use('/dating', datingRoutes(pool, redisClient));
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {
