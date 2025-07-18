@@ -26,9 +26,10 @@ export class NPCAwarenessSystem {
   private redisClient: ReturnType<typeof createClient>;
   private memoryManager: AgentMemoryManager;
   private thoughtSystem: ThoughtSystemIntegration;
-  private observationRange: number = 8; // tiles
+  private observationRange: number = 20; // tiles - for memory storage
+  private thoughtTriggerRange: number = 10; // tiles - for LLM-based thoughts (cost optimization)
   private lastObservationTime: Map<string, number> = new Map();
-  private observationCooldown: number = 30000; // 30 seconds between observations per NPC
+  private observationCooldown: number = 15000; // 15 seconds between observations per NPC
 
   constructor(
     pool: Pool,
@@ -45,10 +46,10 @@ export class NPCAwarenessSystem {
   }
 
   private async initializeAwarenessSystem(): Promise<void> {
-    // Run awareness checks every 30 seconds
+    // Run awareness checks every 15 seconds - reduced from 30 seconds
     setInterval(async () => {
       await this.processNPCAwareness();
-    }, 30000);
+    }, 15000);
 
     // Subscribe to NPC activity changes
     const subscriber = this.redisClient.duplicate();
@@ -59,7 +60,13 @@ export class NPCAwarenessSystem {
       await this.processNPCActivityChange(activityData);
     });
 
-    console.log('✅ NPC Awareness System initialized');
+    // Subscribe to player activity updates for continuous observation
+    await subscriber.subscribe('player_current_activity', async (message: string) => {
+      const activityData = JSON.parse(message);
+      await this.processPlayerActivityObservation(activityData);
+    });
+
+    console.log('✅ NPC Awareness System initialized - 20 tile memory range, 10 tile thought range');
   }
 
   /**
@@ -179,10 +186,21 @@ export class NPCAwarenessSystem {
       return null; // Already observed this recently
     }
 
+    // Calculate distance between observer and target
+    const distance = this.calculateDistance(observer, target);
+    
     // Determine observation type and importance
     const observationType = this.classifyObservation(target.current_activity);
     const importance = this.calculateObservationImportance(observer, target);
-    const shouldTriggerThought = importance >= 6; // Only trigger thoughts for interesting observations
+    
+    // Only trigger LLM thoughts if within thoughtTriggerRange (10 tiles) AND importance >= 6
+    const shouldTriggerThought = distance <= this.thoughtTriggerRange && importance >= 6;
+    
+    if (distance <= this.thoughtTriggerRange) {
+      console.log(`🧠 [NPC_AWARENESS] ${observer.name} within thought range (${distance.toFixed(1)} tiles) of ${target.name}`);
+    } else {
+      console.log(`💾 [NPC_AWARENESS] ${observer.name} observing ${target.name} for memory only (${distance.toFixed(1)} tiles)`);
+    }
 
     const description = `I noticed ${target.name} ${target.current_activity} at ${target.current_location || 'nearby'}`;
 
@@ -197,6 +215,21 @@ export class NPCAwarenessSystem {
       importance,
       shouldTriggerThought
     };
+  }
+
+  /**
+   * Calculate distance between two agents
+   */
+  private calculateDistance(observer: any, target: any): number {
+    if (!observer.current_x || !observer.current_y || !target.current_x || !target.current_y) {
+      // If no coordinates, assume they're in the same location if location names match
+      return observer.current_location === target.current_location ? 0 : 15;
+    }
+    
+    return Math.sqrt(
+      Math.pow(observer.current_x - target.current_x, 2) + 
+      Math.pow(observer.current_y - target.current_y, 2)
+    );
   }
 
   /**
@@ -269,16 +302,20 @@ export class NPCAwarenessSystem {
     try {
       console.log(`💭 [NPC_AWARENESS] Triggering thought for ${observation.observerName}: ${observation.description}`);
       
-      await this.thoughtSystem.triggerSpontaneousThought(
-        observation.observerId,
-        observation.observationType,
-        {
-          observation: observation.description,
-          targetNPC: observation.targetName,
-          location: observation.location,
-          importance: observation.importance
-        }
-      );
+      // For high-importance observations (8+), use post-conversation scheduling thoughts
+      if (observation.importance >= 8) {
+        console.log(`📅 [NPC_AWARENESS] High importance observation - triggering scheduling thoughts`);
+        await this.thoughtSystem.triggerPostConversationThoughts(
+          observation.observerId,
+          `Observed: ${observation.description}`,
+          300, // 5 minute duration estimate
+          observation.importance
+        );
+      } else {
+        // For medium importance observations (6-7), just store as lightweight memory
+        console.log(`🧠 [NPC_AWARENESS] Medium importance observation - storing as memory only`);
+        // Memory already stored in storeObservation, no additional thought processing needed
+      }
     } catch (error) {
       console.error(`❌ [NPC_AWARENESS] Error triggering thought:`, error);
     }
@@ -320,6 +357,41 @@ export class NPCAwarenessSystem {
   }
 
   /**
+   * Process player activity updates for continuous observation
+   */
+  private async processPlayerActivityObservation(activityData: any): Promise<void> {
+    const { playerId, playerName, newActivity, location } = activityData;
+
+    try {
+      // Find nearby NPCs who can observe this change
+      const nearbyNPCs = await this.findNearbyNPCs({
+        id: playerId, // NPCs observing player activity
+        current_location: location,
+        current_x: null,
+        current_y: null
+      });
+
+      for (const observer of nearbyNPCs) {
+        const observation: NPCObservation = {
+          observerId: observer.id,
+          observerName: observer.name,
+          observationType: 'npc_activity', // NPCs observing player activity
+          targetId: playerId,
+          targetName: playerName,
+          location: location,
+          description: `I noticed ${playerName} started ${newActivity}`,
+          importance: 5,
+          shouldTriggerThought: false // Don't trigger thoughts for routine activity changes
+        };
+
+        await this.storeObservation(observation);
+      }
+    } catch (error) {
+      console.error(`❌ [NPC_AWARENESS] Error processing player activity observation:`, error);
+    }
+  }
+
+  /**
    * Get awareness statistics
    */
   public async getAwarenessStats(): Promise<any> {
@@ -336,7 +408,7 @@ export class NPCAwarenessSystem {
 
       return {
         activeObservers: recentObservations.rows.length,
-        totalObservations: recentObservations.rows.reduce((sum, row) => sum + parseInt(row.observation_count), 0),
+        totalObservations: recentObservations.rows.reduce((sum: number, row: any) => sum + parseInt(row.observation_count), 0),
         topObservers: recentObservations.rows.slice(0, 5)
       };
     } catch (error) {

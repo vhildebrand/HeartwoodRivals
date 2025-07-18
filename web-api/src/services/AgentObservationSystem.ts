@@ -28,7 +28,8 @@ export class AgentObservationSystem {
   private redisClient: ReturnType<typeof createClient>;
   private memoryManager: AgentMemoryManager;
   private reputationManager: ReputationManager;
-  private observationRange: number = 10; // tiles - configurable
+  private observationRange: number = 20; // tiles - for memory storage
+  private thoughtTriggerRange: number = 10; // tiles - for LLM-based thoughts (cost optimization)
   private readonly OBSERVATION_CHANNEL = 'player_actions';
   
   constructor(
@@ -389,8 +390,62 @@ export class AgentObservationSystem {
       if (observation.tags.includes('witnessable_social_event') && observation.related_players.length > 0) {
         await this.updateReputationFromWitnessedEvent(observation);
       }
+      
+      // Only trigger scheduling thoughts for high-importance observations AND within thought trigger range
+      if (observation.importance >= 8) {
+        // Check if agent is within thought trigger range
+        const agentResult = await this.pool.query(`
+          SELECT a.id, a.name, s.current_x, s.current_y
+          FROM agents a
+          LEFT JOIN agent_states s ON a.id = s.agent_id
+          WHERE a.id = $1
+        `, [observation.agent_id]);
+        
+        if (agentResult.rows.length > 0) {
+          const agent = agentResult.rows[0];
+          const distance = this.calculateDistanceToLocation(agent, observation.location);
+          
+          if (distance <= this.thoughtTriggerRange) {
+            console.log(`🧠 [OBSERVATION] Agent ${observation.agent_id} within thought range (${distance.toFixed(1)} tiles) - triggering LLM thoughts`);
+            await this.triggerObservationSchedulingThoughts(observation);
+          } else {
+            console.log(`💾 [OBSERVATION] Agent ${observation.agent_id} outside thought range (${distance.toFixed(1)} tiles) - memory only`);
+          }
+        }
+      }
     } else {
       console.log(`🚫 [OBSERVATION] Memory filtered out for ${observation.agent_id}: "${observation.observation.substring(0, 50)}..." (importance: ${observation.importance})`);
+    }
+  }
+
+  /**
+   * Trigger scheduling thoughts for high-importance observations
+   */
+  private async triggerObservationSchedulingThoughts(observation: AgentObservation): Promise<void> {
+    try {
+      console.log(`📅 [OBSERVATION] Triggering scheduling thoughts for ${observation.agent_id}: high importance observation`);
+      
+      const response = await fetch('http://localhost:3000/thought/conversation-complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: observation.agent_id,
+          conversationSummary: `Witnessed: ${observation.observation}`,
+          duration: 300, // 5 minute duration estimate
+          importance: observation.importance
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json() as any;
+      console.log(`✅ [OBSERVATION] Observation scheduling thoughts completed for ${observation.agent_id}:`, result.thoughtResult?.decision);
+    } catch (error) {
+      console.error('Error in observation scheduling thoughts:', error);
     }
   }
 
@@ -644,5 +699,26 @@ export class AgentObservationSystem {
     console.log('⚠️  Environment observation simulation disabled - was creating artificial memories');
     // Method disabled to prevent automatic memory generation
     return;
+  }
+
+  /**
+   * Calculate distance between agent and observation location
+   */
+  private calculateDistanceToLocation(agent: any, location: string): number {
+    if (!agent.current_x || !agent.current_y) {
+      // If no coordinates, assume distance based on location string
+      return 15; // Default distance for location-based observations
+    }
+    
+    // Parse location if it's in x,y format
+    const coords = this.parseLocation(location);
+    if (!coords) {
+      return 15; // Default distance for named locations
+    }
+    
+    return Math.sqrt(
+      Math.pow(agent.current_x - coords.x, 2) + 
+      Math.pow(agent.current_y - coords.y, 2)
+    );
   }
 } 

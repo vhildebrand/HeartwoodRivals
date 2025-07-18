@@ -192,14 +192,22 @@ export class ThoughtSystemIntegration {
   private async handlePlayerAction(data: any): Promise<void> {
     const { playerId, actionType, location, details } = data;
     
-    // Find nearby NPCs
-    const nearbyAgents = await this.findNearbyAgents(location, 10); // 10 tile radius
+    // Find nearby NPCs within 20 tiles for basic awareness
+    const nearbyAgents = await this.findNearbyAgents(location, 20);
+    
+    // But only trigger LLM thoughts for agents within 10 tiles
+    const thoughtTriggerRange = 10;
     
     for (const agent of nearbyAgents) {
+      // Calculate distance to agent
+      const distance = this.calculateDistanceToAgent(agent, location);
+      
       // Determine if this action should trigger a thought
       const shouldTriggerThought = this.shouldPlayerActionTriggerThought(actionType, details);
       
-      if (shouldTriggerThought) {
+      if (shouldTriggerThought && distance <= thoughtTriggerRange) {
+        console.log(`🧠 [THOUGHT_INTEGRATION] Agent ${agent.id} within thought range (${distance.toFixed(1)} tiles) - triggering LLM thoughts`);
+        
         const trigger: ThoughtTrigger = {
           type: 'external_event',
           data: {
@@ -213,7 +221,9 @@ export class ThoughtSystemIntegration {
           timestamp: Date.now()
         };
         
-                 await this.triggerThought(agent.id, trigger);
+        await this.triggerThought(agent.id, trigger);
+      } else if (shouldTriggerThought) {
+        console.log(`💾 [THOUGHT_INTEGRATION] Agent ${agent.id} outside thought range (${distance.toFixed(1)} tiles) - no LLM thoughts`);
       }
     }
   }
@@ -361,6 +371,43 @@ export class ThoughtSystemIntegration {
     `, [location, `%${location}%`]);
     
     return result.rows;
+  }
+
+  /**
+   * Calculate distance between agent and location
+   */
+  private calculateDistanceToAgent(agent: any, location: string): number {
+    // Parse location if it's in x,y format
+    const coords = this.parseLocation(location);
+    if (!coords) {
+      return 15; // Default distance for named locations
+    }
+    
+    // Get agent position (this would need to be implemented based on your agent structure)
+    // For now, assume agents have x,y coordinates
+    if (!agent.current_x || !agent.current_y) {
+      return 15; // Default distance if no coordinates
+    }
+    
+    return Math.sqrt(
+      Math.pow(agent.current_x - coords.x, 2) + 
+      Math.pow(agent.current_y - coords.y, 2)
+    );
+  }
+
+  /**
+   * Parse location string to coordinates
+   */
+  private parseLocation(location: string): { x: number; y: number } | null {
+    const coords = location.split(',');
+    if (coords.length === 2) {
+      const x = parseInt(coords[0].trim(), 10);
+      const y = parseInt(coords[1].trim(), 10);
+      if (!isNaN(x) && !isNaN(y)) {
+        return { x, y };
+      }
+    }
+    return null;
   }
 
   /**
