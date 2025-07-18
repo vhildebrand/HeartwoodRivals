@@ -31,6 +31,7 @@ services:
       - '3000:3000' # Expose API on port 3000
     volumes:
       - ./web-api:/usr/src/app
+      - /usr/src/app/node_modules # Prevents local node_modules from overwriting container's
       - ./db/agents:/usr/src/app/agents
     depends_on:
       - postgres
@@ -44,6 +45,7 @@ services:
       - '2567:2567' # Default Colyseus port
     volumes:
       - ./game-server:/usr/src/app
+      - /usr/src/app/node_modules # Prevents local node_modules from overwriting container's
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:

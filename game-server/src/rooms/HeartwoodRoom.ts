@@ -10,6 +10,7 @@ import { AgentSpawner, SpawnedAgent } from "../systems/AgentSpawner";
 import { PlanExecutor } from "../systems/PlanExecutor";
 import { AgentMovementSystem } from "../systems/AgentMovementSystem";
 import { PlanningSystem } from "../systems/PlanningSystem";
+import { ThoughtSystem } from "../systems/ThoughtSystem";
 
 // Database pool interface
 interface DatabasePool {
@@ -49,6 +50,7 @@ export class HeartwoodRoom extends Room<GameState> {
     private planExecutor!: PlanExecutor;
     private agentMovementSystem!: AgentMovementSystem;
     private planningSystem!: PlanningSystem;
+    private thoughtSystem!: ThoughtSystem;
     private databasePool!: DatabasePool;
     private agents: Map<string, SpawnedAgent> = new Map();
     private lastPlanningDay: number = 0;
@@ -556,6 +558,45 @@ export class HeartwoodRoom extends Room<GameState> {
         }
     }
 
+    private async setupThoughtSystemListeners() {
+        if (!this.redisClient) {
+            console.log('⚠️  No Redis client - thought system listeners disabled');
+            return;
+        }
+
+        try {
+            // Create subscriber for thought-triggered actions
+            const thoughtSubscriber = this.redisClient.duplicate();
+            await thoughtSubscriber.connect();
+
+            // Listen for immediate activity changes triggered by thoughts
+            await thoughtSubscriber.subscribe('game_server_activity_change', (message: string) => {
+                try {
+                    const activityChange = JSON.parse(message);
+                    console.log(`🧠 [THOUGHT] Received activity change request: ${activityChange.agentId} -> ${activityChange.activityName}`);
+                    this.handleThoughtTriggeredActivity(activityChange);
+                } catch (error) {
+                    console.error('❌ Error processing thought-triggered activity:', error);
+                }
+            });
+
+            // Listen for schedule updates from thoughts
+            await thoughtSubscriber.subscribe('planning_system_update', (message: string) => {
+                try {
+                    const planUpdate = JSON.parse(message);
+                    console.log(`🧠 [THOUGHT] Received planning update: ${planUpdate.agentId} -> ${planUpdate.activity}`);
+                    this.handleThoughtTriggeredScheduleUpdate(planUpdate);
+                } catch (error) {
+                    console.error('❌ Error processing thought-triggered schedule update:', error);
+                }
+            });
+
+            console.log('✅ Thought system listeners initialized');
+        } catch (error) {
+            console.error('❌ Failed to setup thought system listeners:', error);
+        }
+    }
+
     private async initializeAgentSystems() {
         console.log('🤖 Initializing agent systems...');
         
@@ -604,6 +645,10 @@ export class HeartwoodRoom extends Room<GameState> {
             this.planExecutor = new PlanExecutor(pool);
             this.agentMovementSystem = new AgentMovementSystem(this.MAP_ID);
             this.planningSystem = new PlanningSystem(pool, this.redisClient);
+            
+            // Initialize ThoughtSystem (requires memory manager - will be created in web-api)
+            // For now, we'll just set up Redis listeners for thought-triggered actions
+            this.setupThoughtSystemListeners();
             
             // Set up movement callbacks
             this.agentMovementSystem.onMovementUpdate((update) => {
@@ -931,6 +976,75 @@ export class HeartwoodRoom extends Room<GameState> {
             console.log(`📋 [SERVER] Daily planning completed (${plansGenerated} plans generated)`);
         } catch (error) {
             console.error(`❌ [SERVER] Error in daily planning:`, error);
+        }
+    }
+
+    /**
+     * Handle thought-triggered immediate activity changes
+     */
+    private async handleThoughtTriggeredActivity(activityChange: any) {
+        const { agentId, activityName, priority, interruptCurrent, parameters } = activityChange;
+        
+        const agent = this.agents.get(agentId);
+        if (!agent) {
+            console.error(`❌ [THOUGHT] Agent ${agentId} not found for activity change`);
+            return;
+        }
+
+        try {
+            console.log(`🧠 [THOUGHT] Processing activity change for ${agent.data.name}: ${activityName}`);
+            
+            // Use the existing activity manager to handle the change
+            const result = agent.activityManager.requestActivity({
+                activityName,
+                priority: priority || 10,
+                interruptCurrent: interruptCurrent || true,
+                parameters: parameters || {}
+            });
+
+            if (result.success) {
+                console.log(`✅ [THOUGHT] Successfully changed activity for ${agent.data.name}: ${activityName}`);
+            } else {
+                console.error(`❌ [THOUGHT] Failed to change activity for ${agent.data.name}: ${result.message}`);
+            }
+        } catch (error) {
+            console.error(`❌ [THOUGHT] Error processing activity change for ${agent.data.name}:`, error);
+        }
+    }
+
+    /**
+     * Handle thought-triggered schedule updates
+     */
+    private async handleThoughtTriggeredScheduleUpdate(planUpdate: any) {
+        const { agentId, action, activity, time, location, priority, reason } = planUpdate;
+        
+        const agent = this.agents.get(agentId);
+        if (!agent) {
+            console.error(`❌ [THOUGHT] Agent ${agentId} not found for schedule update`);
+            return;
+        }
+
+        try {
+            console.log(`🧠 [THOUGHT] Processing schedule update for ${agent.data.name}: ${action}`);
+            
+            if (action === 'add_scheduled_activity') {
+                // Add the scheduled activity to the plan executor
+                if (this.planExecutor) {
+                    this.planExecutor.addCustomAction(agentId, {
+                        agentId,
+                        time,
+                        action: activity,
+                        description: reason,
+                        location,
+                        priority: priority || 7,
+                        duration: 1800000 // 30 minutes default
+                    });
+                    
+                    console.log(`✅ [THOUGHT] Added scheduled activity for ${agent.data.name}: ${activity} at ${time}`);
+                }
+            }
+        } catch (error) {
+            console.error(`❌ [THOUGHT] Error processing schedule update for ${agent.data.name}:`, error);
         }
     }
 

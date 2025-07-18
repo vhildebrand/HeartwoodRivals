@@ -7,12 +7,16 @@ import { npcRoutes } from './routes/npcRoutes';
 import { memoryRoutes } from './routes/memoryRoutes';
 import { reflectionRoutes } from './routes/reflectionRoutes';
 import { metacognitionRoutes } from './routes/metacognitionRoutes';
+import { thoughtRoutes } from './routes/thoughtRoutes';
+import { npcAwarenessRoutes } from './routes/npcAwarenessRoutes';
 import { LLMWorker } from './services/LLMWorker';
 import { AgentMemoryManager } from './services/AgentMemoryManager';
 import { AgentObservationSystem } from './services/AgentObservationSystem';
 import { ReflectionProcessor } from './services/ReflectionProcessor';
 import { MetacognitionProcessor } from './services/MetacognitionProcessor';
 import { ReputationManager } from './services/ReputationManager';
+import { ThoughtSystemIntegration } from './services/ThoughtSystemIntegration';
+import { NPCAwarenessSystem } from './services/NPCAwarenessSystem';
 import { loadAgents } from './utils/loadAgents';
 
 // Load environment variables
@@ -78,6 +82,14 @@ async function initializeConnections() {
     metacognitionProcessor.startProcessing();
     console.log('✅ Metacognition Processor started successfully');
     
+    // Initialize Thought System Integration
+    const thoughtSystemIntegration = new ThoughtSystemIntegration(pool, redisClient, memoryManager);
+    console.log('✅ Thought System Integration initialized successfully');
+    
+    // Initialize NPC Awareness System
+    const npcAwarenessSystem = new NPCAwarenessSystem(pool, redisClient, memoryManager, thoughtSystemIntegration);
+    console.log('✅ NPC Awareness System initialized successfully');
+    
     // Load agents from JSON files
     await loadAgents(pool);
     
@@ -92,6 +104,8 @@ app.use('/npc', npcRoutes(pool, redisClient));
 app.use('/memory', memoryRoutes(pool, redisClient));
 app.use('/reflection', reflectionRoutes(pool, redisClient));
 app.use('/metacognition', metacognitionRoutes(pool, redisClient));
+app.use('/thought', thoughtRoutes(pool, redisClient));
+app.use('/awareness', npcAwarenessRoutes(pool, redisClient));
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {

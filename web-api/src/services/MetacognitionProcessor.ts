@@ -25,6 +25,7 @@ interface ScheduleModification {
 export class MetacognitionProcessor {
   private pool: Pool;
   private redisClient: ReturnType<typeof createClient>;
+  private queueClient: ReturnType<typeof createClient>;
   private memoryManager: AgentMemoryManager;
   private openai: OpenAI;
   private isProcessing: boolean = false;
@@ -32,10 +33,24 @@ export class MetacognitionProcessor {
   constructor(pool: Pool, redisClient: ReturnType<typeof createClient>) {
     this.pool = pool;
     this.redisClient = redisClient;
+    // Create separate client for queue operations
+    this.queueClient = redisClient.duplicate();
     this.memoryManager = new AgentMemoryManager(pool, redisClient);
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
+    
+    // Connect the queue client
+    this.initializeQueueClient();
+  }
+
+  private async initializeQueueClient(): Promise<void> {
+    try {
+      await this.queueClient.connect();
+      console.log('✅ [METACOGNITION PROCESSOR] Queue client connected');
+    } catch (error) {
+      console.error('❌ [METACOGNITION PROCESSOR] Error connecting queue client:', error);
+    }
   }
 
   /**
@@ -68,14 +83,17 @@ export class MetacognitionProcessor {
       }
     }, 30000);
 
-    // Process conversation reflection queue every 10 seconds
-    setInterval(async () => {
-      try {
-        await this.processNextConversationReflection();
-      } catch (error) {
-        console.error('❌ [METACOGNITION] Error in conversation reflection loop:', error);
-      }
-    }, 10000);
+    // DISABLED: Process conversation reflection queue every 10 seconds
+    // This has been moved to the lighter ThoughtSystem to avoid over-aggressive scheduling
+    // setInterval(async () => {
+    //   try {
+    //     await this.processNextConversationReflection();
+    //   } catch (error) {
+    //     console.error('❌ [METACOGNITION] Error in conversation reflection loop:', error);
+    //   }
+    // }, 10000);
+    
+    console.log('⚠️  [METACOGNITION] Conversation reflection processing disabled - moved to ThoughtSystem');
   }
 
   /**
@@ -83,7 +101,7 @@ export class MetacognitionProcessor {
    */
   private async processNextMetacognition(): Promise<void> {
     try {
-      const queuedItem = await this.redisClient.brPop('metacognition_queue', 1);
+      const queuedItem = await this.queueClient.brPop('metacognition_queue', 1);
       if (!queuedItem) {
         return; // No items in queue
       }
@@ -102,7 +120,7 @@ export class MetacognitionProcessor {
    */
   private async processNextUrgentMetacognition(): Promise<void> {
     try {
-      const queuedItem = await this.redisClient.brPop('metacognition_urgent_queue', 0.1);
+      const queuedItem = await this.queueClient.brPop('metacognition_urgent_queue', 0.1);
       if (!queuedItem) {
         return; // No items in urgent queue
       }
@@ -121,7 +139,7 @@ export class MetacognitionProcessor {
    */
   private async processNextConversationReflection(): Promise<void> {
     try {
-      const queuedItem = await this.redisClient.brPop('conversation_reflection_queue', 0.1);
+      const queuedItem = await this.queueClient.brPop('conversation_reflection_queue', 0.1);
       if (!queuedItem) {
         return; // No items in conversation reflection queue
       }
@@ -145,7 +163,7 @@ export class MetacognitionProcessor {
       timestamp: Date.now()
     });
 
-    await this.redisClient.lPush('metacognition_queue', queueItem);
+    await this.queueClient.lPush('metacognition_queue', queueItem);
     console.log(`🧠 [METACOGNITION] Queued metacognitive evaluation for ${agent_id}`);
   }
 
@@ -163,7 +181,7 @@ export class MetacognitionProcessor {
       immediate: true
     });
 
-    await this.redisClient.lPush('metacognition_urgent_queue', queueItem);
+    await this.queueClient.lPush('metacognition_urgent_queue', queueItem);
     console.log(`🚨 [URGENT METACOGNITION] Queued urgent metacognitive evaluation for ${agent_id} (urgency: ${urgency_level})`);
   }
 
@@ -804,7 +822,7 @@ IMPORTANT: If this situation is urgent/exciting and relevant to your role OR per
         timestamp: Date.now()
       });
 
-      await this.redisClient.lPush('schedule_reload_queue', reloadNotification);
+      await this.queueClient.lPush('schedule_reload_queue', reloadNotification);
       console.log(`📅 [SCHEDULE RELOAD] Queued emergency schedule reload for ${agent_id}`);
     } catch (error) {
       console.error('❌ [SCHEDULE RELOAD] Error triggering schedule reload:', error);
@@ -893,7 +911,7 @@ IMPORTANT: If this situation is urgent/exciting and relevant to your role OR per
    */
   public async getQueueStatus(): Promise<any> {
     try {
-      const queueLength = await this.redisClient.lLen('metacognition_queue');
+      const queueLength = await this.queueClient.lLen('metacognition_queue');
       
       return {
         queue_length: queueLength,
@@ -1001,23 +1019,33 @@ Consider:
 - Does this align with your personal goals and interests?
 - Should you change your plans for today based on this conversation?
 
-MOST CONVERSATIONS SHOULD BE LOW URGENCY. Only rate high urgency (6+) if:
-- There's a specific time-sensitive opportunity mentioned
-- It's an emergency or crisis situation
-- The player mentioned something you're truly excited about
-- It directly advances your primary goal in a time-sensitive way
+ALMOST ALL CONVERSATIONS SHOULD BE LOW URGENCY (1-3). Only rate high urgency (6+) if there's a GENUINE EMERGENCY or EXPLICIT TIME-SENSITIVE REQUEST:
+
+HIGH URGENCY (6+) EXAMPLES:
+- "There's a fire at the church!" (emergency)
+- "Someone is injured and needs help!" (medical emergency)
+- "The bank is being robbed!" (crime emergency)
+- "Can you meet me at 3pm today? I'm leaving town tomorrow." (explicit time request)
+- "The performance starts in 30 minutes!" (time-sensitive event)
+
+LOW URGENCY (1-3) EXAMPLES:
+- "I have a large collection of lamps" (just sharing information)
+- "I like your work" (compliment)
+- "How are you doing?" (casual conversation)
+- "I'm interested in your services" (general interest)
+- "That's a nice place you have" (observation)
 
 Rate the urgency on a scale of 1-10:
 - 10: Life-threatening emergency requiring immediate action
-- 9: Urgent emergency or crisis situation
+- 9: Urgent emergency or crisis situation  
 - 8: Very urgent professional duty or emergency
-- 7: Something you REALLY want to do (special opportunity, exciting event)
-- 6: Important opportunity that requires schedule adjustment
+- 7: Explicit time-sensitive request with deadline TODAY
+- 6: Important opportunity that requires schedule adjustment TODAY
 - 5: Moderately important, can wait a few hours
 - 4: Routine matter, can wait until later today
 - 3: Low priority, can wait until tomorrow
-- 2: Very low priority
-- 1: No urgency at all
+- 2: Very low priority, just informational
+- 1: No urgency at all, casual conversation
 
 Respond with JSON format:
 {

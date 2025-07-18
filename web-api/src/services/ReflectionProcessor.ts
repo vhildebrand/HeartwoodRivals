@@ -5,13 +5,28 @@ import { AgentMemoryManager } from './AgentMemoryManager';
 export class ReflectionProcessor {
   private pool: Pool;
   private redisClient: ReturnType<typeof createClient>;
+  private queueClient: ReturnType<typeof createClient>;
   private memoryManager: AgentMemoryManager;
   private isProcessing: boolean = false;
 
   constructor(pool: Pool, redisClient: ReturnType<typeof createClient>) {
     this.pool = pool;
     this.redisClient = redisClient;
+    // Create separate client for queue operations
+    this.queueClient = redisClient.duplicate();
     this.memoryManager = new AgentMemoryManager(pool, redisClient);
+    
+    // Connect the queue client
+    this.initializeQueueClient();
+  }
+
+  private async initializeQueueClient(): Promise<void> {
+    try {
+      await this.queueClient.connect();
+      console.log('✅ [REFLECTION PROCESSOR] Queue client connected');
+    } catch (error) {
+      console.error('❌ [REFLECTION PROCESSOR] Error connecting queue client:', error);
+    }
   }
 
   /**
@@ -53,8 +68,8 @@ export class ReflectionProcessor {
    */
   private async processNextReflection(): Promise<void> {
     try {
-      // Get next reflection from global queue
-      const queueItem = await this.redisClient.rPop('global_reflection_queue');
+      // Get next reflection from global queue using separate queue client
+      const queueItem = await this.queueClient.rPop('global_reflection_queue');
       
       if (!queueItem) {
         return; // No reflections to process
@@ -68,8 +83,8 @@ export class ReflectionProcessor {
       // Generate the reflection
       await this.memoryManager.generateReflection(agent_id);
 
-      // Clean up agent-specific queue
-      await this.redisClient.del(`reflection_queue:${agent_id}`);
+      // Clean up agent-specific queue using separate queue client
+      await this.queueClient.del(`reflection_queue:${agent_id}`);
 
       console.log(`✅ [REFLECTION PROCESSOR] Completed reflection for ${agent_id}`);
 
@@ -98,15 +113,15 @@ export class ReflectionProcessor {
     agent_queues: { agent_id: string; queue_length: number }[];
   }> {
     try {
-      const globalQueueLength = await this.redisClient.lLen('global_reflection_queue');
+      const globalQueueLength = await this.queueClient.lLen('global_reflection_queue');
       
       // Get all agent-specific queues
-      const keys = await this.redisClient.keys('reflection_queue:*');
+      const keys = await this.queueClient.keys('reflection_queue:*');
       const agentQueues = [];
       
       for (const key of keys) {
         const agentId = key.replace('reflection_queue:', '');
-        const queueLength = await this.redisClient.lLen(key);
+        const queueLength = await this.queueClient.lLen(key);
         agentQueues.push({ agent_id: agentId, queue_length: queueLength });
       }
 

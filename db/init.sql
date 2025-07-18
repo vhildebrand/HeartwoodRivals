@@ -34,7 +34,10 @@ CREATE TABLE agents (
     schedule JSONB, -- Daily schedule as JSON
     current_plans TEXT[], -- Array of current plans
     created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    last_thought_processing TIMESTAMPTZ DEFAULT now(), -- Last time thought processing ran
+    last_evening_reflection TIMESTAMPTZ, -- Last time evening reflection occurred
+    thought_processing_enabled BOOLEAN DEFAULT TRUE -- Whether thought processing is enabled
 );
 
 -- Load agents from JSON files
@@ -53,7 +56,8 @@ CREATE TABLE agent_memories (
     related_players TEXT[], -- Players involved (supports both UUID and string IDs)
     location VARCHAR(100),
     timestamp TIMESTAMPTZ DEFAULT now(),
-    embedding vector(1536) -- OpenAI embedding vector (1536 dimensions)
+    embedding vector(1536), -- OpenAI embedding vector (1536 dimensions)
+    thought_triggered BOOLEAN DEFAULT FALSE -- Whether this memory was triggered by a thought
 );
 
 -- Agent Relationships (Agent-to-Agent)
@@ -208,3 +212,77 @@ CREATE INDEX idx_gossip_logs_timestamp ON gossip_logs(timestamp);
 CREATE INDEX idx_gossip_logs_target_npc_time ON gossip_logs(target_character_id, npc_listener_id, timestamp);
 CREATE INDEX idx_agent_player_relationships_contention ON agent_player_relationships(contention_state);
 CREATE INDEX idx_agent_player_relationships_status ON agent_player_relationships(relationship_status);
+
+-- ============================================
+-- THOUGHT SYSTEM SCHEMA
+-- ============================================
+
+-- Table for conversation intentions (when NPCs want to initiate conversations)
+CREATE TABLE conversation_intentions (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id VARCHAR(50) REFERENCES agents(id) NOT NULL,
+    target VARCHAR(100) NOT NULL, -- Player ID or agent ID
+    topic TEXT NOT NULL,
+    approach TEXT NOT NULL,
+    timing VARCHAR(50) NOT NULL, -- 'immediate', 'soon', specific time
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'completed', 'cancelled'
+    created_at TIMESTAMPTZ DEFAULT now(),
+    executed_at TIMESTAMPTZ
+);
+
+-- Table for thought tracking and logging
+CREATE TABLE agent_thoughts (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id VARCHAR(50) REFERENCES agents(id) NOT NULL,
+    thought_type VARCHAR(50) NOT NULL, -- 'immediate_interruption', 'scheduled_activity', etc.
+    trigger_type VARCHAR(50) NOT NULL, -- 'external_event', 'internal_reflection', etc.
+    trigger_data JSONB NOT NULL,
+    decision TEXT NOT NULL,
+    action_type VARCHAR(50), -- 'immediate_activity', 'schedule_activity', etc.
+    action_details JSONB,
+    reasoning TEXT NOT NULL,
+    importance INT NOT NULL,
+    urgency INT NOT NULL,
+    confidence INT NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'executed', 'cancelled'
+    created_at TIMESTAMPTZ DEFAULT now(),
+    executed_at TIMESTAMPTZ
+);
+
+-- Table for tracking daily thought limits
+CREATE TABLE thought_limits (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id VARCHAR(50) REFERENCES agents(id) NOT NULL,
+    date DATE NOT NULL,
+    personality_changes_count INT DEFAULT 0,
+    goal_changes_count INT DEFAULT 0,
+    spontaneous_conversations_count INT DEFAULT 0,
+    total_thoughts_count INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(agent_id, date)
+);
+
+-- Create thought processing queue table for Redis backup
+CREATE TABLE thought_processing_queue (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id VARCHAR(50) REFERENCES agents(id) NOT NULL,
+    queue_type VARCHAR(50) NOT NULL, -- 'immediate', 'scheduled', 'evening_reflection'
+    trigger_data JSONB NOT NULL,
+    priority INT NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'processing', 'completed', 'failed'
+    created_at TIMESTAMPTZ DEFAULT now(),
+    processed_at TIMESTAMPTZ
+);
+
+
+
+-- Add indexes for thought system performance
+CREATE INDEX idx_conversation_intentions_agent_id ON conversation_intentions(agent_id);
+CREATE INDEX idx_conversation_intentions_status ON conversation_intentions(status);
+CREATE INDEX idx_agent_thoughts_agent_id ON agent_thoughts(agent_id);
+CREATE INDEX idx_agent_thoughts_thought_type ON agent_thoughts(thought_type);
+CREATE INDEX idx_agent_thoughts_created_at ON agent_thoughts(created_at);
+CREATE INDEX idx_thought_limits_agent_date ON thought_limits(agent_id, date);
+CREATE INDEX idx_thought_processing_queue_agent_id ON thought_processing_queue(agent_id);
+CREATE INDEX idx_thought_processing_queue_status ON thought_processing_queue(status);
+CREATE INDEX idx_thought_processing_queue_priority ON thought_processing_queue(priority DESC);

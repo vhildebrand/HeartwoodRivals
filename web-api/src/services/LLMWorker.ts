@@ -4,6 +4,7 @@ import Queue from 'bull';
 import OpenAI from 'openai';
 import { AgentMemoryManager } from './AgentMemoryManager';
 import { ReputationManager } from './ReputationManager';
+import { ThoughtSystemIntegration } from './ThoughtSystemIntegration';
 
 export class LLMWorker {
   private pool: Pool;
@@ -12,6 +13,7 @@ export class LLMWorker {
   private openai: OpenAI;
   private memoryManager: AgentMemoryManager;
   private reputationManager: ReputationManager;
+  private thoughtSystemIntegration: ThoughtSystemIntegration;
 
   constructor(pool: Pool, redisClient: ReturnType<typeof createClient>) {
     this.pool = pool;
@@ -27,6 +29,9 @@ export class LLMWorker {
 
     // Initialize reputation manager
     this.reputationManager = new ReputationManager(pool, redisClient);
+    
+    // Initialize thought system integration
+    this.thoughtSystemIntegration = new ThoughtSystemIntegration(pool, redisClient, this.memoryManager);
 
     // Initialize conversation queue
     this.conversationQueue = new Queue('conversation', {
@@ -50,8 +55,12 @@ export class LLMWorker {
     const { npcId, npcName, constitution, characterId, playerMessage, timestamp } = jobData;
 
     try {
-      // Construct the prompt for the LLM
-      const prompt = await this.constructPrompt(constitution, npcName, playerMessage, npcId, characterId);
+      // LIGHTWEIGHT MEMORY RECALL: Quick memory recall for conversation context
+      console.log(`🧠 [LLM] Triggering memory recall for ${npcName}`);
+      const memoryRecall = await this.triggerConversationMemoryRecall(npcId, playerMessage, characterId);
+      
+      // Construct the prompt for the LLM (including memory recall results)
+      const prompt = await this.constructPrompt(constitution, npcName, playerMessage, npcId, characterId, memoryRecall);
 
       // Call OpenAI API
       const completion = await this.openai.chat.completions.create({
@@ -66,7 +75,7 @@ export class LLMWorker {
             content: playerMessage
           }
         ],
-        max_tokens: 150, // Reduced from 200 since no urgency assessment needed
+        max_tokens: 150,
         temperature: 0.8,
       });
 
@@ -85,23 +94,91 @@ export class LLMWorker {
       // *** POST-RESPONSE ANALYSIS: Check for gossip ***
       await this.analyzeConversationForGossip(npcId, characterId, playerMessage, npcResponse);
 
-      // Return the response
+      // Return the response (conversation complete thoughts will be triggered separately)
       return {
-        npcId,
-        npcName,
         response: npcResponse,
-        timestamp: Date.now()
+        memoryRecall: memoryRecall
       };
 
     } catch (error) {
-      console.error('Error processing conversation job:', error);
+      console.error('Error in conversation processing:', error);
       throw error;
     }
   }
 
-  private async constructPrompt(constitution: string, npcName: string, playerMessage: string, npcId?: string, characterId?: string): Promise<string> {
+  /**
+   * Trigger lightweight memory recall for conversation context
+   */
+  private async triggerConversationMemoryRecall(npcId: string, playerMessage: string, characterId: string): Promise<any> {
+    try {
+      const response = await fetch('http://localhost:3000/thought/conversation-recall', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: npcId,
+          playerMessage,
+          characterId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json() as any;
+      return result.memoryRecall;
+    } catch (error) {
+      console.error('Error in conversation memory recall:', error);
+      return {
+        relevantMemories: 'Error recalling memories',
+        reasoning: 'Memory recall failed',
+        confidence: 1
+      };
+    }
+  }
+
+  /**
+   * Trigger post-conversation scheduling thoughts
+   */
+  public async triggerPostConversationThoughts(npcId: string, conversationSummary: string, duration: number, importance: number = 5): Promise<void> {
+    try {
+      console.log(`📅 [LLM] Triggering post-conversation thoughts for ${npcId}`);
+      
+      const response = await fetch('http://localhost:3000/thought/conversation-complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: npcId,
+          conversationSummary,
+          duration,
+          importance
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json() as any;
+      console.log(`✅ [LLM] Post-conversation thoughts completed for ${npcId}:`, result.thoughtResult?.decision);
+    } catch (error) {
+      console.error('Error in post-conversation thoughts:', error);
+    }
+  }
+
+  private async constructPrompt(constitution: string, npcName: string, playerMessage: string, npcId?: string, characterId?: string, memoryRecall?: any): Promise<string> {
     let contextualMemories = '';
     let reputationContext = '';
+    let memoryRecallContext = '';
+    
+    // Add memory recall results if available
+    if (memoryRecall) {
+      memoryRecallContext = `\n=== CONVERSATION-RELEVANT MEMORIES ===\n${memoryRecall.relevantMemories}\n=== END OF RELEVANT MEMORIES ===\n`;
+    }
     
     // For Sprint 5, include reflections and contextual memories
     if (npcId) {
@@ -190,6 +267,7 @@ IMPORTANT INSTRUCTIONS:
 - Adjust your greeting and tone based on the player's reputation in the community
 
 IMPORTANT: Here are your recent memories and experiences - use this information to respond:
+${memoryRecallContext}
 ${contextualMemories}
 
 ${reputationContext}
