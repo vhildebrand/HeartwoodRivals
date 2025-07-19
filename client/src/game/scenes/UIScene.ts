@@ -120,7 +120,7 @@ export class UIScene extends Scene {
         this.countdownText = this.add.text(
             this.cameras.main.centerX,
             this.cameras.main.centerY,
-            '60',
+            '15',
             {
                 fontSize: '72px',
                 color: '#ffffff',
@@ -251,7 +251,7 @@ export class UIScene extends Scene {
         // Listen for speed dating countdown events
         this.game.events.on('speed_dating_countdown', (data: any) => {
             console.log('💕 [UI] Speed dating countdown started:', data);
-            this.startSpeedDatingCountdown(data.countdownSeconds || 60);
+            this.startSpeedDatingCountdown(data.countdownSeconds || 15);
         });
         
         // Listen for speed dating start (hide countdown)
@@ -295,6 +295,11 @@ export class UIScene extends Scene {
         this.countdownVisible = true;
         
         let timeLeft = seconds;
+        
+        // Immediately update the countdown text to show the correct starting value
+        if (this.countdownText) {
+            this.countdownText.setText(timeLeft.toString());
+        }
         
         // Create countdown timer
         const countdownTimer = this.time.addEvent({
