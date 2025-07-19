@@ -321,47 +321,12 @@ export function thoughtRoutes(pool: Pool, redisClient: ReturnType<typeof createC
     }
   });
 
-  // POST /thought/conversation-recall - Lightweight memory recall for conversations
+  // POST /thought/conversation-recall - DEPRECATED: Lightweight memory recall for conversations
+  // This endpoint is deprecated as memory retrieval is now handled directly in the LLM worker
   router.post('/conversation-recall', async (req, res) => {
-    try {
-      const { agentId, playerMessage, characterId } = req.body;
-
-      if (!agentId || !playerMessage) {
-        return res.status(400).json({
-          error: 'Missing required fields: agentId, playerMessage'
-        });
-      }
-
-      // Verify agent exists
-      const agentResult = await pool.query(
-        'SELECT id, name FROM agents WHERE id = $1',
-        [agentId]
-      );
-
-      if (agentResult.rows.length === 0) {
-        return res.status(404).json({
-          error: 'Agent not found'
-        });
-      }
-
-      const agent = agentResult.rows[0];
-
-      // Lightweight conversation memory recall
-      const result = await processConversationMemoryRecall(agentId, playerMessage, characterId);
-
-      res.json({
-        success: true,
-        message: `Memory recall completed for ${agent.name}`,
-        agentId,
-        memoryRecall: result
-      });
-
-    } catch (error) {
-      console.error('Error in /thought/conversation-recall:', error);
-      res.status(500).json({
-        error: 'Internal server error'
-      });
-    }
+    res.status(410).json({
+      error: 'This endpoint has been deprecated. Memory retrieval is now handled directly in conversation processing for better performance.'
+    });
   });
 
   // POST /thought/conversation-complete - Process thoughts after conversation ends
@@ -464,84 +429,13 @@ export function thoughtRoutes(pool: Pool, redisClient: ReturnType<typeof createC
   });
 
   // Speed Dating Vibe Score Endpoint - Real-time evaluation
-  router.post('/speed-dating-vibe', async (req, res) => {
-    try {
-      const { agentId, playerMessage, matchContext } = req.body;
-      
-      // Get agent personality and preferences
-      const agentResult = await pool.query(`
-        SELECT * FROM agents WHERE id = $1
-      `, [agentId]);
-
-      const agent = agentResult.rows[0];
-      if (!agent) {
-        throw new Error(`Agent not found: ${agentId}`);
-      }
-
-      // Parse personality seed for dating preferences
-      let personalitySeed = null;
-      if (agent.personality_seed) {
-        try {
-          personalitySeed = JSON.parse(agent.personality_seed);
-        } catch (error) {
-          console.error(`Error parsing personality seed for ${agentId}:`, error);
-        }
-      }
-
-      // Build prompt for vibe evaluation
-      const prompt = `You are ${agent.name}, evaluating a message from someone you're speed dating.
-
-YOUR PERSONALITY:
-${agent.constitution}
-
-YOUR DATING PREFERENCES:
-${personalitySeed ? `
-- Dating style: ${personalitySeed.datingStyle}
-- Attraction triggers: ${personalitySeed.attractionTriggers?.join(', ')}
-- Dealbreakers: ${personalitySeed.dealbreakers?.join(', ')}
-- Conversation style: ${personalitySeed.conversationStyle}
-` : 'Standard preferences'}
-
-THEIR MESSAGE: "${playerMessage}"
-
-Evaluate this message for romantic compatibility. Consider:
-1. Does it align with your interests and values?
-2. Does it trigger attraction or turn-offs?
-3. Is their communication style appealing to you?
-4. Do they show genuine interest or understanding?
-
-Respond with a JSON object:
-{
-  "vibeScore": -10 to +10 (negative for turn-offs, positive for attraction),
-  "vibeReason": "Brief explanation of your reaction",
-  "attractionFactors": ["list", "of", "specific", "things", "you", "liked"],
-  "turnOffFactors": ["list", "of", "specific", "things", "you", "disliked"],
-  "emotionalReaction": "How this makes you feel emotionally"
-}`;
-
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.8,
-        max_tokens: 200
-      });
-
-      const vibeEvaluation = parseVibeResponse(response.choices[0].message.content);
-      
-      res.json({
-        vibeScore: vibeEvaluation.vibeScore,
-        vibeReason: vibeEvaluation.vibeReason,
-        evaluation: vibeEvaluation,
-        success: true
-      });
-    } catch (error) {
-      console.error('Error in speed dating vibe evaluation:', error);
-      res.status(500).json({
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
+  // DEPRECATED: Vibe evaluation is now integrated into the main response generation
+  // router.post('/speed-dating-vibe', async (req, res) => {
+  //   // This endpoint has been removed to streamline speed dating flow
+  //   res.status(410).json({
+  //     error: 'This endpoint has been deprecated. Vibe evaluation is now integrated into response generation.'
+  //   });
+  // });
 
   // Helper functions for thought processing
   async function processImmediateThought(agentId: string, eventType: string, eventData: any, importance: number) {
@@ -1320,88 +1214,6 @@ Respond in JSON format:
         
       default:
         console.log(`⚠️ [UNIFIED_THOUGHT] Unknown action type: ${action.type}`);
-    }
-  }
-
-  async function processConversationMemoryRecall(agentId: string, playerMessage: string, characterId: string) {
-    // Get agent context for memory recall
-    const context = await buildThoughtContext(agentId, 'conversation_memory', { playerMessage, characterId });
-    
-    // Build a simple memory recall prompt
-    const prompt = buildConversationMemoryRecallPrompt(context, playerMessage);
-    
-    // Use LLM to recall relevant memories
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 150,
-      temperature: 0.3
-    });
-
-    const result = parseMemoryRecallResponse(response.choices[0].message.content);
-    
-    // Store the memory recall (lightweight, no actions)
-    await pool.query(`
-      INSERT INTO agent_thoughts (
-        agent_id, thought_type, trigger_type, trigger_data, 
-        decision, reasoning, importance, urgency, confidence
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `, [
-      agentId, 'conversation_memory_recall', 'conversation', { playerMessage, characterId },
-      result.relevantMemories, result.reasoning, 3, 1, result.confidence
-    ]);
-
-    return result;
-  }
-
-  function buildConversationMemoryRecallPrompt(context: any, playerMessage: string): string {
-    const { agent, recentMemories } = context;
-    
-    return `You are ${agent.name}, an autonomous NPC in Heartwood Valley.
-
-YOUR IDENTITY:
-${agent.constitution}
-
-RECENT MEMORIES:
-${recentMemories.map((m: any) => `- ${m.content}`).join('\n')}
-
-PLAYER MESSAGE: "${playerMessage}"
-
-MEMORY RECALL FOR CONVERSATION:
-The player just said something to you. Look through your memories and identify what's relevant to this conversation. Do NOT make scheduling decisions or plan activities - just recall relevant information that should inform your response.
-
-Consider:
-- What do you remember about this person?
-- What related experiences have you had?
-- What information is relevant to what they're saying?
-
-Respond in JSON format:
-{
-  "relevantMemories": "Brief summary of what you remember that's relevant to this conversation",
-  "reasoning": "Why these memories are relevant",
-  "confidence": 1-10
-}`;
-  }
-
-  function parseMemoryRecallResponse(responseText: string | null): any {
-    try {
-      if (!responseText) {
-        throw new Error('Empty response');
-      }
-      
-      const parsed = JSON.parse(responseText);
-      return {
-        relevantMemories: parsed.relevantMemories || 'No relevant memories found',
-        reasoning: parsed.reasoning || 'No reasoning provided',
-        confidence: parsed.confidence || 5
-      };
-    } catch (error) {
-      console.error('Error parsing memory recall response:', error);
-      return {
-        relevantMemories: 'Error recalling memories',
-        reasoning: 'Error in memory processing',
-        confidence: 1
-      };
     }
   }
 

@@ -941,11 +941,25 @@ export class GameScene extends Scene {
         this.room.onMessage('speed_dating_countdown', (data: any) => {
             console.log('💕 [GAME_SCENE] Speed dating countdown started:', data);
             
-            // Launch speed dating scene
-            this.scene.launch('SpeedDatingScene');
+            // Check if speed dating scene exists
+            if (!this.scene.get('SpeedDatingScene')) {
+                console.error('❌ [GAME_SCENE] SpeedDatingScene not found!');
+                return;
+            }
             
-            // Forward event to speed dating scene
-            this.game.events.emit('speed_dating_countdown', data);
+            // Launch speed dating scene if not already running
+            if (!this.scene.isActive('SpeedDatingScene')) {
+                console.log('💕 [GAME_SCENE] Launching SpeedDatingScene');
+                this.scene.launch('SpeedDatingScene');
+                
+                // Give the scene time to initialize before sending the event
+                this.time.delayedCall(100, () => {
+                    this.game.events.emit('speed_dating_countdown', data);
+                });
+            } else {
+                // Scene already active, just forward the event
+                this.game.events.emit('speed_dating_countdown', data);
+            }
         });
         
         // Speed dating gauntlet started

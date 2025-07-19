@@ -358,7 +358,7 @@ CREATE TABLE date_vibe_scores (
     player_message TEXT NOT NULL,
     npc_response TEXT,
     vibe_score INT NOT NULL, -- -10 to +10 scale
-    vibe_reason VARCHAR(100), -- Brief explanation of score
+    vibe_reason TEXT, -- LLM-generated explanation of score
     keyword_matches TEXT[], -- Keywords that triggered the score
     timestamp TIMESTAMPTZ DEFAULT now()
 );
@@ -440,3 +440,13 @@ CREATE INDEX idx_gauntlet_results_event_player ON gauntlet_results(event_id, pla
 CREATE INDEX idx_gauntlet_results_npc_rank ON gauntlet_results(npc_id, final_rank);
 CREATE INDEX idx_social_seasons_dates ON social_seasons(start_date, end_date);
 CREATE INDEX idx_dating_system_config_key ON dating_system_config(config_key);
+
+
+-- Migration 003: Fix vibe_reason column type
+-- The vibe_reason column was too small (VARCHAR(100)) for LLM-generated reasons
+
+ALTER TABLE date_vibe_scores 
+ALTER COLUMN vibe_reason TYPE TEXT;
+
+-- Add comment to clarify purpose
+COMMENT ON COLUMN date_vibe_scores.vibe_reason IS 'LLM-generated explanation of the vibe score change'; 

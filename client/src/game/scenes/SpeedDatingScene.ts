@@ -348,10 +348,22 @@ export class SpeedDatingScene extends Scene {
         
         this.events.on('sleep', () => {
             console.log('💕 [SPEED_DATING] Scene going to sleep');
-            this.cleanupEventListeners();
+            // Don't cleanup listeners when sleeping, just hide the scene
+            this.scene.setVisible(false);
+        });
+        
+        this.events.on('wake', () => {
+            console.log('💕 [SPEED_DATING] Scene waking up');
+            // Re-setup listeners if needed when waking
+            if (!this.eventListenersSetup) {
+                this.setupEventListeners();
+            }
         });
         
         console.log('💕 [SPEED_DATING] Scene initialization complete');
+        
+        // Initially set scene visible - it's the containers that control visibility
+        this.scene.setVisible(true);
     }
 
     private createCountdownUI() {
@@ -702,25 +714,31 @@ export class SpeedDatingScene extends Scene {
     }
     
     private updateCountdown(seconds: number) {
-        if (this.countdownText) {
-            this.countdownText.setText(seconds.toString());
-            
-            // Color changes based on remaining time
-            if (seconds <= 10) {
-                this.countdownText.setColor('#ff4444');
-            } else if (seconds <= 30) {
-                this.countdownText.setColor('#ffaa00');
-            } else {
-                this.countdownText.setColor('#ffffff');
-            }
-            
-            // Hide countdown when it reaches 0
-            if (seconds <= 0) {
-                this.hideCountdown();
-            }
+        console.log(`💕 [SPEED_DATING] updateCountdown called with ${seconds} seconds`);
+        
+        if (!this.countdownText) {
+            console.error('❌ [SPEED_DATING] Countdown text not found!');
+            return;
         }
         
-        console.log(`💕 [SPEED_DATING] Countdown update: ${seconds} seconds`);
+        this.countdownText.setText(seconds.toString());
+        
+        // Color changes based on remaining time
+        if (seconds <= 5) {
+            this.countdownText.setColor('#ff0000');
+            this.countdownText.setScale(1.2);
+        } else if (seconds <= 10) {
+            this.countdownText.setColor('#ff4444');
+            this.countdownText.setScale(1.0);
+        } else {
+            this.countdownText.setColor('#ffffff');
+            this.countdownText.setScale(1.0);
+        }
+        
+        // Hide countdown when it reaches 0
+        if (seconds <= 0) {
+            this.hideCountdown();
+        }
     }
 
     private handleGauntletStart(data: any) {
@@ -912,10 +930,9 @@ export class SpeedDatingScene extends Scene {
             this.currentEvent.id = data.eventId.toString();
         }
         
-        // Request full results from the server after a short delay for better UX
-        this.time.delayedCall(500, () => {
-            this.requestGauntletResults();
-        });
+        // Results will be automatically broadcast by the server
+        // No need to request them manually
+        console.log('💕 [SPEED_DATING] Waiting for automatic results broadcast...');
     }
 
     private async requestGauntletResults() {
@@ -928,16 +945,34 @@ export class SpeedDatingScene extends Scene {
     }
 
     private showResults(data: any) {
-        this.resultsContainer?.setVisible(true);
+        console.log('💕 [SPEED_DATING] Showing results:', data);
+        
+        if (!this.resultsContainer) {
+            console.error('❌ [SPEED_DATING] Results container not found!');
+            return;
+        }
+        
+        this.resultsContainer.setVisible(true);
         
         if (data.loading) {
             this.displayLoadingResults();
+            // Update loading message if provided
+            if (data.message && this.resultsContainer.list.length > 0) {
+                const loadingText = this.resultsContainer.list[0] as Phaser.GameObjects.Text;
+                if (loadingText && loadingText.type === 'Text') {
+                    loadingText.setText(data.message);
+                }
+            }
         } else if (data.error) {
             this.displayErrorResults();
-        } else {
+        } else if (data.npcResults) {
+            // Valid results data
             this.resultsData = data;
             this.resultsPageIndex = 0;
             this.displayResultsPage();
+        } else {
+            console.error('❌ [SPEED_DATING] Invalid results data:', data);
+            this.displayErrorResults();
         }
     }
 
@@ -971,18 +1006,42 @@ export class SpeedDatingScene extends Scene {
         
         const errorText = this.add.text(
             width / 2,
-            height / 2,
-            'Unable to load results.\n\nPlease try again later.',
+            height / 2 - 40,
+            'Results are still being processed',
             {
-                fontSize: '24px',
-                color: '#ff6666',
+                fontSize: '28px',
+                color: '#ffaa00',
                 fontFamily: '"Segoe UI", Arial, sans-serif',
-                align: 'center',
-                lineSpacing: 10
+                align: 'center'
             }
         ).setOrigin(0.5);
         
-        this.resultsContainer?.add(errorText);
+        const subText = this.add.text(
+            width / 2,
+            height / 2,
+            'The NPCs need more time to reflect on their dates.\nResults will appear automatically when ready.',
+            {
+                fontSize: '18px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                align: 'center',
+                lineSpacing: 5
+            }
+        ).setOrigin(0.5);
+        
+        const tipText = this.add.text(
+            width / 2,
+            height / 2 + 60,
+            'Tip: You can close this and results will appear when ready',
+            {
+                fontSize: '14px',
+                color: '#aaaaaa',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'italic'
+            }
+        ).setOrigin(0.5);
+        
+        this.resultsContainer?.add([errorText, subText, tipText]);
     }
 
     private displayResultsPage() {
@@ -1212,29 +1271,48 @@ export class SpeedDatingScene extends Scene {
 
     // UI Display methods
     private showCountdown(seconds: number) {
-        this.countdownContainer?.setVisible(true);
+        console.log(`💕 [SPEED_DATING] showCountdown called with ${seconds} seconds`);
+        
+        if (!this.countdownContainer) {
+            console.error('❌ [SPEED_DATING] Countdown container not found!');
+            return;
+        }
+        
+        // Make sure scene and container are visible
+        this.scene.setVisible(true);
+        this.scene.bringToTop();
+        this.countdownContainer.setVisible(true);
+        this.countdownContainer.setDepth(2000); // Ensure it's on top
+        
+        // Also hide other UI elements
+        this.hideDialogue();
+        this.resultsContainer?.setVisible(false);
         
         // Set initial countdown value
         if (this.countdownText) {
             this.countdownText.setText(seconds.toString());
             
             // Color changes based on initial value
-            if (seconds <= 10) {
+            if (seconds <= 5) {
                 this.countdownText.setColor('#ff4444');
-            } else if (seconds <= 30) {
+            } else if (seconds <= 10) {
                 this.countdownText.setColor('#ffaa00');
             } else {
                 this.countdownText.setColor('#ffffff');
             }
+        } else {
+            console.error('❌ [SPEED_DATING] Countdown text not found!');
         }
         
         // Clear any existing countdown interval
         if (this.countdownInterval) {
             clearInterval(this.countdownInterval);
+            this.countdownInterval = null;
         }
         
         // Start client-side countdown timer if we have an end time
         if (this.countdownEndTime > 0) {
+            console.log(`💕 [SPEED_DATING] Starting client-side countdown with end time: ${this.countdownEndTime}`);
             this.countdownInterval = window.setInterval(() => {
                 const remaining = Math.max(0, Math.ceil((this.countdownEndTime - Date.now()) / 1000));
                 this.updateCountdown(remaining);
@@ -1246,8 +1324,7 @@ export class SpeedDatingScene extends Scene {
             }, 100); // Update every 100ms for smooth countdown
         }
         
-        // Don't create local timer - let server handle countdown updates
-        console.log(`💕 [SPEED_DATING] Showing countdown: ${seconds} seconds`);
+        console.log(`💕 [SPEED_DATING] Countdown UI setup complete`);
     }
 
     private hideCountdown() {

@@ -55,97 +55,138 @@ export class LLMWorker {
     const { npcId, npcName, constitution, characterId, playerMessage, timestamp, context, contextDetails } = jobData;
 
     try {
-      // LIGHTWEIGHT MEMORY RECALL: Quick memory recall for conversation context
-      console.log(`🧠 [LLM] Triggering memory recall for ${npcName}`);
-      const memoryRecall = await this.triggerConversationMemoryRecall(npcId, playerMessage, characterId);
-      
-      // Construct the prompt for the LLM (including memory recall results and context)
-      const prompt = await this.constructPrompt(constitution, npcName, playerMessage, npcId, characterId, memoryRecall, context, contextDetails);
+      // Construct the prompt for the LLM (includes comprehensive memory retrieval)
+      const prompt = await this.constructPrompt(constitution, npcName, playerMessage, npcId, characterId, null, context, contextDetails);
 
-      // Call OpenAI API
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: prompt
-          },
-          {
-            role: 'user',
-            content: playerMessage
-          }
-        ],
-        max_tokens: 150,
-        temperature: 0.8,
-      });
-
-      const npcResponse = completion.choices[0]?.message?.content?.trim();
-
-      if (!npcResponse) {
-        throw new Error('Empty response from OpenAI');
-      }
-
-      // Log the conversation to database
-      await this.logConversation(characterId, npcId, playerMessage, npcResponse);
-
-      // Store conversation as agent memory
-      await this.storeConversationMemory(npcId, characterId, playerMessage, npcResponse);
-
-      // *** POST-RESPONSE ANALYSIS: Check for gossip ***
-      await this.analyzeConversationForGossip(npcId, characterId, playerMessage, npcResponse);
-
-      // *** SPEED DATING EVALUATION: If in speed dating context, trigger evaluation ***
-      if (jobData.context === 'speed_dating') {
-        await this.triggerSpeedDatingEvaluation(npcId, playerMessage, npcResponse, {
-          playerId: characterId,
-          matchOrder: jobData.contextDetails?.matchOrder,
-          eventName: jobData.contextDetails?.eventName,
-          timeRemaining: jobData.contextDetails?.timeRemaining
+      // For speed dating, we need a different response structure that includes vibe evaluation
+      if (context === 'speed_dating') {
+        // Call OpenAI API with function calling for integrated response + vibe evaluation
+        const completion = await this.openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: prompt
+            },
+            {
+              role: 'user',
+              content: playerMessage
+            }
+          ],
+          temperature: 0.8,
+          functions: [
+            {
+              name: 'speed_dating_response',
+              description: 'Respond to a speed dating message with both response and vibe evaluation',
+              parameters: {
+                type: 'object',
+                properties: {
+                  response: {
+                    type: 'string',
+                    description: 'Your response to the person you\'re speed dating (2-3 sentences max)'
+                  },
+                  vibe_score: {
+                    type: 'number',
+                    description: 'Your attraction/compatibility score for this message (-10 to +10)',
+                    minimum: -10,
+                    maximum: 10
+                  },
+                  vibe_reason: {
+                    type: 'string',
+                    description: 'Brief explanation of your reaction to their message'
+                  },
+                  attraction_factors: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Specific things you liked about their message'
+                  },
+                  turn_off_factors: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Specific things you disliked about their message'
+                  },
+                  emotional_reaction: {
+                    type: 'string',
+                    description: 'How this message makes you feel emotionally'
+                  }
+                },
+                required: ['response', 'vibe_score', 'vibe_reason', 'attraction_factors', 'turn_off_factors', 'emotional_reaction']
+              }
+            }
+          ],
+          function_call: { name: 'speed_dating_response' }
         });
-      }
 
-      // Return the response (conversation complete thoughts will be triggered separately)
-      return {
-        response: npcResponse,
-        memoryRecall: memoryRecall
-      };
+        const functionCall = completion.choices[0].message.function_call;
+        if (!functionCall) {
+          throw new Error('No function call in speed dating response');
+        }
+
+        const speedDatingData = JSON.parse(functionCall.arguments);
+        const npcResponse = speedDatingData.response;
+
+        // Log the conversation to database
+        await this.logConversation(characterId, npcId, playerMessage, npcResponse);
+
+        // Store conversation as agent memory
+        await this.storeConversationMemory(npcId, characterId, playerMessage, npcResponse);
+
+        // Store the vibe evaluation data for later use
+        const vibeData = {
+          vibeScore: speedDatingData.vibe_score,
+          vibeReason: speedDatingData.vibe_reason,
+          attractionFactors: speedDatingData.attraction_factors,
+          turnOffFactors: speedDatingData.turn_off_factors,
+          emotionalReaction: speedDatingData.emotional_reaction
+        };
+
+        // Return both response and vibe data
+        return {
+          response: npcResponse,
+          vibeData: vibeData
+        };
+      } else {
+        // Regular conversation flow
+        const completion = await this.openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: prompt
+            },
+            {
+              role: 'user',
+              content: playerMessage
+            }
+          ],
+          max_tokens: 150,
+          temperature: 0.8,
+        });
+
+        const npcResponse = completion.choices[0]?.message?.content?.trim();
+
+        if (!npcResponse) {
+          throw new Error('Empty response from OpenAI');
+        }
+
+        // Log the conversation to database
+        await this.logConversation(characterId, npcId, playerMessage, npcResponse);
+
+        // Store conversation as agent memory
+        await this.storeConversationMemory(npcId, characterId, playerMessage, npcResponse);
+
+        // *** POST-RESPONSE ANALYSIS: Check for gossip ***
+        await this.analyzeConversationForGossip(npcId, characterId, playerMessage, npcResponse);
+
+        // Return the response
+        return {
+          response: npcResponse
+        };
+      }
 
     } catch (error) {
       console.error('Error in conversation processing:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Trigger lightweight memory recall for conversation context
-   */
-  private async triggerConversationMemoryRecall(npcId: string, playerMessage: string, characterId: string): Promise<any> {
-    try {
-      const response = await fetch('http://localhost:3000/thought/conversation-recall', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agentId: npcId,
-          playerMessage,
-          characterId
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json() as any;
-      return result.memoryRecall;
-    } catch (error) {
-      console.error('Error in conversation memory recall:', error);
-      return {
-        relevantMemories: 'Error recalling memories',
-        reasoning: 'Memory recall failed',
-        confidence: 1
-      };
     }
   }
 
@@ -183,12 +224,6 @@ export class LLMWorker {
   private async constructPrompt(constitution: string, npcName: string, playerMessage: string, npcId?: string, characterId?: string, memoryRecall?: any, context?: string, contextDetails?: any): Promise<string> {
     let contextualMemories = '';
     let reputationContext = '';
-    let memoryRecallContext = '';
-    
-    // Add memory recall results if available
-    if (memoryRecall) {
-      memoryRecallContext = `\n=== CONVERSATION-RELEVANT MEMORIES ===\n${memoryRecall.relevantMemories}\n=== END OF RELEVANT MEMORIES ===\n`;
-    }
     
     // For Sprint 5, include reflections and contextual memories
     if (npcId) {
@@ -267,6 +302,26 @@ export class LLMWorker {
       const dateNumber = contextDetails?.matchOrder || 1;
       const eventName = contextDetails?.eventName || 'Speed Dating Event';
       
+      // Get chat history for this specific date if available
+      let chatHistoryContext = '';
+      if (contextDetails?.chatHistory && contextDetails.chatHistory.length > 0) {
+        chatHistoryContext = '\n=== CONVERSATION SO FAR THIS DATE ===\n';
+        contextDetails.chatHistory.forEach((exchange: any, index: number) => {
+          chatHistoryContext += `${index + 1}. You: "${exchange.npcMessage}"\n`;
+          chatHistoryContext += `   Them: "${exchange.playerMessage}"\n`;
+          if (exchange.vibeScore) {
+            chatHistoryContext += `   Your reaction: ${exchange.vibeScore}/10 - ${exchange.vibeReason}\n`;
+          }
+        });
+        chatHistoryContext += '=== END CONVERSATION HISTORY ===\n';
+      }
+      
+      // Include any cumulative vibe assessment
+      let vibeHistoryContext = '';
+      if (contextDetails?.cumulativeVibeScore !== undefined) {
+        vibeHistoryContext = `\nYOUR OVERALL IMPRESSION SO FAR: ${contextDetails.cumulativeVibeScore}/10\n`;
+      }
+      
       const prompt = `${constitution}
 
 SPEED DATING CONTEXT:
@@ -288,13 +343,22 @@ IMPORTANT DATING INSTRUCTIONS:
 - Show genuine interest if you feel a connection
 - Be honest about dealbreakers or incompatibilities
 
-${memoryRecallContext}
+VIBE EVALUATION INSTRUCTIONS:
+As you respond, also evaluate your attraction to their message:
+- Score from -10 (major turn-off) to +10 (very attractive)
+- Consider compatibility with your personality, values, and dating goals
+- Note specific things you like or dislike about what they said
+- Consider how their communication style matches yours
+- Be honest about your emotional reaction
+
 ${contextualMemories}
 ${reputationContext}
+${chatHistoryContext}
+${vibeHistoryContext}
 
 The person you're speed dating says: "${playerMessage}"
 
-Respond as ${npcName} on this speed date:`;
+Respond as ${npcName} on this speed date, providing both your verbal response AND your internal vibe evaluation:`;
 
       return prompt;
     }
@@ -315,7 +379,6 @@ IMPORTANT INSTRUCTIONS:
 - Adjust your greeting and tone based on the player's reputation in the community
 
 IMPORTANT: Here are your recent memories and experiences - use this information to respond:
-${memoryRecallContext}
 ${contextualMemories}
 
 ${reputationContext}
@@ -704,54 +767,6 @@ Examples:
     // For now, return a generated ID based on the name
     // In a real system, this would look up the actual character ID
     return `player_${characterName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-  }
-
-  /**
-   * Trigger speed dating evaluation for romantic compatibility assessment
-   */
-  private async triggerSpeedDatingEvaluation(
-    npcId: string, 
-    playerMessage: string, 
-    npcResponse: string, 
-    matchContext: any
-  ): Promise<void> {
-    try {
-      console.log(`💕 [LLM] Triggering speed dating evaluation for ${npcId}`);
-      
-      const response = await fetch('http://localhost:3000/thought/speed-dating-evaluation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agentId: npcId,
-          playerMessage,
-          playerResponse: npcResponse, // This is the NPC's response to the player
-          matchContext
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json() as any;
-      console.log(`✅ [LLM] Speed dating evaluation completed for ${npcId}`);
-      console.log(`💭 Attraction level: ${result.thoughtResult?.attractionLevel}/10`);
-      console.log(`💕 Romantic potential: ${result.thoughtResult?.romanticPotential}`);
-      
-      // Log key insights for debugging
-      if (result.thoughtResult) {
-        console.log(`🎯 [DATING] ${npcId}'s thoughts:`, {
-          attraction: result.thoughtResult.attractionLevel,
-          potential: result.thoughtResult.romanticPotential,
-          chemistry: result.thoughtResult.chemistryNotes
-        });
-      }
-
-    } catch (error) {
-      console.error('❌ [LLM] Error in speed dating evaluation:', error);
-    }
   }
 
 } 

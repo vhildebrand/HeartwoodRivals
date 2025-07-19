@@ -505,6 +505,13 @@ export class UIScene extends Scene {
     private setupPlayerTextInputHandlers() {
         // T key to activate speech input
         this.input.keyboard?.addKey('T').on('down', () => {
+            // Check if speed dating scene is active
+            const speedDatingScene = this.scene.get('SpeedDatingScene');
+            if (speedDatingScene && this.scene.isActive('SpeedDatingScene')) {
+                console.log("🚫 [UI] Speech input blocked during speed dating");
+                return;
+            }
+            
             if (!this.speechInputActive && !this.activityInputActive && !this.dialogueManager?.isDialogueActive() && !this.isTypingInHtmlInput()) {
                 this.activateSpeechInput();
             }
@@ -512,6 +519,13 @@ export class UIScene extends Scene {
         
         // Y key to activate activity input
         this.input.keyboard?.addKey('Y').on('down', () => {
+            // Check if speed dating scene is active
+            const speedDatingScene = this.scene.get('SpeedDatingScene');
+            if (speedDatingScene && this.scene.isActive('SpeedDatingScene')) {
+                console.log("🚫 [UI] Activity input blocked during speed dating");
+                return;
+            }
+            
             if (!this.speechInputActive && !this.activityInputActive && !this.dialogueManager?.isDialogueActive() && !this.isTypingInHtmlInput()) {
                 this.activateActivityInput();
             }

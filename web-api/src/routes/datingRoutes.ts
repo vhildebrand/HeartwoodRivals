@@ -451,6 +451,11 @@ export function datingRoutes(pool: Pool, redisClient: ReturnType<typeof createCl
         case 'vibe_score_recorded':
           await speedDatingService.storeVibeScore(data.vibeEntry);
           break;
+          
+        case 'speed_dating_conversation_memory':
+          // Store conversation memories like normal conversations
+          await speedDatingService.storeConversationMemory(data);
+          break;
 
         case 'match_created':
           // This case is now deprecated in favor of 'speed_dating_initialized'

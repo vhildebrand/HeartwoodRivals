@@ -812,10 +812,30 @@ export class HeartwoodRoom extends Room<GameState> {
                 console.log(`💕 [SPEED_DATING] Registered player: ${playerId}`);
             }
             
-            // Register a selection of NPCs (limit to 3 for better experience)
-            const availableNPCs = Array.from(this.agents.keys()).slice(0, 3);
-            await this.speedDatingManager.registerNPCs(availableNPCs);
-            console.log(`💕 [SPEED_DATING] Registered ${availableNPCs.length} NPCs`);
+            // Register a selection of NPCs based on player count
+            // More players = fewer NPCs per player for reasonable match duration
+            const playerCount = playerIds.length;
+            const npcsPerEvent = Math.min(
+                Math.max(2, 5 - playerCount), // 2-4 NPCs based on player count
+                this.agents.size // Don't exceed available NPCs
+            );
+            
+            // Randomly select NPCs
+            const allNPCs = Array.from(this.agents.keys());
+            const selectedNPCs: string[] = [];
+            
+            for (let i = 0; i < npcsPerEvent && i < allNPCs.length; i++) {
+                const randomIndex = Math.floor(Math.random() * allNPCs.length);
+                const npcId = allNPCs[randomIndex];
+                if (!selectedNPCs.includes(npcId)) {
+                    selectedNPCs.push(npcId);
+                } else {
+                    i--; // Try again if duplicate
+                }
+            }
+            
+            await this.speedDatingManager.registerNPCs(selectedNPCs);
+            console.log(`💕 [SPEED_DATING] Registered ${selectedNPCs.length} NPCs for ${playerCount} players`);
             
             // Start countdown (15 seconds as specified in requirements)
             // The SpeedDatingManager will handle all countdown broadcasts

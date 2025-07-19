@@ -69,6 +69,7 @@ export class SpeedDatingService {
   private redisClient: ReturnType<typeof createClient>;
   private openai: OpenAI;
   private npcGenerationService: NPCGenerationService;
+  private memoryManager?: any;
 
   constructor(pool: Pool, redisClient: ReturnType<typeof createClient>) {
     this.pool = pool;
@@ -81,6 +82,19 @@ export class SpeedDatingService {
     
     // Initialize NPC generation service
     this.npcGenerationService = new NPCGenerationService(pool, redisClient);
+    
+    // Initialize memory manager if available
+    this.initializeMemoryManager();
+  }
+  
+  private async initializeMemoryManager(): Promise<void> {
+    try {
+      // Dynamically import to avoid circular dependencies
+      const { AgentMemoryManager } = await import('./AgentMemoryManager');
+      this.memoryManager = new AgentMemoryManager(this.pool, this.redisClient);
+    } catch (error) {
+      console.warn('⚠️ [SPEED_DATING] Could not initialize memory manager:', error);
+    }
   }
 
   /**
@@ -188,6 +202,45 @@ export class SpeedDatingService {
     } catch (error) {
       console.error('❌ [SPEED_DATING] Error storing vibe score:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Store conversation memory during speed dating (similar to normal conversations)
+   */
+  async storeConversationMemory(data: any): Promise<void> {
+    if (!this.memoryManager) {
+      console.warn('⚠️ [SPEED_DATING] Memory manager not available, skipping conversation memory');
+      return;
+    }
+    
+    const { matchId, npcId, playerId, playerMessage, npcResponse, eventContext } = data;
+    
+    try {
+      // Store memory of the player's message
+      await this.memoryManager.storeObservation(
+        npcId,
+        `During speed dating, ${playerId} said to me: "${playerMessage}"`,
+        'speed_dating', // location
+        [], // related_agents
+        [playerId], // related_players
+        8 // importance - speed dating conversations are important
+      );
+      
+      // Store memory of the NPC's response
+      await this.memoryManager.storeObservation(
+        npcId,
+        `During speed dating, I responded to ${playerId}: "${npcResponse}"`,
+        'speed_dating', // location
+        [], // related_agents
+        [playerId], // related_players
+        7 // importance
+      );
+      
+      console.log(`💭 [SPEED_DATING] Stored conversation memory for ${npcId} with player ${playerId}`);
+      
+    } catch (error) {
+      console.error('❌ [SPEED_DATING] Error storing conversation memory:', error);
     }
   }
 
@@ -335,7 +388,7 @@ export class SpeedDatingService {
   }
 
   /**
-   * Store date assessment in database
+   * Store date assessment in database and create memory
    */
   private async storeDateAssessment(assessment: DateAssessment, conversationTranscript: string): Promise<void> {
     await this.pool.query(
@@ -353,6 +406,53 @@ export class SpeedDatingService {
         assessment.npcPerspective
       ]
     );
+    
+    // Also create a memory for the NPC about this date
+    await this.createSpeedDatingMemory(assessment, conversationTranscript);
+  }
+  
+  /**
+   * Create a memory for the NPC about the speed dating interaction
+   */
+  private async createSpeedDatingMemory(assessment: DateAssessment, conversationTranscript: string): Promise<void> {
+    if (!this.memoryManager) {
+      console.warn('⚠️ [SPEED_DATING] Memory manager not available, skipping memory creation');
+      return;
+    }
+    
+    try {
+      // Get match details
+      const matchResult = await this.pool.query(
+        'SELECT * FROM speed_dating_matches WHERE id = $1',
+        [assessment.matchId]
+      );
+      
+      if (matchResult.rows.length === 0) return;
+      
+      const match = matchResult.rows[0];
+      
+      // Create a summary of the date for memory
+      const memorySummary = `Speed dated with ${match.player_id} during the gauntlet. ` +
+        `Chemistry: ${assessment.chemistryScore}/100, Compatibility: ${assessment.compatibilityScore}/100. ` +
+        `${assessment.npcPerspective} ` +
+        `Key moments: ${assessment.highlightedMoments.slice(0, 2).join(', ')}.`;
+      
+      // Store the memory
+      await this.memoryManager.storeObservation(
+        match.npc_id,
+        memorySummary,
+        'town_square', // location
+        [], // related_agents
+        [match.player_id], // related_players
+        Math.ceil(assessment.overallScore / 10) // importance based on overall score (1-10)
+      );
+      
+      console.log(`💭 [SPEED_DATING] Created memory for ${match.npc_id} about date with ${match.player_id}`);
+      
+    } catch (error) {
+      console.error('❌ [SPEED_DATING] Error creating speed dating memory:', error);
+      // Don't throw - memory creation failure shouldn't break the assessment
+    }
   }
 
   /**
@@ -460,7 +560,7 @@ export class SpeedDatingService {
   }
 
   /**
-   * Store gauntlet rankings in database
+   * Store gauntlet rankings in database and create reflection memories
    */
   private async storeGauntletRankings(eventId: number, npcId: string, rankings: PlayerRanking[]): Promise<void> {
     for (const ranking of rankings) {
@@ -481,6 +581,62 @@ export class SpeedDatingService {
           ranking.memorableMoments
         ]
       );
+      
+      // Create memory about this ranking/reflection
+      await this.createGauntletReflectionMemory(eventId, npcId, ranking);
+    }
+  }
+  
+  /**
+   * Create a reflection memory about a specific date
+   */
+  private async createGauntletReflectionMemory(eventId: number, npcId: string, ranking: PlayerRanking): Promise<void> {
+    if (!this.memoryManager) return;
+    
+    try {
+      // Create a memory based on the relationship potential
+      let memoryContent = `After speed dating ${ranking.playerId}, `;
+      
+      switch (ranking.relationshipPotential) {
+        case 'soulmate':
+          memoryContent += `I felt an incredible connection! ${ranking.confessionalStatement} They ranked #${ranking.finalRank} out of all my dates.`;
+          break;
+        case 'romantic_interest':
+          memoryContent += `I'm definitely interested in seeing them again. ${ranking.confessionalStatement} They ranked #${ranking.finalRank} out of all my dates.`;
+          break;
+        case 'friends':
+          memoryContent += `they seem nice but I only see friendship potential. ${ranking.confessionalStatement}`;
+          break;
+        case 'not_interested':
+          memoryContent += `I don't think we're compatible. ${ranking.overallImpression}`;
+          break;
+      }
+      
+      // Add memorable moments
+      if (ranking.memorableMoments && ranking.memorableMoments.length > 0) {
+        memoryContent += ` I especially remember: ${ranking.memorableMoments[0]}`;
+      }
+      
+      // Calculate importance based on attraction and rank
+      const importance = Math.max(1, Math.min(10, 
+        ranking.attractionLevel > 7 ? 9 : 
+        ranking.attractionLevel > 5 ? 7 : 
+        ranking.attractionLevel > 3 ? 5 : 3
+      ));
+      
+      await this.memoryManager.storeObservation(
+        npcId,
+        memoryContent,
+        'town_square', // location
+        [], // related_agents
+        [ranking.playerId], // related_players
+        importance
+      );
+      
+      console.log(`💭 [SPEED_DATING] Created reflection memory for ${npcId} about ${ranking.playerId} (rank: ${ranking.finalRank})`);
+      
+    } catch (error) {
+      console.error('❌ [SPEED_DATING] Error creating reflection memory:', error);
     }
   }
 
