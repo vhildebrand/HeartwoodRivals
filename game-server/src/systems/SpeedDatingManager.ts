@@ -482,6 +482,7 @@ export class SpeedDatingManager {
     }
 
     // Broadcast NPC response to client
+    console.log(`📢 [SPEED_DATING] Broadcasting NPC response for match ${this.currentMatch.id}: "${npcResponse}"`);
     await this.broadcastEvent('speed_dating_npc_response', {
       eventId: this.currentEvent?.id || 0,
       matchId: this.currentMatch.id,
@@ -510,15 +511,17 @@ export class SpeedDatingManager {
     matchVibes.push(vibeEntry);
     this.vibeScores.set(this.currentMatch.id, matchVibes);
 
-    // Broadcast vibe update
-    await this.broadcastEvent('speed_dating_vibe_update', {
-      eventId: this.currentEvent?.id || 0,
-      matchId: this.currentMatch.id,
-      playerId,
-      vibeScore: vibeScore.score,
-      vibeReason: vibeScore.reason,
-      cumulativeScore: this.calculateCumulativeVibeScore(this.currentMatch.id)
-    });
+    // Only broadcast vibe update if there's an actual score change (non-zero)
+    if (vibeScore.score !== 0) {
+      await this.broadcastEvent('speed_dating_vibe_update', {
+        eventId: this.currentEvent?.id || 0,
+        matchId: this.currentMatch.id,
+        playerId,
+        vibeScore: vibeScore.score,
+        vibeReason: vibeScore.reason,
+        cumulativeScore: this.calculateCumulativeVibeScore(this.currentMatch.id)
+      });
+    }
 
     // Notify web API for storage
     await this.notifyWebAPI('vibe_score_recorded', {

@@ -1,7 +1,7 @@
 import { Scene } from "phaser";
 
 interface SpeedDatingMatch {
-    id: string;
+    id: number;
     playerId: string;
     npcId: string;
     npcName: string;
@@ -19,10 +19,12 @@ interface SpeedDatingEvent {
 }
 
 interface VibeUpdate {
-    matchId: string;
-    score: number;
-    reason: string;
-    keywords: string[];
+    eventId: number;
+    matchId: number;
+    playerId: string;
+    vibeScore: number;
+    vibeReason: string;
+    cumulativeScore: number;
 }
 
 export class SpeedDatingScene extends Scene {
@@ -47,6 +49,7 @@ export class SpeedDatingScene extends Scene {
     // Input state
     private currentMessage: string = '';
     private inputActive: boolean = false;
+    private sendingMessage: boolean = false;
     
     // Countdown UI
     private countdownContainer: Phaser.GameObjects.Container | null = null;
@@ -54,6 +57,12 @@ export class SpeedDatingScene extends Scene {
     
     // Results UI
     private resultsContainer: Phaser.GameObjects.Container | null = null;
+    
+    // Track if event listeners are already set up
+    private eventListenersSetup: boolean = false;
+    
+    // Track processed messages to prevent duplicates
+    private processedMessages: Set<string> = new Set();
 
     constructor() {
         super({ key: 'SpeedDatingScene' });
@@ -124,21 +133,22 @@ export class SpeedDatingScene extends Scene {
         // Chat history
         this.chatHistory = this.add.text(
             width / 2, 
-            height * 0.4, 
+            height * 0.35, // Move up slightly to give more room
             'Welcome to the Speed Dating Gauntlet!\nYour date will begin shortly...', 
             {
                 fontSize: '14px',
                 color: '#ffffff',
                 fontFamily: 'Arial',
-                wordWrap: { width: width * 0.8 },
-                align: 'left'
+                wordWrap: { width: width * 0.85 }, // Increase wrap width
+                align: 'left',
+                lineSpacing: 5 // Add line spacing for readability
             }
         ).setOrigin(0.5, 0);
 
         // Input box
         this.inputBox = this.add.rectangle(
             width / 2, 
-            height * 0.75, 
+            height * 0.78, // Move down slightly to give more room for chat
             width * 0.8, 
             50, 
             0x333333
@@ -148,7 +158,7 @@ export class SpeedDatingScene extends Scene {
         // Input text
         this.inputText = this.add.text(
             width * 0.15, 
-            height * 0.75, 
+            height * 0.78, // Match input box position
             'Type your message...', 
             {
                 fontSize: '16px',
@@ -160,7 +170,7 @@ export class SpeedDatingScene extends Scene {
         // Instructions
         this.instructionsText = this.add.text(
             width / 2, 
-            height * 0.85, 
+            height * 0.88, // Move down accordingly
             'Press ENTER to send your message', 
             {
                 fontSize: '12px',
@@ -193,6 +203,17 @@ export class SpeedDatingScene extends Scene {
         // Set up event listeners
         this.setupEventListeners();
         
+        // Handle scene lifecycle events
+        this.events.on('shutdown', () => {
+            console.log('💕 [SPEED_DATING] Scene shutting down');
+            this.cleanupEventListeners();
+        });
+        
+        this.events.on('sleep', () => {
+            console.log('💕 [SPEED_DATING] Scene going to sleep');
+            this.cleanupEventListeners();
+        });
+        
         console.log('💕 [SPEED_DATING] Scene initialization complete');
     }
 
@@ -220,7 +241,7 @@ export class SpeedDatingScene extends Scene {
         this.countdownText = this.add.text(
             width / 2, 
             height / 2, 
-            '60', 
+            '', // Start with empty text, will be set by server data
             {
                 fontSize: '72px',
                 color: '#ffffff',
@@ -326,6 +347,26 @@ export class SpeedDatingScene extends Scene {
     }
 
     private setupEventListeners() {
+        // Prevent duplicate event listeners
+        if (this.eventListenersSetup) {
+            console.log('💕 [SPEED_DATING] Event listeners already set up, cleaning up first');
+            this.cleanupEventListeners();
+        }
+        
+        console.log('💕 [SPEED_DATING] Setting up event listeners');
+        
+        // Log current listener count before adding new ones
+        const eventNames = ['speed_dating_countdown', 'speed_dating_start', 'speed_dating_match_start', 
+                           'speed_dating_vibe_update', 'speed_dating_match_end', 'speed_dating_complete', 
+                           'speed_dating_npc_response'];
+        
+        eventNames.forEach(eventName => {
+            const count = this.game.events.listenerCount(eventName);
+            if (count > 0) {
+                console.warn(`⚠️ [SPEED_DATING] Event '${eventName}' already has ${count} listeners`);
+            }
+        });
+        
         // Game event listeners
         this.game.events.on('speed_dating_countdown', (data: any) => {
             console.log('💕 [SPEED_DATING] Countdown update:', data);
@@ -358,21 +399,63 @@ export class SpeedDatingScene extends Scene {
         });
         
         this.game.events.on('speed_dating_npc_response', (data: any) => {
-            console.log('💕 [SPEED_DATING] NPC response:', data);
-            this.addToConversationLog(`${data.npcName}: ${data.message}`);
+            const listenerId = Math.random().toString(36).substring(7);
+            console.log(`💕 [SPEED_DATING] NPC response received by listener ${listenerId}:`, data);
+            
+            // Validate data
+            if (!data || !data.message) {
+                console.error('❌ [SPEED_DATING] Invalid NPC response data:', data);
+                return;
+            }
+            
+            // Create a unique key for this message
+            const messageKey = `${data.matchId}-${data.timestamp || Date.now()}-${data.message}`;
+            
+            // Check if we've already processed this message
+            if (this.processedMessages.has(messageKey)) {
+                console.log('⚠️ [SPEED_DATING] Duplicate NPC response detected, ignoring');
+                return;
+            }
+            
+            // Mark this message as processed
+            this.processedMessages.add(messageKey);
+            
+            const npcDisplayName = this.getNPCDisplayName(data.npcId || data.npcName);
+            this.addToConversationLog(`${npcDisplayName}: ${data.message}`);
         });
+        
+        this.eventListenersSetup = true;
+    }
+    
+    private cleanupEventListeners() {
+        console.log('💕 [SPEED_DATING] Cleaning up event listeners');
+        
+        // Remove only speed dating event listeners
+        this.game.events.off('speed_dating_countdown');
+        this.game.events.off('speed_dating_start');
+        this.game.events.off('speed_dating_match_start');
+        this.game.events.off('speed_dating_vibe_update');
+        this.game.events.off('speed_dating_match_end');
+        this.game.events.off('speed_dating_complete');
+        this.game.events.off('speed_dating_npc_response');
+        
+        this.eventListenersSetup = false;
     }
 
     // Event handlers
     private handleCountdownUpdate(data: any) {
+        console.log('💕 [SPEED_DATING] Countdown update received:', JSON.stringify(data));
+        
         // Handle both initial countdown and countdown updates
         if (data.countdownSeconds !== undefined) {
             // Initial countdown start
+            console.log(`💕 [SPEED_DATING] Initial countdown: ${data.countdownSeconds} seconds`);
             this.scene.setVisible(true);
             this.scene.bringToTop();
             this.showCountdown(data.countdownSeconds);
         } else if (data.remainingSeconds !== undefined) {
             // Countdown update
+            console.log(`💕 [SPEED_DATING] Countdown update: ${data.remainingSeconds} seconds remaining`);
             this.updateCountdown(data.remainingSeconds);
         }
     }
@@ -409,6 +492,14 @@ export class SpeedDatingScene extends Scene {
         this.currentMatch = data;
         this.matchTimer = data.duration;
         this.inputActive = true;
+        
+        console.log(`💕 [SPEED_DATING] Match timer set to ${this.matchTimer} seconds (${Math.floor(this.matchTimer / 60)}:${(this.matchTimer % 60).toString().padStart(2, '0')})`);
+        
+        // Clear processed messages for new match
+        this.processedMessages.clear();
+        
+        // Reset sending flag
+        this.sendingMessage = false;
         
         // Update UI with proper NPC name
         if (this.npcNameText) {
@@ -469,15 +560,30 @@ export class SpeedDatingScene extends Scene {
     }
 
     private handleVibeUpdate(data: VibeUpdate) {
-        this.vibeScore = data.score;
+        console.log('💕 [SPEED_DATING] Vibe update received:', JSON.stringify(data));
+        
+        // Validate data
+        if (data.vibeScore === undefined || data.cumulativeScore === undefined) {
+            console.error('❌ [SPEED_DATING] Invalid vibe update data:', data);
+            return;
+        }
+        
+        // Update cumulative score
+        this.vibeScore = data.cumulativeScore;
+        
+        // Update UI with cumulative score
         if (this.vibeText) {
-            const color = data.score > 0 ? '#4a90e2' : data.score < 0 ? '#ff4444' : '#ffffff';
-            this.vibeText.setText(`Vibe: ${data.score}`);
+            const color = data.cumulativeScore > 0 ? '#4a90e2' : data.cumulativeScore < 0 ? '#ff4444' : '#ffffff';
+            this.vibeText.setText(`Vibe: ${data.cumulativeScore}`);
             this.vibeText.setColor(color);
         }
         
-        // Show vibe feedback
-        this.addToConversationLog(`💝 ${data.reason} (${data.score > 0 ? '+' : ''}${data.score})`);
+        // Only show vibe feedback when there's an actual score change (non-zero)
+        if (data.vibeScore !== 0) {
+            const vibeSign = data.vibeScore > 0 ? '+' : '';
+            const feedbackMessage = `💝 ${data.vibeReason || 'Vibe changed'} (${vibeSign}${data.vibeScore})`;
+            this.addToConversationLog(feedbackMessage);
+        }
     }
 
     private handleMatchEnd(data: any) {
@@ -519,7 +625,7 @@ export class SpeedDatingScene extends Scene {
                 this.countdownText.setColor('#ffaa00');
             } else {
                 this.countdownText.setColor('#ffffff');
-            }or
+            }
         }
         
         // Don't create local timer - let server handle countdown updates
@@ -542,6 +648,8 @@ export class SpeedDatingScene extends Scene {
     }
 
     private startMatchTimer() {
+        console.log(`⏱️ [SPEED_DATING] Starting match timer with ${this.matchTimer} seconds`);
+        
         // Update initial timer display
         if (this.timerText) {
             const minutes = Math.floor(this.matchTimer / 60);
@@ -558,7 +666,9 @@ export class SpeedDatingScene extends Scene {
             repeat: this.matchTimer - 1,
             callback: () => {
                 this.matchTimer--;
-                if (this.timerText) {
+                console.log(`⏱️ [SPEED_DATING] Timer tick: ${this.matchTimer} seconds remaining`);
+                
+                if (this.timerText && this.matchTimer >= 0) {
                     const minutes = Math.floor(this.matchTimer / 60);
                     const seconds = this.matchTimer % 60;
                     this.timerText.setText(`Time: ${minutes}:${seconds.toString().padStart(2, '0')}`);
@@ -570,7 +680,8 @@ export class SpeedDatingScene extends Scene {
                         this.timerText.setColor('#ffaa00');
                     }
                 }
-            }
+            },
+            callbackScope: this
         });
         
         console.log(`💕 [SPEED_DATING] Match timer set to ${this.matchTimer} seconds with real-time countdown`);
@@ -583,20 +694,31 @@ export class SpeedDatingScene extends Scene {
     }
 
     private addToConversationLog(message: string) {
+        console.log(`💬 [SPEED_DATING] Adding to conversation: "${message}"`);
         this.conversationLog.push(message);
         
-        // Keep only last 10 messages
-        if (this.conversationLog.length > 10) {
-            this.conversationLog.shift();
+        // Keep last 20 messages (increased from 10)
+        if (this.conversationLog.length > 20) {
+            const removed = this.conversationLog.shift();
+            console.log(`💬 [SPEED_DATING] Removed old message: "${removed}"`);
         }
         
         if (this.chatHistory) {
             this.chatHistory.setText(this.conversationLog.join('\n'));
+            console.log(`💬 [SPEED_DATING] Conversation log now has ${this.conversationLog.length} messages`);
         }
     }
 
     private sendMessage() {
-        if (!this.currentMessage.trim() || !this.currentMatch) return;
+        if (!this.currentMessage.trim() || !this.currentMatch || this.sendingMessage) {
+            if (this.sendingMessage) {
+                console.log('⚠️ [SPEED_DATING] Already sending a message, please wait');
+            }
+            return;
+        }
+        
+        // Set sending flag
+        this.sendingMessage = true;
         
         // Add to conversation log
         this.addToConversationLog(`You: ${this.currentMessage.trim()}`);
@@ -613,6 +735,11 @@ export class SpeedDatingScene extends Scene {
         // Clear input
         this.currentMessage = '';
         this.updateInputDisplay();
+        
+        // Reset sending flag after a short delay
+        setTimeout(() => {
+            this.sendingMessage = false;
+        }, 500);
     }
 
     private returnToGame() {
@@ -625,11 +752,11 @@ export class SpeedDatingScene extends Scene {
     destroy() {
         console.log('💕 [SPEED_DATING] Cleaning up scene');
         
-        // Remove event listeners
-        this.game.events.removeAllListeners();
+        // Clean up event listeners
+        this.cleanupEventListeners();
         
         super.destroy();
     }
 }
 
-export default SpeedDatingScene; 
+export default SpeedDatingScene;

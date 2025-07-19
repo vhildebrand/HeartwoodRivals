@@ -198,7 +198,7 @@ export class HeartwoodRoom extends Room<GameState> {
         });
 
         // Speed dating message handler
-        this.onMessage("speed_dating_message", (client: Client, message: { matchId: string; message: string }) => {
+        this.onMessage("speed_dating_message", (client: Client, message: { matchId: number; message: string }) => {
             this.handleSpeedDatingMessage(client, message);
         });
         
@@ -525,7 +525,7 @@ export class HeartwoodRoom extends Room<GameState> {
         });
     }
 
-    private handleSpeedDatingMessage(client: Client, message: { matchId: string; message: string }) {
+    private handleSpeedDatingMessage(client: Client, message: { matchId: number; message: string }) {
         if (!this.speedDatingManager) {
             console.error('❌ [SPEED_DATING] SpeedDatingManager not available');
             return;
