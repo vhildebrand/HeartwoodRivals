@@ -504,7 +504,17 @@ Based on your memories and knowledge of this player's reputation, how do you res
         return cached;
       }
       
-      // For now, use a simple fallback since we don't have a proper user system yet
+      // If characterId doesn't look like a UUID or session ID, it's probably already a username
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const sessionIdRegex = /^[a-zA-Z0-9_-]{20,}$/; // Typical session ID pattern
+      
+      if (!uuidRegex.test(characterId) && !sessionIdRegex.test(characterId) && characterId !== 'test-character-id') {
+        // This looks like a username, return it directly
+        await this.redisClient.setEx(cacheKey, 3600, characterId);
+        return characterId;
+      }
+      
+      // For UUIDs, session IDs, or test-character-id, generate a fallback name
       // In the future, this would look up the username from the characters/users table
       const playerName = `Player_${characterId}`;
       

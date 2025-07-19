@@ -4,6 +4,7 @@ import { DialogueManager } from "../ui/DialogueManager";
 
 export class UIScene extends Scene {
     private dialogueManager: DialogueManager | null = null;
+    private playerUsername: string | null = null; // Add field to store username
     private clockText: Phaser.GameObjects.Text | null = null;
     private speedText: Phaser.GameObjects.Text | null = null;
     private currentGameTime: string = "06:00";
@@ -261,9 +262,19 @@ export class UIScene extends Scene {
         });
         
         // Existing event listeners...
-        this.game.events.on('playerIdSet', (playerId: string) => {
-            console.log("🎮 [UI] Player ID set:", playerId);
-            // Any player-specific UI setup can go here
+        this.game.events.on('playerIdSet', (playerId: string, username: string) => {
+            console.log("🎮 [UI] Player ID set:", playerId, "with username:", username);
+            
+            // Store the username for later use
+            this.playerUsername = username;
+            
+            // Set the player character ID on dialogue manager with the actual username
+            if (this.dialogueManager) {
+                this.dialogueManager.setPlayerCharacterId(username);
+                console.log("💬 [UI] DialogueManager configured with username:", username);
+            } else {
+                console.log("💬 [UI] DialogueManager not yet initialized, will set username when created");
+            }
         });
 
         // Listen for game state updates to track player count
@@ -359,6 +370,12 @@ export class UIScene extends Scene {
         
         // Initialize dialogue manager
         this.dialogueManager = new DialogueManager(this);
+        
+        // Set the player character ID if we have the username stored
+        if (this.playerUsername) {
+            this.dialogueManager.setPlayerCharacterId(this.playerUsername);
+            console.log("💬 [UI] DialogueManager initialized with stored username:", this.playerUsername);
+        }
         
         // Listen for dialogue events from GameScene
         this.game.events.on('openDialogue', (npcId: string, npcName: string) => {

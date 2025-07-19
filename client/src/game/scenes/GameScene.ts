@@ -656,8 +656,8 @@ export class GameScene extends Scene {
                 this.playerController.setMyPlayerId(this.myPlayerId);
                 // Reset camera following flag when player joins
                 this.cameraFollowingPlayer = false;
-                // Emit player ID for UI Scene to set up dialogue manager
-                this.game.events.emit('playerIdSet', this.myPlayerId);
+                // Emit player ID and username for UI Scene to set up dialogue manager
+                this.game.events.emit('playerIdSet', this.myPlayerId, username);
             }
             
             // Set up state change handler
