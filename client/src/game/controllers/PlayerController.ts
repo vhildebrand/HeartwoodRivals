@@ -32,7 +32,7 @@ export class PlayerController {
 
     public createAnimations() {
         try {
-            console.log("PlayerController: Creating animations for Player.png sprite");
+            //console.log("PlayerController: Creating animations for Player.png sprite");
             
             // Row 1: Idle animation (frames 0-5)
             this.scene.anims.create({
@@ -74,7 +74,7 @@ export class PlayerController {
                 repeat: -1
             });
             
-            console.log("PlayerController: Animations created successfully");
+            //console.log("PlayerController: Animations created successfully");
             
         } catch (error) {
             console.error("PlayerController: Error creating animations:", error);
@@ -239,7 +239,7 @@ export class PlayerController {
         }
         
         this.movementControllers.delete(sessionId);
-        console.log(`PlayerController: Removed player ${sessionId}`);
+        //console.log(`PlayerController: Removed player ${sessionId}`);
     }
 
     public update(deltaTime: number) {

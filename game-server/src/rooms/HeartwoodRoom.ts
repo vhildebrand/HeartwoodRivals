@@ -778,8 +778,8 @@ export class HeartwoodRoom extends Room<GameState> {
                 console.log(`💕 [SPEED_DATING] Registered player: ${playerId}`);
             }
             
-            // Register a selection of NPCs (limit to 6 for better experience)
-            const availableNPCs = Array.from(this.agents.keys()).slice(0, 6);
+            // Register a selection of NPCs (limit to 3 for better experience)
+            const availableNPCs = Array.from(this.agents.keys()).slice(0, 3);
             await this.speedDatingManager.registerNPCs(availableNPCs);
             console.log(`💕 [SPEED_DATING] Registered ${availableNPCs.length} NPCs`);
             

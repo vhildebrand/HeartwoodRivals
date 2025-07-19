@@ -223,7 +223,7 @@ export class ThoughtSystemIntegration {
         
         await this.triggerThought(agent.id, trigger);
       } else if (shouldTriggerThought) {
-        console.log(`💾 [THOUGHT_INTEGRATION] Agent ${agent.id} outside thought range (${distance.toFixed(1)} tiles) - no LLM thoughts`);
+        //console.log(`💾 [THOUGHT_INTEGRATION] Agent ${agent.id} outside thought range (${distance.toFixed(1)} tiles) - no LLM thoughts`);
       }
     }
   }

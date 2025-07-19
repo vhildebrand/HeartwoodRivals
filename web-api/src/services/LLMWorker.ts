@@ -52,15 +52,15 @@ export class LLMWorker {
   }
 
   private async processConversationJob(jobData: any) {
-    const { npcId, npcName, constitution, characterId, playerMessage, timestamp } = jobData;
+    const { npcId, npcName, constitution, characterId, playerMessage, timestamp, context, contextDetails } = jobData;
 
     try {
       // LIGHTWEIGHT MEMORY RECALL: Quick memory recall for conversation context
       console.log(`🧠 [LLM] Triggering memory recall for ${npcName}`);
       const memoryRecall = await this.triggerConversationMemoryRecall(npcId, playerMessage, characterId);
       
-      // Construct the prompt for the LLM (including memory recall results)
-      const prompt = await this.constructPrompt(constitution, npcName, playerMessage, npcId, characterId, memoryRecall);
+      // Construct the prompt for the LLM (including memory recall results and context)
+      const prompt = await this.constructPrompt(constitution, npcName, playerMessage, npcId, characterId, memoryRecall, context, contextDetails);
 
       // Call OpenAI API
       const completion = await this.openai.chat.completions.create({
@@ -93,6 +93,16 @@ export class LLMWorker {
 
       // *** POST-RESPONSE ANALYSIS: Check for gossip ***
       await this.analyzeConversationForGossip(npcId, characterId, playerMessage, npcResponse);
+
+      // *** SPEED DATING EVALUATION: If in speed dating context, trigger evaluation ***
+      if (jobData.context === 'speed_dating') {
+        await this.triggerSpeedDatingEvaluation(npcId, playerMessage, npcResponse, {
+          playerId: characterId,
+          matchOrder: jobData.contextDetails?.matchOrder,
+          eventName: jobData.contextDetails?.eventName,
+          timeRemaining: jobData.contextDetails?.timeRemaining
+        });
+      }
 
       // Return the response (conversation complete thoughts will be triggered separately)
       return {
@@ -170,7 +180,7 @@ export class LLMWorker {
     }
   }
 
-  private async constructPrompt(constitution: string, npcName: string, playerMessage: string, npcId?: string, characterId?: string, memoryRecall?: any): Promise<string> {
+  private async constructPrompt(constitution: string, npcName: string, playerMessage: string, npcId?: string, characterId?: string, memoryRecall?: any, context?: string, contextDetails?: any): Promise<string> {
     let contextualMemories = '';
     let reputationContext = '';
     let memoryRecallContext = '';
@@ -252,6 +262,44 @@ export class LLMWorker {
       }
     }
 
+    // Handle different contexts
+    if (context === 'speed_dating') {
+      const dateNumber = contextDetails?.matchOrder || 1;
+      const eventName = contextDetails?.eventName || 'Speed Dating Event';
+      
+      const prompt = `${constitution}
+
+SPEED DATING CONTEXT:
+- You are on a speed date with ${characterId || 'someone new'}
+- This is date #${dateNumber} in the ${eventName}
+- You have only 2 minutes together, so time is precious
+- Your goal is to make a connection and see if there's romantic chemistry
+- Be flirty, engaging, and show interest while staying true to your personality
+- Ask questions to learn about them, share about yourself, and evaluate compatibility
+- Remember this is about finding potential romance, not just friendship
+
+IMPORTANT DATING INSTRUCTIONS:
+- Be charming and show your best qualities
+- Ask meaningful questions to gauge compatibility
+- Share what you're looking for in a partner
+- Be playful and flirtatious if it feels natural
+- Respond to their energy and match their vibe
+- Keep responses concise but engaging (2-3 sentences max)
+- Show genuine interest if you feel a connection
+- Be honest about dealbreakers or incompatibilities
+
+${memoryRecallContext}
+${contextualMemories}
+${reputationContext}
+
+The person you're speed dating says: "${playerMessage}"
+
+Respond as ${npcName} on this speed date:`;
+
+      return prompt;
+    }
+
+    // Default prompt for general conversation
     const prompt = `${constitution}
 
 IMPORTANT INSTRUCTIONS:
@@ -658,5 +706,52 @@ Examples:
     return `player_${characterName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
   }
 
+  /**
+   * Trigger speed dating evaluation for romantic compatibility assessment
+   */
+  private async triggerSpeedDatingEvaluation(
+    npcId: string, 
+    playerMessage: string, 
+    npcResponse: string, 
+    matchContext: any
+  ): Promise<void> {
+    try {
+      console.log(`💕 [LLM] Triggering speed dating evaluation for ${npcId}`);
+      
+      const response = await fetch('http://localhost:3000/thought/speed-dating-evaluation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: npcId,
+          playerMessage,
+          playerResponse: npcResponse, // This is the NPC's response to the player
+          matchContext
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json() as any;
+      console.log(`✅ [LLM] Speed dating evaluation completed for ${npcId}`);
+      console.log(`💭 Attraction level: ${result.thoughtResult?.attractionLevel}/10`);
+      console.log(`💕 Romantic potential: ${result.thoughtResult?.romanticPotential}`);
+      
+      // Log key insights for debugging
+      if (result.thoughtResult) {
+        console.log(`🎯 [DATING] ${npcId}'s thoughts:`, {
+          attraction: result.thoughtResult.attractionLevel,
+          potential: result.thoughtResult.romanticPotential,
+          chemistry: result.thoughtResult.chemistryNotes
+        });
+      }
+
+    } catch (error) {
+      console.error('❌ [LLM] Error in speed dating evaluation:', error);
+    }
+  }
 
 } 

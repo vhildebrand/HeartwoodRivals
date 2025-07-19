@@ -88,7 +88,7 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
   // POST /npc/interact - Main endpoint for NPC conversations
   router.post('/interact', async (req, res) => {
     try {
-      const { npcId, message, characterId } = req.body;
+      const { npcId, message, characterId, context, contextDetails } = req.body;
 
       // Validate request
       if (!npcId || !message) {
@@ -133,14 +133,16 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
 
       const agent = agentResult.rows[0];
 
-      // Create conversation job
+      // Add conversation job to queue
       const jobData = {
-        npcId,
+        npcId: agent.id,
         npcName: agent.name,
         constitution: agent.constitution,
         characterId: actualCharacterId,
         playerMessage: message.trim(),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        context: context || 'general', // Add context (speed_dating or general)
+        contextDetails: contextDetails || {} // Add context details
       };
 
       const job = await conversationQueue.add('processConversation', jobData);

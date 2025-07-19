@@ -420,6 +420,49 @@ export function thoughtRoutes(pool: Pool, redisClient: ReturnType<typeof createC
     }
   });
 
+  // POST /thought/speed-dating-evaluation - Process thoughts during speed dating
+  router.post('/speed-dating-evaluation', async (req, res) => {
+    try {
+      const { agentId, playerMessage, playerResponse, matchContext } = req.body;
+
+      if (!agentId || !playerMessage) {
+        return res.status(400).json({
+          error: 'Missing required fields: agentId, playerMessage'
+        });
+      }
+
+      // Verify agent exists
+      const agentResult = await pool.query(
+        'SELECT id, name FROM agents WHERE id = $1',
+        [agentId]
+      );
+
+      if (agentResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'Agent not found'
+        });
+      }
+
+      const agent = agentResult.rows[0];
+
+      // Process speed dating evaluation
+      const result = await processSpeedDatingEvaluation(agentId, playerMessage, playerResponse, matchContext);
+
+      res.json({
+        success: true,
+        message: `Speed dating evaluation completed for ${agent.name}`,
+        agentId,
+        thoughtResult: result
+      });
+
+    } catch (error) {
+      console.error('Error in /thought/speed-dating-evaluation:', error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  });
+
   // Helper functions for thought processing
   async function processImmediateThought(agentId: string, eventType: string, eventData: any, importance: number) {
     // Get agent context
@@ -1280,6 +1323,229 @@ Respond in JSON format:
         confidence: 1
       };
     }
+  }
+
+  async function processSpeedDatingEvaluation(agentId: string, playerMessage: string, playerResponse: string, matchContext: any) {
+    // Get agent context with full personality and memory
+    const context = await buildSpeedDatingContext(agentId, playerMessage, matchContext);
+    
+    // Get reputation and relationship context
+    const reputationResult = await pool.query(`
+      SELECT reputation_score, reputation_notes 
+      FROM agent_reputations 
+      WHERE agent_id = $1 AND character_id = $2
+    `, [agentId, matchContext.playerId]);
+    
+    const reputation = reputationResult.rows[0] || { reputation_score: 0, reputation_notes: 'First time meeting' };
+    
+    // Build comprehensive speed dating evaluation prompt
+    const prompt = buildSpeedDatingEvaluationPrompt(context, playerMessage, reputation, matchContext);
+    
+    // Use GPT-4o for better quality evaluation without token limits
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.8
+    });
+
+    const result = parseSpeedDatingEvaluationResponse(response.choices[0].message.content);
+    
+    // Store the evaluation 
+    await pool.query(`
+      INSERT INTO agent_thoughts (
+        agent_id, thought_type, trigger_type, trigger_data, 
+        decision, reasoning, importance, urgency, confidence
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, [
+      agentId, 'speed_dating_evaluation', 'speed_dating', 
+      { playerMessage, matchContext, evaluation: result },
+      result.overallImpression, result.internalThoughts, 
+      result.attractionLevel, 1, result.confidence
+    ]);
+
+    return result;
+  }
+
+  function buildSpeedDatingEvaluationPrompt(context: any, playerMessage: string, reputation: any, matchContext: any): string {
+    const { agent, personalitySeed, recentMemories, relationships } = context;
+    
+    // Get personality traits and preferences
+    const personalityTraits = agent.personality_traits?.join(', ') || 'Unknown';
+    const likes = agent.likes?.join(', ') || 'Unknown';
+    const dislikes = agent.dislikes?.join(', ') || 'Unknown';
+    
+    // Get dating preferences from personality seed if available
+    const datingPreferences = personalitySeed ? `
+DATING PREFERENCES:
+- Dating Style: ${personalitySeed.datingStyle || 'Not specified'}
+- Romantic Goals: ${personalitySeed.romanticGoals?.join(', ') || 'Not specified'}
+- Conversation Style: ${personalitySeed.conversationStyle || 'Not specified'}
+- Attraction Triggers: ${personalitySeed.attractionTriggers?.join(', ') || 'Not specified'}
+- Dealbreakers: ${personalitySeed.dealbreakers?.join(', ') || 'Not specified'}
+` : '';
+    
+    return `You are ${agent.name}, on a speed date in Heartwood Valley.
+
+YOUR IDENTITY & PERSONALITY:
+${agent.constitution}
+
+Personality Traits: ${personalityTraits}
+Things You Like: ${likes}
+Things You Dislike: ${dislikes}
+${datingPreferences}
+
+YOUR DATING PRIORITIES:
+Based on your personality, what matters most to you in a romantic partner? What are your dealbreakers?
+
+SPEED DATING CONTEXT:
+- This is date #${matchContext.matchOrder || 1} in the speed dating gauntlet
+- You have 2 minutes together, so time is precious
+- Your goal is to evaluate romantic compatibility
+
+WHAT THE PERSON JUST SAID: "${playerMessage}"
+
+PREVIOUS INTERACTIONS WITH THIS PERSON:
+${reputation.reputation_score > 0 ? `You've met before. Your impression: ${reputation.reputation_notes}` : 'This is your first time meeting.'}
+
+RELEVANT MEMORIES & CONTEXT:
+${recentMemories.slice(0, 5).map((m: any) => `- ${m.content}`).join('\n')}
+
+OTHER ROMANTIC INTERESTS:
+${relationships.filter((r: any) => r.relationship_type === 'romantic_interest').map((r: any) => `- ${r.target_person}: ${r.notes}`).join('\n') || 'None currently'}
+
+INTERNAL THOUGHT PROCESS - EVALUATE THIS INTERACTION:
+
+1. **IMMEDIATE REACTION**: What's your gut feeling about what they just said? Does it make you more or less interested?
+
+2. **COMPATIBILITY CHECK**: 
+   - Does their response align with your values and interests?
+   - Do they share any of your likes? Do they express any of your dislikes?
+   - Based on their personality so far, would you be compatible?
+
+3. **ATTRACTION & CHEMISTRY**:
+   - Are you feeling any romantic spark?
+   - Do you find their conversation style attractive?
+   - Is there natural chemistry in how you communicate?
+
+4. **TRUTH EVALUATION** (if applicable):
+   - Do you believe what they're saying is genuine?
+   - Are they being authentic or just trying to impress you?
+   - Any red flags or inconsistencies?
+
+5. **COMPARISON** (if you have other romantic interests):
+   - How does this person compare to others you're interested in?
+   - What unique qualities do they bring?
+   - Who are you more drawn to and why?
+
+6. **ROMANTIC POTENTIAL**:
+   - Could you see yourself dating this person?
+   - What level of interest do you have? (Not interested / Friend potential / Romantic interest / Strong attraction)
+   - Would you want to see them again after this event?
+
+Respond with your INTERNAL THOUGHTS (not what you'd say out loud) in JSON format:
+{
+  "immediateReaction": "Your gut reaction to what they said",
+  "compatibilityThoughts": "Your analysis of compatibility based on values, interests, personality",
+  "attractionLevel": 1-10,
+  "chemistryNotes": "Notes about romantic chemistry or lack thereof",
+  "believability": "Do you think they're being genuine? Any concerns?",
+  "comparisonToOthers": "How they compare to other romantic interests (if any)",
+  "romanticPotential": "not_interested" | "friend_zone" | "maybe_interested" | "definitely_interested" | "very_attracted",
+  "specificLikesOrDislikes": "Specific things about them you like or dislike",
+  "overallImpression": "Your overall impression after this exchange",
+  "internalThoughts": "Your complete internal monologue about this person and interaction",
+  "whatYouWantToKnowNext": "What questions you'd want to ask to learn more about compatibility",
+  "confidence": 1-10
+}`;
+  }
+
+  function parseSpeedDatingEvaluationResponse(responseText: string | null): any {
+    try {
+      if (!responseText) {
+        throw new Error('Empty response');
+      }
+      
+      // Clean up response - remove markdown code blocks if present
+      let cleanResponse = responseText.trim();
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '');
+      }
+      if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '');
+      }
+      if (cleanResponse.endsWith('```')) {
+        cleanResponse = cleanResponse.replace(/\s*```$/, '');
+      }
+      
+      const parsed = JSON.parse(cleanResponse);
+      
+      return {
+        immediateReaction: parsed.immediateReaction || 'No reaction',
+        compatibilityThoughts: parsed.compatibilityThoughts || 'No compatibility thoughts',
+        attractionLevel: parsed.attractionLevel || 5,
+        chemistryNotes: parsed.chemistryNotes || 'No chemistry notes',
+        believability: parsed.believability || 'Unable to assess',
+        comparisonToOthers: parsed.comparisonToOthers || 'No comparison available',
+        romanticPotential: parsed.romanticPotential || 'not_interested',
+        specificLikesOrDislikes: parsed.specificLikesOrDislikes || 'None noted',
+        overallImpression: parsed.overallImpression || 'No overall impression',
+        internalThoughts: parsed.internalThoughts || 'No internal thoughts',
+        whatYouWantToKnowNext: parsed.whatYouWantToKnowNext || 'Nothing specific',
+        confidence: parsed.confidence || 5
+      };
+    } catch (error) {
+      console.error('Error parsing speed dating evaluation response:', error);
+      console.error('Raw response:', responseText);
+      return {
+        immediateReaction: 'Unable to process',
+        compatibilityThoughts: 'Error in evaluation',
+        attractionLevel: 1,
+        chemistryNotes: 'System error',
+        believability: 'Cannot assess',
+        comparisonToOthers: 'Not available',
+        romanticPotential: 'not_interested',
+        specificLikesOrDislikes: 'Error',
+        overallImpression: 'Unable to process evaluation',
+        internalThoughts: 'Error in evaluation processing',
+        whatYouWantToKnowNext: 'Unable to determine',
+        confidence: 1
+      };
+    }
+  }
+
+  async function buildSpeedDatingContext(agentId: string, playerMessage: string, matchContext: any) {
+    // Get agent data
+    const agentResult = await pool.query(`
+      SELECT * FROM agents WHERE id = $1
+    `, [agentId]);
+
+    const agent = agentResult.rows[0];
+
+    // Get personality seed data for dating preferences
+    const personalitySeedResult = await pool.query(`
+      SELECT * FROM personality_seeds WHERE agent_id = $1
+    `, [agentId]);
+
+    const personalitySeed = personalitySeedResult.rows[0];
+
+    // Get recent memories
+    const recentMemories = await memoryManager.getContextualMemories(agentId, 'recent thoughts and activities', 10);
+
+    // Get relationships - especially romantic interests
+    const relationshipsResult = await pool.query(`
+      SELECT * FROM agent_relationships 
+      WHERE agent_id = $1 AND relationship_type IN ('romantic_interest', 'dating', 'crush')
+    `, [agentId]);
+
+    return {
+      agent,
+      personalitySeed,
+      recentMemories,
+      relationships: relationshipsResult.rows,
+      playerMessage,
+      matchContext,
+      currentTime: new Date().toISOString()
+    };
   }
 
   return router;

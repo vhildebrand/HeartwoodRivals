@@ -40,6 +40,7 @@ export class SpeedDatingScene extends Scene {
     private backgroundPanel: Phaser.GameObjects.Rectangle | null = null;
     private npcNameText: Phaser.GameObjects.Text | null = null;
     private chatHistory: Phaser.GameObjects.Text | null = null;
+    private chatBackground: Phaser.GameObjects.Rectangle | null = null;
     private inputBox: Phaser.GameObjects.Rectangle | null = null;
     private inputText: Phaser.GameObjects.Text | null = null;
     private timerText: Phaser.GameObjects.Text | null = null;
@@ -133,17 +134,31 @@ export class SpeedDatingScene extends Scene {
         // Chat history
         this.chatHistory = this.add.text(
             width / 2, 
-            height * 0.35, // Move up slightly to give more room
+            height * 0.3, // Move up for more room
             'Welcome to the Speed Dating Gauntlet!\nYour date will begin shortly...', 
             {
-                fontSize: '14px',
+                fontSize: '16px', // Increased from 14px
                 color: '#ffffff',
-                fontFamily: 'Arial',
+                fontFamily: '"Segoe UI", Arial, sans-serif', // Better font stack
+                fontStyle: 'normal',
                 wordWrap: { width: width * 0.85 }, // Increase wrap width
                 align: 'left',
-                lineSpacing: 5 // Add line spacing for readability
+                lineSpacing: 8, // Increased line spacing
+                padding: { x: 10, y: 10 }
             }
         ).setOrigin(0.5, 0);
+
+        // Chat background for better readability
+        this.chatBackground = this.add.rectangle(
+            width / 2, 
+            height * 0.55, // Center of chat area
+            width * 0.87, 
+            height * 0.45, 
+            0x1a1a1a, 
+            0.8
+        );
+        this.chatBackground.setStrokeStyle(2, 0x444444);
+        this.chatBackground.setDepth(1002);
 
         // Input box
         this.inputBox = this.add.rectangle(
@@ -182,6 +197,7 @@ export class SpeedDatingScene extends Scene {
         // Add all elements to container
         this.dialogueContainer.add([
             this.backgroundPanel,
+            this.chatBackground, // Add chat background first
             this.npcNameText,
             this.timerText,
             this.vibeText,
@@ -704,10 +720,14 @@ export class SpeedDatingScene extends Scene {
         }
         
         if (this.chatHistory) {
-            this.chatHistory.setText(this.conversationLog.join('\n'));
+            // Join messages with proper spacing
+            const displayText = this.conversationLog.join('\n\n');
+            this.chatHistory.setText(displayText);
             console.log(`💬 [SPEED_DATING] Conversation log now has ${this.conversationLog.length} messages`);
         }
     }
+
+
 
     private sendMessage() {
         if (!this.currentMessage.trim() || !this.currentMatch || this.sendingMessage) {

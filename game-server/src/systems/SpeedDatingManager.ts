@@ -59,7 +59,7 @@ export class SpeedDatingManager {
   private pausedActivities: Map<string, any> = new Map();
 
   // Dating-specific configuration (using real-world time, not game time)
-  private readonly DEFAULT_DATE_DURATION = 5 * 60 * 1000; // 5 minutes in real-world milliseconds
+  private readonly DEFAULT_DATE_DURATION = 2 * 60 * 1000; // 2 minutes in real-world milliseconds
   private readonly COUNTDOWN_DURATION = 15 * 1000; // 15 seconds in real-world milliseconds
   private readonly VIBE_KEYWORDS = {
     positive: ['love', 'like', 'enjoy', 'fun', 'great', 'amazing', 'wonderful', 'beautiful', 'interesting', 'exciting'],
@@ -779,7 +779,13 @@ export class SpeedDatingManager {
         body: JSON.stringify({
           npcId,
           message,
-          characterId: playerId // Use player ID as character ID for speed dating
+          characterId: playerId, // Use player ID as character ID for speed dating
+          context: 'speed_dating', // Add speed dating context
+          contextDetails: {
+            matchOrder: this.currentMatch?.matchOrder,
+            timeRemaining: this.currentMatch?.durationSeconds,
+            eventName: this.currentEvent?.eventName
+          }
         }),
         // Add timeout to prevent hanging
         signal: AbortSignal.timeout(10000)
