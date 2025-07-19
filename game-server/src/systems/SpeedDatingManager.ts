@@ -65,7 +65,7 @@ export class SpeedDatingManager {
   private matchIdCounter: number = 1; // Counter for generating unique match IDs
 
   // Dating-specific configuration (using real-world time, not game time)
-  private readonly DEFAULT_DATE_DURATION = 30 * 1000; // 30 seconds in real-world milliseconds (for debugging)
+  private readonly DEFAULT_DATE_DURATION = 2 * 60 * 1000; // 2 minutes in real-world milliseconds
   private readonly COUNTDOWN_DURATION = 15 * 1000; // 15 seconds in real-world milliseconds
   private readonly VIBE_KEYWORDS = {
     positive: ['love', 'like', 'enjoy', 'fun', 'great', 'amazing', 'wonderful', 'beautiful', 'interesting', 'exciting'],
@@ -326,8 +326,13 @@ export class SpeedDatingManager {
       return;
     }
 
-    // Calculate total rounds (for testing, only do 1 round)
-    this.maxRounds = 1; // Changed from npcs.length to 1 for testing
+    // Calculate total rounds - each player should meet each NPC exactly once
+    // Since we now select exactly as many NPCs as players, both should be equal
+    this.maxRounds = npcs.length;
+    
+    if (players.length !== npcs.length) {
+      console.warn(`⚠️ [SPEED_DATING] Player count (${players.length}) doesn't match NPC count (${npcs.length}). Using NPC count for rounds.`);
+    }
 
     // Create rotation schedule
     for (let round = 0; round < this.maxRounds; round++) {

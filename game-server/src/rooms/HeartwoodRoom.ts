@@ -28,7 +28,7 @@ const DIRECTIONS = {
 
 // Movement deltas for each direction
 const TILE_SIZE = 16;
-const MOVEMENT_SPEED = 360; // pixels per second (increased from 20)
+const MOVEMENT_SPEED = 180; // pixels per second (reduced from 360 for slower movement)
 const MOVEMENT_DELTAS = {
     up: { x: 0, y: -1 },
     down: { x: 0, y: 1 },
@@ -53,6 +53,18 @@ export class HeartwoodRoom extends Room<GameState> {
     private planningSystem!: PlanningSystem;
     private thoughtSystem!: ThoughtSystem;
     private speedDatingManager!: SpeedDatingManager;
+    
+    // Chat system
+    private chatHistory: Array<{
+        id: string;
+        playerId: string;
+        playerName: string;
+        message: string;
+        location: string;
+        timestamp: number;
+        type: 'public_speech' | 'system';
+    }> = [];
+    private chatMessageCounter = 1;
     private databasePool!: DatabasePool;
     private agents: Map<string, SpawnedAgent> = new Map();
     private lastPlanningDay: number = 0;
@@ -208,6 +220,11 @@ export class HeartwoodRoom extends Room<GameState> {
         // Manual speed dating start message handler
         this.onMessage("start_speed_dating", (client: Client, message: any) => {
             this.handleManualSpeedDatingStart(client, message);
+        });
+
+        // Chat history request handler
+        this.onMessage("request_chat_history", (client: Client) => {
+            this.sendChatHistory(client);
         });
         
         // Start the game loop
@@ -482,7 +499,29 @@ export class HeartwoodRoom extends Room<GameState> {
 
         console.log(`🗣️ [SERVER] Player ${player.name} says publicly: "${message.message}" at ${message.location}`);
         
-        // Publish player speech as a witnessable event
+        // Create chat message entry
+        const chatMessage = {
+            id: `chat_${this.chatMessageCounter++}`,
+            playerId: client.sessionId,
+            playerName: player.name,
+            message: message.message,
+            location: message.location,
+            timestamp: message.timestamp,
+            type: 'public_speech' as const
+        };
+        
+        // Store in chat history
+        this.chatHistory.push(chatMessage);
+        
+        // Keep only last 100 messages
+        if (this.chatHistory.length > 100) {
+            this.chatHistory.shift();
+        }
+        
+        // Broadcast to all players
+        this.broadcast('chat_message', chatMessage);
+        
+        // Publish player speech as a witnessable event for NPCs
         this.publishPlayerAction({
             player_id: client.sessionId,
             action_type: 'public_speech',
@@ -817,26 +856,20 @@ export class HeartwoodRoom extends Room<GameState> {
             }
             
             // Register a selection of NPCs based on player count
-            // More players = fewer NPCs per player for reasonable match duration
+            // Select exactly as many NPCs as there are players for balanced rotation
             const playerCount = playerIds.length;
-            const npcsPerEvent = Math.min(
-                Math.max(2, 5 - playerCount), // 2-4 NPCs based on player count
-                this.agents.size // Don't exceed available NPCs
-            );
+            const npcsPerEvent = Math.min(playerCount, this.agents.size); // Equal to player count
             
-            // Randomly select NPCs
+            // Randomly select NPCs using Fisher-Yates shuffle
             const allNPCs = Array.from(this.agents.keys());
-            const selectedNPCs: string[] = [];
             
-            for (let i = 0; i < npcsPerEvent && i < allNPCs.length; i++) {
-                const randomIndex = Math.floor(Math.random() * allNPCs.length);
-                const npcId = allNPCs[randomIndex];
-                if (!selectedNPCs.includes(npcId)) {
-                    selectedNPCs.push(npcId);
-                } else {
-                    i--; // Try again if duplicate
-                }
+            // Shuffle the array and take the first npcsPerEvent NPCs
+            for (let i = allNPCs.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allNPCs[i], allNPCs[j]] = [allNPCs[j], allNPCs[i]];
             }
+            
+            const selectedNPCs = allNPCs.slice(0, npcsPerEvent);
             
             await this.speedDatingManager.registerNPCs(selectedNPCs);
             console.log(`💕 [SPEED_DATING] Registered ${selectedNPCs.length} NPCs for ${playerCount} players`);
@@ -1236,6 +1269,40 @@ export class HeartwoodRoom extends Room<GameState> {
             player.velocityY = 0;
             player.isMoving = false;
         }
+    }
+
+    /**
+     * Send chat history to a specific client
+     */
+    private sendChatHistory(client: Client) {
+        client.send('chat_history', {
+            messages: this.chatHistory
+        });
+    }
+
+    /**
+     * Add a system message to chat
+     */
+    addSystemMessage(message: string) {
+        const systemMessage = {
+            id: `chat_${this.chatMessageCounter++}`,
+            playerId: 'system',
+            playerName: 'System',
+            message: message,
+            location: 'global',
+            timestamp: Date.now(),
+            type: 'system' as const
+        };
+        
+        this.chatHistory.push(systemMessage);
+        
+        // Keep only last 100 messages
+        if (this.chatHistory.length > 100) {
+            this.chatHistory.shift();
+        }
+        
+        // Broadcast to all players
+        this.broadcast('chat_message', systemMessage);
     }
 
     onDispose() {

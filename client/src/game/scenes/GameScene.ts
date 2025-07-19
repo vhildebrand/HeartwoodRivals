@@ -143,7 +143,7 @@ export class GameScene extends Scene {
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         
         // Set camera zoom and smoothing
-        this.cameras.main.setZoom(2); // Zoom in 2x
+        this.cameras.main.setZoom(3); // Zoom in 2x
         this.cameras.main.setLerp(0.1, 0.1); // Smoother camera movement
         
         // Set the camera viewport to the game size
@@ -1141,6 +1141,17 @@ export class GameScene extends Scene {
         this.room.onMessage('speed_dating_results', (data: any) => {
             console.log('💕 [GAME_SCENE] Speed dating results received:', data);
             this.game.events.emit('speed_dating_results', data);
+        });
+        
+        // Chat message handlers
+        this.room.onMessage('chat_message', (data: any) => {
+            console.log('💬 [GAME_SCENE] Chat message received:', data);
+            this.game.events.emit('chatMessage', data);
+        });
+        
+        this.room.onMessage('chat_history', (data: any) => {
+            console.log('💬 [GAME_SCENE] Chat history received:', data.messages.length, 'messages');
+            this.game.events.emit('chatHistory', data.messages);
         });
     }
 

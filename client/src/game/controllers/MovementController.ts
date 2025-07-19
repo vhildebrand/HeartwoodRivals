@@ -13,7 +13,7 @@ export class MovementController {
     private velocity: { x: number; y: number };
     private isMoving: boolean = false;
 
-    constructor(scene: Scene, config: MovementConfig = { speed: 360, smoothing: 0.1 }) {
+    constructor(scene: Scene, config: MovementConfig = { speed: 180, smoothing: 0.1 }) {
         this.scene = scene;
         this.config = config;
         this.velocity = { x: 0, y: 0 };

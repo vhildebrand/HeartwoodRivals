@@ -1,9 +1,11 @@
 // client/src/scenes/UIScene.ts
 import { Scene } from "phaser";
 import { DialogueManager } from "../ui/DialogueManager";
+import { ChatManager } from "../ui/ChatManager";
 
 export class UIScene extends Scene {
     private dialogueManager: DialogueManager | null = null;
+    private chatManager: ChatManager | null = null;
     private playerUsername: string | null = null; // Add field to store username
     private clockText: Phaser.GameObjects.Text | null = null;
     private speedText: Phaser.GameObjects.Text | null = null;
@@ -371,6 +373,9 @@ export class UIScene extends Scene {
         // Initialize dialogue manager
         this.dialogueManager = new DialogueManager(this);
         
+        // Initialize chat manager with input blocking check
+        this.chatManager = new ChatManager(this, () => this.isAnyInputActive());
+        
         // Set the player character ID if we have the username stored
         if (this.playerUsername) {
             this.dialogueManager.setPlayerCharacterId(this.playerUsername);
@@ -386,6 +391,17 @@ export class UIScene extends Scene {
         this.game.events.on('closeDialogue', () => {
             console.log(`💬 [UI] Closing dialogue`);
             this.dialogueManager?.closeDialogue();
+        });
+        
+        // Listen for chat events from GameScene
+        this.game.events.on('chatMessage', (messageData: any) => {
+            console.log(`💬 [UI] Received chat message:`, messageData);
+            this.chatManager?.addMessage(messageData);
+        });
+        
+        this.game.events.on('chatHistory', (messages: any[]) => {
+            console.log(`💬 [UI] Received chat history: ${messages.length} messages`);
+            this.chatManager?.addMessages(messages);
         });
         
         // Listen for game state updates to update clock
@@ -737,6 +753,46 @@ export class UIScene extends Scene {
 
     getDialogueManager(): DialogueManager | null {
         return this.dialogueManager;
+    }
+
+    /**
+     * Check if any input field is currently active (blocks chat toggle)
+     */
+    private isAnyInputActive(): boolean {
+        // Check if speech or activity input is active
+        if (this.speechInputActive) {
+            console.log('💬 [UI] Input blocked: speech input active');
+            return true;
+        }
+        
+        if (this.activityInputActive) {
+            console.log('💬 [UI] Input blocked: activity input active');
+            return true;
+        }
+
+        // Check if dialogue with NPC is active
+        if (this.dialogueManager?.isDialogueActive()) {
+            console.log('💬 [UI] Input blocked: dialogue active');
+            return true;
+        }
+
+        // Check if speed dating scene has active input
+        const speedDatingScene = this.scene.get('SpeedDatingScene') as any;
+        if (speedDatingScene && this.scene.isActive('SpeedDatingScene')) {
+            // Check if speed dating input is specifically active
+            if (speedDatingScene.inputActive) {
+                console.log('💬 [UI] Input blocked: speed dating input active');
+                return true;
+            }
+        }
+
+        // Check if typing in HTML input
+        if (this.isTypingInHtmlInput()) {
+            console.log('💬 [UI] Input blocked: HTML input active');
+            return true;
+        }
+
+        return false;
     }
 
     private loadLocationsData() {
