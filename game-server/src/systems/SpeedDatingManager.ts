@@ -33,6 +33,7 @@ interface SpeedDatingMatch {
   endTime?: Date;
   durationSeconds: number;
   status: 'scheduled' | 'active' | 'completed' | 'skipped';
+  round: number; // Add round number for rotation
 }
 
 interface VibeScoreEntry {
@@ -50,6 +51,7 @@ export class SpeedDatingManager {
   private broadcastCallback: (eventType: string, data: any) => void;
   private currentEvent: SpeedDatingEvent | null = null;
   private currentMatch: SpeedDatingMatch | null = null;
+  private activeMatches: Map<string, SpeedDatingMatch> = new Map(); // Track active matches per player
   private vibeScores: Map<number, VibeScoreEntry[]> = new Map();
   private eventTimer: NodeJS.Timeout | null = null;
   private matchTimer: NodeJS.Timeout | null = null;
@@ -57,6 +59,8 @@ export class SpeedDatingManager {
   private isCountingDown: boolean = false;
   private eventStartCountdown: number = 0;
   private pausedActivities: Map<string, any> = new Map();
+  private currentRound: number = 0; // Track current round
+  private maxRounds: number = 0; // Maximum number of rounds
 
   // Dating-specific configuration (using real-world time, not game time)
   private readonly DEFAULT_DATE_DURATION = 2 * 60 * 1000; // 2 minutes in real-world milliseconds
@@ -307,38 +311,47 @@ export class SpeedDatingManager {
     const players = this.currentEvent.participants.filter(p => p.participantType === 'player');
     const npcs = this.currentEvent.participants.filter(p => p.participantType === 'npc');
 
-    // For speed dating, we should only have one human player, but handle multiple players gracefully
     if (players.length === 0) {
       console.warn('⚠️ [SPEED_DATING] No players registered for speed dating event');
       return;
     }
 
-    if (players.length > 1) {
-      console.warn(`⚠️ [SPEED_DATING] Multiple players registered (${players.length}), speed dating is designed for single player`);
+    if (npcs.length === 0) {
+      console.warn('⚠️ [SPEED_DATING] No NPCs registered for speed dating event');
+      return;
     }
 
-    // Create matches for the first player with each NPC (sequential dates)
-    const primaryPlayer = players[0];
-    for (let i = 0; i < npcs.length; i++) {
-      const npc = npcs[i];
-      
-              const match: SpeedDatingMatch = {
-          id: Date.now() + Math.floor(Math.random() * 10000),
+    // Calculate total rounds (each player should date each NPC)
+    this.maxRounds = npcs.length;
+
+    // Create rotation schedule
+    for (let round = 0; round < this.maxRounds; round++) {
+      for (let playerIndex = 0; playerIndex < players.length; playerIndex++) {
+        const player = players[playerIndex];
+        
+        // Rotate NPCs so each player gets a different NPC each round
+        const npcIndex = (playerIndex + round) % npcs.length;
+        const npc = npcs[npcIndex];
+        
+        const match: SpeedDatingMatch = {
+          id: Date.now() + Math.floor(Math.random() * 1000000) + playerIndex * 1000 + round,
           eventId: this.currentEvent.id,
-          playerId: primaryPlayer.participantId,
+          playerId: player.participantId,
           npcId: npc.participantId,
-          matchOrder: i + 1,
+          matchOrder: round + 1,
+          round: round + 1,
           durationSeconds: this.DEFAULT_DATE_DURATION / 1000,
           status: 'scheduled'
         };
 
-      this.currentEvent.matches.push(match);
-      
-      // Initialize vibe scores for this match
-      this.vibeScores.set(match.id, []);
+        this.currentEvent.matches.push(match);
+        
+        // Initialize vibe scores for this match
+        this.vibeScores.set(match.id, []);
+      }
     }
 
-    console.log(`📋 [SPEED_DATING] Created ${this.currentEvent.matches.length} matches for player ${primaryPlayer.participantId} with ${npcs.length} NPCs`);
+    console.log(`📋 [SPEED_DATING] Created ${this.currentEvent.matches.length} matches: ${players.length} players × ${npcs.length} NPCs = ${this.maxRounds} rounds`);
     
     // Store matches in database via web API
     await this.storeMatchesInDatabase();
@@ -370,110 +383,123 @@ export class SpeedDatingManager {
       return;
     }
 
-    // Guard against multiple matches starting simultaneously
-    if (this.currentMatch) {
-      console.warn('⚠️ [SPEED_DATING] Match already in progress, skipping startNextMatch');
-      return;
+    // Clear any active matches that are completed
+    for (const [playerId, match] of this.activeMatches) {
+      if (match.status === 'completed') {
+        this.activeMatches.delete(playerId);
+      }
     }
 
-    // Find the next scheduled match
-    const nextMatch = this.currentEvent.matches.find(m => m.status === 'scheduled');
-    
-    if (!nextMatch) {
+    // Check if we need to move to the next round
+    const scheduledMatches = this.currentEvent.matches.filter(m => m.status === 'scheduled');
+    if (scheduledMatches.length === 0) {
       // No more matches, event is complete
       console.log('🎉 [SPEED_DATING] All matches completed, ending event');
       await this.completeEvent();
       return;
     }
 
-    console.log(`💕 [SPEED_DATING] Starting match ${nextMatch.matchOrder}: ${nextMatch.playerId} with ${nextMatch.npcId} (Duration: ${nextMatch.durationSeconds}s)`);
+    // Get the next round number
+    const nextRound = Math.min(...scheduledMatches.map(m => m.round));
     
-    this.currentMatch = nextMatch;
-    nextMatch.status = 'active';
-    nextMatch.startTime = new Date();
+    // Start all matches for the current round
+    const roundMatches = scheduledMatches.filter(m => m.round === nextRound);
+    
+    console.log(`🔄 [SPEED_DATING] Starting round ${nextRound} with ${roundMatches.length} matches`);
+    this.currentRound = nextRound;
 
-    // Broadcast match start
-    await this.broadcastEvent('speed_dating_match_start', {
-      eventId: this.currentEvent.id,
-      matchId: nextMatch.id,
-      playerId: nextMatch.playerId,
-      npcId: nextMatch.npcId,
-      matchOrder: nextMatch.matchOrder,
-      duration: nextMatch.durationSeconds,
-      npcName: nextMatch.npcId // Include NPC name for UI
-    });
+    for (const match of roundMatches) {
+      match.status = 'active';
+      match.startTime = new Date();
+      
+      // Track active match for each player
+      this.activeMatches.set(match.playerId, match);
+      
+      // Broadcast match start to specific player
+      await this.broadcastEvent('speed_dating_match_start', {
+        eventId: this.currentEvent.id,
+        matchId: match.id,
+        playerId: match.playerId,
+        npcId: match.npcId,
+        matchOrder: match.matchOrder,
+        round: match.round,
+        duration: match.durationSeconds,
+        npcName: match.npcId,
+        totalRounds: this.maxRounds
+      });
+      
+      console.log(`💕 [SPEED_DATING] Started match for player ${match.playerId} with NPC ${match.npcId} (Round ${match.round})`);
+    }
 
-    // Start match timer - this should run for the full duration in real-world time
-    console.log(`⏱️ [SPEED_DATING] Setting match timer for ${nextMatch.durationSeconds} seconds (real-world time)`);
+    // Set a single timer for all matches in this round
+    console.log(`⏱️ [SPEED_DATING] Setting round timer for ${roundMatches[0].durationSeconds} seconds`);
     this.matchTimer = setTimeout(async () => {
-      console.log(`⏰ [SPEED_DATING] Match timer expired for match ${nextMatch.matchOrder}`);
-      await this.endCurrentMatch();
-    }, nextMatch.durationSeconds * 1000); // Real-world milliseconds, not affected by game time multiplier
+      console.log(`⏰ [SPEED_DATING] Round ${nextRound} timer expired`);
+      await this.endCurrentRound();
+    }, roundMatches[0].durationSeconds * 1000);
   }
 
   /**
-   * End the current speed dating match
+   * End all matches in the current round
    */
-  private async endCurrentMatch(): Promise<void> {
-    if (!this.currentMatch) {
-      console.warn('⚠️ [SPEED_DATING] No active match to end');
-      return;
+  private async endCurrentRound(): Promise<void> {
+    console.log(`⏰ [SPEED_DATING] Ending round ${this.currentRound}`);
+    
+    // End all active matches
+    for (const [playerId, match] of this.activeMatches) {
+      match.status = 'completed';
+      match.endTime = new Date();
+      
+      // Broadcast match end to specific player
+      await this.broadcastEvent('speed_dating_match_end', {
+        eventId: this.currentEvent?.id || 0,
+        matchId: match.id,
+        playerId: match.playerId,
+        npcId: match.npcId,
+        matchOrder: match.matchOrder,
+        round: match.round
+      });
+      
+      // Trigger post-date assessment
+      await this.triggerPostDateAssessment(match);
     }
-
-    const matchOrder = this.currentMatch.matchOrder;
-    const npcId = this.currentMatch.npcId;
     
-    console.log(`⏰ [SPEED_DATING] Ending match ${matchOrder} with ${npcId}`);
+    // Clear active matches
+    this.activeMatches.clear();
     
-    this.currentMatch.status = 'completed';
-    this.currentMatch.endTime = new Date();
-
     // Clear match timer
     if (this.matchTimer) {
       clearTimeout(this.matchTimer);
       this.matchTimer = null;
-      console.log(`🔄 [SPEED_DATING] Cleared match timer for match ${matchOrder}`);
     }
-
-    // Broadcast match end
-    await this.broadcastEvent('speed_dating_match_end', {
-      eventId: this.currentEvent?.id || 0,
-      matchId: this.currentMatch.id,
-      playerId: this.currentMatch.playerId,
-      npcId: this.currentMatch.npcId,
-      matchOrder: matchOrder
-    });
-
-    // Trigger post-date assessment
-    await this.triggerPostDateAssessment(this.currentMatch);
-
-    // Clear current match BEFORE starting next one
-    this.currentMatch = null;
     
-    console.log(`⏸️ [SPEED_DATING] Match ${matchOrder} ended, waiting 3 seconds before next match...`);
-
-    // Start next match after a brief pause
+    console.log(`⏸️ [SPEED_DATING] Round ${this.currentRound} ended, waiting 5 seconds before next round...`);
+    
+    // Start next round after a brief pause
     setTimeout(async () => {
-      console.log(`🔄 [SPEED_DATING] Starting next match after pause...`);
+      console.log(`🔄 [SPEED_DATING] Starting next round after pause...`);
       await this.startNextMatch();
-    }, 3000); // 3 second pause between matches
+    }, 5000); // 5 second pause between rounds
   }
 
   /**
    * Process a conversation message during a speed date
    */
   async processDateConversation(playerId: string, message: string, npcResponse?: string): Promise<void> {
-    if (!this.currentMatch || this.currentMatch.playerId !== playerId) {
-      console.warn('⚠️ [SPEED_DATING] No active match for player conversation');
+    // Get the player's active match
+    const currentMatch = this.activeMatches.get(playerId);
+    
+    if (!currentMatch) {
+      console.warn(`⚠️ [SPEED_DATING] No active match for player ${playerId}`);
       return;
     }
 
-    console.log(`💬 [SPEED_DATING] Processing message from ${playerId}: "${message}"`);
+    console.log(`💬 [SPEED_DATING] Processing message from ${playerId} to ${currentMatch.npcId}: "${message}"`);
 
     // If no NPC response provided, request one from the web API
     if (!npcResponse) {
       try {
-        const response = await this.requestNPCResponse(playerId, message, this.currentMatch.npcId);
+        const response = await this.requestNPCResponse(playerId, message, currentMatch.npcId);
         npcResponse = response;
       } catch (error) {
         console.error('❌ [SPEED_DATING] Failed to get NPC response:', error);
@@ -481,23 +507,68 @@ export class SpeedDatingManager {
       }
     }
 
-    // Broadcast NPC response to client
-    console.log(`📢 [SPEED_DATING] Broadcasting NPC response for match ${this.currentMatch.id}: "${npcResponse}"`);
+    // Broadcast NPC response to specific player
+    console.log(`📢 [SPEED_DATING] Broadcasting NPC response for match ${currentMatch.id}: "${npcResponse}"`);
     await this.broadcastEvent('speed_dating_npc_response', {
       eventId: this.currentEvent?.id || 0,
-      matchId: this.currentMatch.id,
-      npcId: this.currentMatch.npcId,
-      npcName: this.currentMatch.npcId,
+      matchId: currentMatch.id,
+      playerId: playerId, // Specify target player
+      npcId: currentMatch.npcId,
+      npcName: currentMatch.npcId,
       message: npcResponse,
       timestamp: Date.now()
     });
 
-    // Calculate vibe score based on message content
-    const vibeScore = this.calculateVibeScore(message, this.currentMatch.npcId);
+    // Get sophisticated vibe score from LLM evaluation
+    let vibeScore: { score: number, reason: string, keywords: string[] } = { score: 0, reason: 'Evaluating...', keywords: [] };
+    try {
+      // Calculate time remaining properly without including timer object
+      let timeRemaining = 0;
+      if (currentMatch.startTime) {
+        const elapsedSeconds = Math.floor((Date.now() - currentMatch.startTime.getTime()) / 1000);
+        timeRemaining = Math.max(0, currentMatch.durationSeconds - elapsedSeconds);
+      }
+      
+      const vibeResponse = await fetch('http://web-api:3000/thought/speed-dating-vibe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: currentMatch.npcId,
+          playerMessage: message,
+          matchContext: {
+            playerId,
+            matchOrder: currentMatch.matchOrder,
+            eventName: this.currentEvent?.eventName,
+            timeRemaining: timeRemaining
+          }
+        }),
+        signal: AbortSignal.timeout(5000)
+      });
+
+      if (vibeResponse.ok) {
+        const vibeData = await vibeResponse.json() as any;
+        vibeScore = {
+          score: vibeData.vibeScore || 0,
+          reason: vibeData.vibeReason || 'Processing...',
+          keywords: vibeData.evaluation?.attractionFactors || []
+        };
+        console.log(`💝 [SPEED_DATING] LLM vibe evaluation: ${vibeScore.score} - ${vibeScore.reason}`);
+      } else {
+        console.warn('⚠️ [SPEED_DATING] Failed to get LLM vibe evaluation, falling back to keyword matching');
+        // Fall back to basic keyword matching
+        vibeScore = this.calculateVibeScore(message, currentMatch.npcId);
+      }
+    } catch (error) {
+      console.error('❌ [SPEED_DATING] Error getting LLM vibe evaluation:', error);
+      // Fall back to basic keyword matching
+      vibeScore = this.calculateVibeScore(message, currentMatch.npcId);
+    }
     
     // Create vibe score entry
     const vibeEntry: VibeScoreEntry = {
-      matchId: this.currentMatch.id,
+      matchId: currentMatch.id,
       playerMessage: message,
       npcResponse,
       vibeScore: vibeScore.score,
@@ -507,25 +578,25 @@ export class SpeedDatingManager {
     };
 
     // Store vibe score
-    const matchVibes = this.vibeScores.get(this.currentMatch.id) || [];
+    const matchVibes = this.vibeScores.get(currentMatch.id) || [];
     matchVibes.push(vibeEntry);
-    this.vibeScores.set(this.currentMatch.id, matchVibes);
+    this.vibeScores.set(currentMatch.id, matchVibes);
 
     // Only broadcast vibe update if there's an actual score change (non-zero)
     if (vibeScore.score !== 0) {
       await this.broadcastEvent('speed_dating_vibe_update', {
         eventId: this.currentEvent?.id || 0,
-        matchId: this.currentMatch.id,
+        matchId: currentMatch.id,
         playerId,
         vibeScore: vibeScore.score,
         vibeReason: vibeScore.reason,
-        cumulativeScore: this.calculateCumulativeVibeScore(this.currentMatch.id)
+        cumulativeScore: this.calculateCumulativeVibeScore(currentMatch.id)
       });
     }
 
     // Notify web API for storage
     await this.notifyWebAPI('vibe_score_recorded', {
-      matchId: this.currentMatch.id,
+      matchId: currentMatch.id,
       vibeEntry
     });
   }

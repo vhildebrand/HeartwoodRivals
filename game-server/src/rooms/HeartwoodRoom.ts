@@ -198,8 +198,13 @@ export class HeartwoodRoom extends Room<GameState> {
         });
 
         // Speed dating message handler
-        this.onMessage("speed_dating_message", (client: Client, message: { matchId: number; message: string }) => {
-            this.handleSpeedDatingMessage(client, message);
+        this.onMessage("speed_dating_message", (client, data) => {
+            this.handleSpeedDatingMessage(client, data);
+        });
+
+        // Request gauntlet results handler
+        this.onMessage("request_gauntlet_results", async (client, data) => {
+            this.handleGauntletResultsRequest(client, data);
         });
 
         // Manual speed dating start message handler
@@ -536,11 +541,17 @@ export class HeartwoodRoom extends Room<GameState> {
             return;
         }
 
-        console.log(`💕 [SPEED_DATING] Player ${client.sessionId} sent message: "${message.message}"`);
+        const player = this.state.players.get(client.sessionId);
+        if (!player) {
+            console.error('❌ [SPEED_DATING] Player not found');
+            return;
+        }
+
+        console.log(`💕 [SPEED_DATING] Player ${player.id} sent message: "${message.message}"`);
         
         // Process the message through the speed dating manager
         this.speedDatingManager.processDateConversation(
-            client.sessionId,
+            player.id,
             message.message
         );
     }
@@ -549,7 +560,82 @@ export class HeartwoodRoom extends Room<GameState> {
         console.log(`🎯 [SPEED_DATING] Player ${client.sessionId} manually triggered speed dating start`);
         
         // Check if player is authorized to start speed dating (for now, any player can start)
+        if (!this.speedDatingManager) {
+            console.error('❌ [SPEED_DATING] SpeedDatingManager not available');
+            return;
+        }
+        
+        // Start the full speed dating event (initialize, register participants, then countdown)
         this.startSpeedDatingEvent();
+    }
+
+    private async handleGauntletResultsRequest(client: Client, data: { eventId: number }) {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) {
+            console.error('❌ [ROOM] Player not found for results request');
+            return;
+        }
+        
+        console.log(`📊 [ROOM] Gauntlet results requested by ${player.id}`);
+        
+        try {
+            // Request results from web API
+            const response = await fetch(`http://web-api:3000/dating/gauntlet-results/${data.eventId}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                signal: AbortSignal.timeout(10000)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const results = await response.json() as any;
+            
+            // Transform results for client display
+            const npcGroupedResults: any[] = [];
+            const npcIds = [...new Set(results.map((r: any) => r.npc_id))];
+            
+            for (const npcId of npcIds) {
+                const npcRankings = results
+                    .filter((r: any) => r.npc_id === npcId)
+                    .map((r: any) => ({
+                        playerId: r.player_id,
+                        finalRank: r.final_rank,
+                        overallImpression: r.overall_impression,
+                        attractionLevel: r.attraction_level,
+                        compatibilityRating: r.compatibility_rating,
+                        relationshipPotential: r.relationship_potential,
+                        confessionalStatement: r.confessional_statement,
+                        reasoning: r.reasoning,
+                        memorableMoments: r.memorable_moments
+                    }))
+                    .sort((a: any, b: any) => a.finalRank - b.finalRank);
+                
+                npcGroupedResults.push({
+                    npcId,
+                    rankings: npcRankings
+                });
+            }
+            
+            // Broadcast results to the requesting player
+            this.broadcast('speed_dating_results', {
+                eventId: data.eventId,
+                npcResults: npcGroupedResults
+            }, { afterNextPatch: false });
+            
+            console.log(`✅ [ROOM] Sent gauntlet results to players`);
+        } catch (error) {
+            console.error('❌ [ROOM] Error fetching gauntlet results:', error);
+            
+            // Send error to client
+            this.broadcast('speed_dating_results', {
+                error: true,
+                message: 'Failed to load results'
+            }, { afterNextPatch: false });
+        }
     }
 
     private formatTimeMinutes(minutes: number): string {

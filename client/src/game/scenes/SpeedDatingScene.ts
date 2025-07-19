@@ -41,11 +41,15 @@ export class SpeedDatingScene extends Scene {
     private npcNameText: Phaser.GameObjects.Text | null = null;
     private chatHistory: Phaser.GameObjects.Text | null = null;
     private chatBackground: Phaser.GameObjects.Rectangle | null = null;
+    private chatMask: Phaser.GameObjects.Graphics | null = null;
+    private chatContainer: Phaser.GameObjects.Container | null = null;
     private inputBox: Phaser.GameObjects.Rectangle | null = null;
     private inputText: Phaser.GameObjects.Text | null = null;
     private timerText: Phaser.GameObjects.Text | null = null;
     private vibeText: Phaser.GameObjects.Text | null = null;
     private instructionsText: Phaser.GameObjects.Text | null = null;
+    private vibeBarBackground: Phaser.GameObjects.Rectangle | null = null;
+    private vibeBarFill: Phaser.GameObjects.Rectangle | null = null;
     
     // Input state
     private currentMessage: string = '';
@@ -58,6 +62,8 @@ export class SpeedDatingScene extends Scene {
     
     // Results UI
     private resultsContainer: Phaser.GameObjects.Container | null = null;
+    private resultsData: any = null;
+    private resultsPageIndex: number = 0;
     
     // Track if event listeners are already set up
     private eventListenersSetup: boolean = false;
@@ -84,126 +90,239 @@ export class SpeedDatingScene extends Scene {
         this.dialogueContainer.setDepth(1000);
         this.dialogueContainer.setVisible(false);
 
-        // Background panel
+        // Background panel with gradient effect
         this.backgroundPanel = this.add.rectangle(
             width / 2, 
             height / 2, 
             width * 0.9, 
-            height * 0.7, 
-            0x000000, 
+            height * 0.8, 
+            0x1a0d1a, 
+            0.95
+        );
+        this.backgroundPanel.setStrokeStyle(3, 0xff69b4, 0.8);
+
+        // Add a decorative header background
+        const headerBg = this.add.rectangle(
+            width / 2,
+            height * 0.15,
+            width * 0.9,
+            80,
+            0x2d1b2d,
             0.9
         );
-        this.backgroundPanel.setStrokeStyle(2, 0x444444);
+        headerBg.setStrokeStyle(2, 0xff69b4, 0.5);
 
-        // NPC name and match info
+        // NPC name and match info with better styling
         this.npcNameText = this.add.text(
             width / 2, 
-            height * 0.2, 
-            'Speed Dating', 
+            height * 0.15, 
+            '💕 Speed Dating Gauntlet 💕', 
             {
-                fontSize: '24px',
-                color: '#e24a90',
-                fontFamily: 'Arial',
+                fontSize: '28px',
+                color: '#ff69b4',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold',
+                stroke: '#2d1b2d',
+                strokeThickness: 2,
+                shadow: {
+                    offsetX: 2,
+                    offsetY: 2,
+                    color: '#000000',
+                    blur: 4,
+                    fill: true
+                }
+            }
+        ).setOrigin(0.5);
+
+        // Timer with icon
+        const timerIcon = this.add.text(
+            width * 0.15 - 20, 
+            height * 0.22, 
+            '⏰', 
+            {
+                fontSize: '20px',
+                fontFamily: 'Arial'
+            }
+        ).setOrigin(0.5);
+
+        this.timerText = this.add.text(
+            width * 0.22, 
+            height * 0.22, 
+            'Time: 5:00', 
+            {
+                fontSize: '20px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
                 fontStyle: 'bold'
             }
         ).setOrigin(0.5);
 
-        // Timer and vibe score
-        this.timerText = this.add.text(
-            width * 0.2, 
-            height * 0.25, 
-            'Time: 5:00', 
+        // Vibe score with visual bar
+        const vibeIcon = this.add.text(
+            width * 0.7, 
+            height * 0.22, 
+            '💗', 
             {
-                fontSize: '18px',
-                color: '#ffffff',
+                fontSize: '20px',
                 fontFamily: 'Arial'
             }
         ).setOrigin(0.5);
 
         this.vibeText = this.add.text(
-            width * 0.8, 
-            height * 0.25, 
+            width * 0.78, 
+            height * 0.22, 
             'Vibe: 0', 
             {
-                fontSize: '18px',
-                color: '#4a90e2',
-                fontFamily: 'Arial'
+                fontSize: '20px',
+                color: '#ff69b4',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold'
             }
         ).setOrigin(0.5);
 
-        // Chat history
-        this.chatHistory = this.add.text(
+        // Vibe bar background
+        this.vibeBarBackground = this.add.rectangle(
             width / 2, 
-            height * 0.3, // Move up for more room
-            'Welcome to the Speed Dating Gauntlet!\nYour date will begin shortly...', 
+            height * 0.27,
+            width * 0.7,
+            10,
+            0x333333,
+            0.8
+        );
+        this.vibeBarBackground.setStrokeStyle(1, 0x666666);
+
+        // Vibe bar fill (starts in the middle)
+        this.vibeBarFill = this.add.rectangle(
+            width / 2,
+            height * 0.27,
+            0,
+            8,
+            0xff69b4,
+            1
+        );
+
+        // Create chat container for scrolling
+        this.chatContainer = this.add.container(width / 2, height * 0.3);
+        
+        // Chat background with better styling
+        this.chatBackground = this.add.rectangle(
+            0, 
+            height * 0.25, // Relative to container
+            width * 0.85, 
+            height * 0.42,
+            0x0d0d0d, 
+            0.9
+        );
+        this.chatBackground.setStrokeStyle(2, 0x444444);
+        
+        // Create mask for chat area to enable scrolling effect
+        this.chatMask = this.add.graphics();
+        this.chatMask.fillStyle(0xffffff);
+        this.chatMask.fillRect(
+            width * 0.075,
+            height * 0.31,
+            width * 0.85,
+            height * 0.42
+        );
+
+        // Chat history with better formatting
+        this.chatHistory = this.add.text(
+            0, 
+            height * 0.05, // Start at top of chat container
+            'Welcome to the Speed Dating Gauntlet!\nYour romantic journey begins soon...', 
             {
-                fontSize: '16px', // Increased from 14px
+                fontSize: '17px',
                 color: '#ffffff',
-                fontFamily: '"Segoe UI", Arial, sans-serif', // Better font stack
+                fontFamily: '"Segoe UI", Arial, sans-serif',
                 fontStyle: 'normal',
-                wordWrap: { width: width * 0.85 }, // Increase wrap width
+                wordWrap: { width: width * 0.8 },
                 align: 'left',
-                lineSpacing: 8, // Increased line spacing
-                padding: { x: 10, y: 10 }
+                lineSpacing: 10,
+                padding: { x: 15, y: 15 }
             }
         ).setOrigin(0.5, 0);
 
-        // Chat background for better readability
-        this.chatBackground = this.add.rectangle(
-            width / 2, 
-            height * 0.55, // Center of chat area
-            width * 0.87, 
-            height * 0.45, 
-            0x1a1a1a, 
-            0.8
-        );
-        this.chatBackground.setStrokeStyle(2, 0x444444);
-        this.chatBackground.setDepth(1002);
+        // Apply mask to chat history for scrolling
+        this.chatHistory.setMask(this.chatMask.createGeometryMask());
+        
+        // Add chat elements to container
+        this.chatContainer.add([this.chatBackground, this.chatHistory]);
 
-        // Input box
+        // Input box with better styling
         this.inputBox = this.add.rectangle(
             width / 2, 
-            height * 0.78, // Move down slightly to give more room for chat
+            height * 0.8,
             width * 0.8, 
-            50, 
-            0x333333
+            55, 
+            0x2d1b2d,
+            0.9
         );
-        this.inputBox.setStrokeStyle(2, 0x666666);
+        this.inputBox.setStrokeStyle(2, 0xff69b4, 0.6);
 
-        // Input text
+        // Input text with placeholder
         this.inputText = this.add.text(
-            width * 0.15, 
-            height * 0.78, // Match input box position
+            width * 0.12, 
+            height * 0.8,
             'Type your message...', 
             {
-                fontSize: '16px',
+                fontSize: '18px',
                 color: '#888888',
-                fontFamily: 'Arial'
+                fontFamily: '"Segoe UI", Arial, sans-serif'
             }
         ).setOrigin(0, 0.5);
 
-        // Instructions
+        // Send button (visual only, Enter key sends)
+        const sendButton = this.add.rectangle(
+            width * 0.85,
+            height * 0.8,
+            80,
+            40,
+            0xff69b4,
+            0.8
+        );
+        sendButton.setStrokeStyle(2, 0xffffff, 0.6);
+        
+        const sendText = this.add.text(
+            width * 0.85,
+            height * 0.8,
+            'SEND',
+            {
+                fontSize: '16px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+
+        // Instructions with better styling
         this.instructionsText = this.add.text(
             width / 2, 
-            height * 0.88, // Move down accordingly
-            'Press ENTER to send your message', 
+            height * 0.9,
+            'Press ENTER to send • Use arrow keys to scroll chat', 
             {
-                fontSize: '12px',
-                color: '#888888',
-                fontFamily: 'Arial'
+                fontSize: '14px',
+                color: '#ff69b4',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'italic'
             }
         ).setOrigin(0.5);
 
         // Add all elements to container
         this.dialogueContainer.add([
             this.backgroundPanel,
-            this.chatBackground, // Add chat background first
+            headerBg,
             this.npcNameText,
+            timerIcon,
             this.timerText,
+            vibeIcon,
             this.vibeText,
-            this.chatHistory,
+            this.vibeBarBackground,
+            this.vibeBarFill,
+            this.chatContainer,
             this.inputBox,
             this.inputText,
+            sendButton,
+            sendText,
             this.instructionsText
         ]);
 
@@ -288,39 +407,109 @@ export class SpeedDatingScene extends Scene {
         this.resultsContainer.setDepth(1100);
         this.resultsContainer.setVisible(false);
 
-        const resultsBg = this.add.rectangle(width / 2, height / 2, width * 0.9, height * 0.8, 0x000000, 0.9);
-        resultsBg.setStrokeStyle(2, 0x444444);
+        // Background with gradient
+        const resultsBg = this.add.rectangle(width / 2, height / 2, width * 0.95, height * 0.9, 0x1a0d1a, 0.95);
+        resultsBg.setStrokeStyle(3, 0xff69b4);
 
+        // Title
         const resultsTitle = this.add.text(
             width / 2, 
-            height * 0.2, 
-            'GAUNTLET RESULTS', 
+            height * 0.08, 
+            '💕 GAUNTLET RESULTS 💕', 
             {
                 fontSize: '36px',
-                color: '#e24a90',
-                fontFamily: 'Arial',
-                fontStyle: 'bold'
+                color: '#ff69b4',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold',
+                stroke: '#2d1b2d',
+                strokeThickness: 2,
+                shadow: {
+                    offsetX: 2,
+                    offsetY: 2,
+                    color: '#000000',
+                    blur: 4,
+                    fill: true
+                }
             }
         ).setOrigin(0.5);
 
-        const backButton = this.add.rectangle(width / 2, height * 0.9, 200, 50, 0x4a90e2);
-        backButton.setStrokeStyle(2, 0x6666ff);
-        backButton.setInteractive({ useHandCursor: true });
-        backButton.on('pointerdown', () => this.returnToGame());
-
-        const backButtonText = this.add.text(
-            width / 2, 
-            height * 0.9, 
-            'BACK TO GAME', 
+        // Subtitle
+        const subtitle = this.add.text(
+            width / 2,
+            height * 0.13,
+            'See how each NPC ranked their dates!',
             {
                 fontSize: '18px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'italic'
+            }
+        ).setOrigin(0.5);
+
+        // Navigation buttons
+        const prevButton = this.add.rectangle(width * 0.1, height / 2, 60, 100, 0xff69b4, 0.8);
+        prevButton.setStrokeStyle(2, 0xffffff);
+        prevButton.setInteractive({ useHandCursor: true });
+        prevButton.on('pointerdown', () => this.showPreviousResult());
+
+        const prevArrow = this.add.text(
+            width * 0.1,
+            height / 2,
+            '◀',
+            {
+                fontSize: '32px',
                 color: '#ffffff',
                 fontFamily: 'Arial',
                 fontStyle: 'bold'
             }
         ).setOrigin(0.5);
 
-        this.resultsContainer.add([resultsBg, resultsTitle, backButton, backButtonText]);
+        const nextButton = this.add.rectangle(width * 0.9, height / 2, 60, 100, 0xff69b4, 0.8);
+        nextButton.setStrokeStyle(2, 0xffffff);
+        nextButton.setInteractive({ useHandCursor: true });
+        nextButton.on('pointerdown', () => this.showNextResult());
+
+        const nextArrow = this.add.text(
+            width * 0.9,
+            height / 2,
+            '▶',
+            {
+                fontSize: '32px',
+                color: '#ffffff',
+                fontFamily: 'Arial',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+
+        // Back to game button
+        const backButton = this.add.rectangle(width / 2, height * 0.92, 200, 50, 0x4a90e2, 0.9);
+        backButton.setStrokeStyle(2, 0xffffff);
+        backButton.setInteractive({ useHandCursor: true });
+        backButton.on('pointerdown', () => this.returnToGame());
+
+        const backButtonText = this.add.text(
+            width / 2, 
+            height * 0.92, 
+            'RETURN TO GAME', 
+            {
+                fontSize: '18px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+
+        this.resultsContainer.add([
+            resultsBg, 
+            resultsTitle, 
+            subtitle,
+            prevButton, 
+            prevArrow,
+            nextButton, 
+            nextArrow,
+            backButton, 
+            backButtonText
+        ]);
     }
 
     private setupInputHandlers() {
@@ -333,6 +522,12 @@ export class SpeedDatingScene extends Scene {
             } else if (event.key === 'Backspace') {
                 this.currentMessage = this.currentMessage.slice(0, -1);
                 this.updateInputDisplay();
+            } else if (event.key === 'ArrowUp') {
+                // Scroll chat up
+                this.scrollChat(-50);
+            } else if (event.key === 'ArrowDown') {
+                // Scroll chat down
+                this.scrollChat(50);
             } else if (event.key.length === 1) {
                 this.currentMessage += event.key;
                 this.updateInputDisplay();
@@ -344,6 +539,11 @@ export class SpeedDatingScene extends Scene {
         this.inputBox?.on('pointerdown', () => {
             this.inputActive = true;
             this.updateInputDisplay();
+        });
+
+        // Mouse wheel scrolling for chat
+        this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: any[], deltaX: number, deltaY: number, deltaZ: number) => {
+            this.scrollChat(deltaY * 0.5);
         });
     }
 
@@ -440,6 +640,11 @@ export class SpeedDatingScene extends Scene {
             this.addToConversationLog(`${npcDisplayName}: ${data.message}`);
         });
         
+        this.game.events.on('speed_dating_results', (data: any) => {
+            console.log('💕 [SPEED_DATING] Gauntlet results received:', data);
+            this.showResults(data);
+        });
+        
         this.eventListenersSetup = true;
     }
     
@@ -454,6 +659,7 @@ export class SpeedDatingScene extends Scene {
         this.game.events.off('speed_dating_match_end');
         this.game.events.off('speed_dating_complete');
         this.game.events.off('speed_dating_npc_response');
+        this.game.events.off('speed_dating_results');
         
         this.eventListenersSetup = false;
     }
@@ -505,10 +711,22 @@ export class SpeedDatingScene extends Scene {
     }
 
     private handleMatchStart(data: any) {
-        this.currentMatch = data;
+        console.log('💕 [SPEED_DATING] handleMatchStart called with data:', data);
+        
+        // Store the full match data
+        this.currentMatch = {
+            id: data.matchId,
+            playerId: data.playerId,
+            npcId: data.npcId,
+            npcName: data.npcName || data.npcId,
+            duration: data.duration,
+            status: 'active'
+        };
+        
         this.matchTimer = data.duration;
         this.inputActive = true;
         
+        console.log(`💕 [SPEED_DATING] Current match set:`, this.currentMatch);
         console.log(`💕 [SPEED_DATING] Match timer set to ${this.matchTimer} seconds (${Math.floor(this.matchTimer / 60)}:${(this.matchTimer % 60).toString().padStart(2, '0')})`);
         
         // Clear processed messages for new match
@@ -537,6 +755,11 @@ export class SpeedDatingScene extends Scene {
         if (this.vibeText) {
             this.vibeText.setText('Vibe: 0');
             this.vibeText.setColor('#ffffff');
+        }
+        
+        // Reset vibe bar
+        if (this.vibeBarFill) {
+            this.vibeBarFill.width = 0;
         }
         
         // Start timer countdown with real-time updates
@@ -589,9 +812,28 @@ export class SpeedDatingScene extends Scene {
         
         // Update UI with cumulative score
         if (this.vibeText) {
-            const color = data.cumulativeScore > 0 ? '#4a90e2' : data.cumulativeScore < 0 ? '#ff4444' : '#ffffff';
-            this.vibeText.setText(`Vibe: ${data.cumulativeScore}`);
+            const color = data.cumulativeScore > 0 ? '#66ff66' : data.cumulativeScore < 0 ? '#ff6666' : '#ffffff';
+            this.vibeText.setText(`Vibe: ${data.cumulativeScore > 0 ? '+' : ''}${data.cumulativeScore}`);
             this.vibeText.setColor(color);
+        }
+        
+        // Update vibe bar
+        if (this.vibeBarFill && this.vibeBarBackground) {
+            const barWidth = this.vibeBarBackground.width;
+            const fillWidth = Math.abs(data.cumulativeScore) / 100 * (barWidth / 2);
+            const centerX = this.cameras.main.width / 2;
+            
+            this.vibeBarFill.width = fillWidth;
+            
+            if (data.cumulativeScore > 0) {
+                this.vibeBarFill.x = centerX + fillWidth / 2;
+                this.vibeBarFill.setFillStyle(0x66ff66);
+            } else if (data.cumulativeScore < 0) {
+                this.vibeBarFill.x = centerX - fillWidth / 2;
+                this.vibeBarFill.setFillStyle(0xff6666);
+            } else {
+                this.vibeBarFill.width = 0;
+            }
         }
         
         // Only show vibe feedback when there's an actual score change (non-zero)
@@ -623,7 +865,310 @@ export class SpeedDatingScene extends Scene {
     private handleGauntletComplete(data: any) {
         this.inputActive = false;
         this.hideDialogue();
-        this.showResults(data);
+        
+        // Request full results from the server
+        this.requestGauntletResults();
+    }
+
+    private async requestGauntletResults() {
+        try {
+            // First, show loading message
+            this.showResults({ loading: true });
+            
+            // Request results from web API via game server
+            const gameScene = this.scene.get('GameScene') as any;
+            if (gameScene && gameScene.room) {
+                gameScene.room.send('request_gauntlet_results', {
+                    eventId: this.currentEvent?.id
+                });
+            }
+        } catch (error) {
+            console.error('❌ [SPEED_DATING] Error requesting gauntlet results:', error);
+            this.showResults({ error: true });
+        }
+    }
+
+    private showResults(data: any) {
+        this.resultsContainer?.setVisible(true);
+        
+        if (data.loading) {
+            this.displayLoadingResults();
+        } else if (data.error) {
+            this.displayErrorResults();
+        } else {
+            this.resultsData = data;
+            this.resultsPageIndex = 0;
+            this.displayResultsPage();
+        }
+    }
+
+    private displayLoadingResults() {
+        const { width, height } = this.cameras.main;
+        
+        // Clear any existing result content
+        this.clearResultContent();
+        
+        const loadingText = this.add.text(
+            width / 2,
+            height / 2,
+            'Loading results...\n\nNPCs are sharing their thoughts...',
+            {
+                fontSize: '24px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                align: 'center',
+                lineSpacing: 10
+            }
+        ).setOrigin(0.5);
+        
+        this.resultsContainer?.add(loadingText);
+    }
+
+    private displayErrorResults() {
+        const { width, height } = this.cameras.main;
+        
+        // Clear any existing result content
+        this.clearResultContent();
+        
+        const errorText = this.add.text(
+            width / 2,
+            height / 2,
+            'Unable to load results.\n\nPlease try again later.',
+            {
+                fontSize: '24px',
+                color: '#ff6666',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                align: 'center',
+                lineSpacing: 10
+            }
+        ).setOrigin(0.5);
+        
+        this.resultsContainer?.add(errorText);
+    }
+
+    private displayResultsPage() {
+        if (!this.resultsData || !this.resultsData.npcResults) return;
+        
+        const { width, height } = this.cameras.main;
+        
+        // Clear any existing result content
+        this.clearResultContent();
+        
+        const npcResults = this.resultsData.npcResults;
+        const currentNpc = npcResults[this.resultsPageIndex];
+        
+        if (!currentNpc) return;
+        
+        // NPC name and portrait area
+        const npcNameBg = this.add.rectangle(
+            width / 2,
+            height * 0.22,
+            width * 0.8,
+            60,
+            0x2d1b2d,
+            0.9
+        );
+        npcNameBg.setStrokeStyle(2, 0xff69b4);
+        
+        const npcName = this.add.text(
+            width / 2,
+            height * 0.22,
+            `${this.getNPCDisplayName(currentNpc.npcId)}'s Rankings`,
+            {
+                fontSize: '28px',
+                color: '#ff69b4',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+        
+        // Page indicator
+        const pageText = this.add.text(
+            width / 2,
+            height * 0.27,
+            `${this.resultsPageIndex + 1} / ${npcResults.length}`,
+            {
+                fontSize: '16px',
+                color: '#888888',
+                fontFamily: '"Segoe UI", Arial, sans-serif'
+            }
+        ).setOrigin(0.5);
+        
+        // Rankings display
+        const rankingsContainer = this.add.container(width / 2, height * 0.35);
+        
+        currentNpc.rankings.forEach((ranking: any, index: number) => {
+            const yOffset = index * 120;
+            
+            // Rank badge
+            const rankBadge = this.add.circle(
+                -width * 0.35,
+                yOffset,
+                30,
+                this.getRankColor(ranking.finalRank),
+                1
+            );
+            rankBadge.setStrokeStyle(3, 0xffffff);
+            
+            const rankText = this.add.text(
+                -width * 0.35,
+                yOffset,
+                `#${ranking.finalRank}`,
+                {
+                    fontSize: '24px',
+                    color: '#ffffff',
+                    fontFamily: '"Segoe UI", Arial, sans-serif',
+                    fontStyle: 'bold'
+                }
+            ).setOrigin(0.5);
+            
+            // Player info
+            const playerText = this.add.text(
+                -width * 0.25,
+                yOffset - 15,
+                `${ranking.playerId === this.currentMatch?.playerId ? 'You' : `Player ${ranking.playerId.substring(0, 8)}`}`,
+                {
+                    fontSize: '20px',
+                    color: '#ffffff',
+                    fontFamily: '"Segoe UI", Arial, sans-serif',
+                    fontStyle: 'bold'
+                }
+            ).setOrigin(0, 0.5);
+            
+            // Scores
+            const scoresText = this.add.text(
+                -width * 0.25,
+                yOffset + 15,
+                `Attraction: ${ranking.attractionLevel}/10 • Compatibility: ${ranking.compatibilityRating}/10`,
+                {
+                    fontSize: '16px',
+                    color: '#aaaaaa',
+                    fontFamily: '"Segoe UI", Arial, sans-serif'
+                }
+            ).setOrigin(0, 0.5);
+            
+            // Relationship potential badge
+            const potentialBadge = this.add.rectangle(
+                width * 0.2,
+                yOffset,
+                150,
+                30,
+                this.getPotentialColor(ranking.relationshipPotential),
+                0.8
+            );
+            potentialBadge.setStrokeStyle(2, 0xffffff);
+            
+            const potentialText = this.add.text(
+                width * 0.2,
+                yOffset,
+                this.getPotentialLabel(ranking.relationshipPotential),
+                {
+                    fontSize: '14px',
+                    color: '#ffffff',
+                    fontFamily: '"Segoe UI", Arial, sans-serif',
+                    fontStyle: 'bold'
+                }
+            ).setOrigin(0.5);
+            
+            rankingsContainer.add([
+                rankBadge, rankText, playerText, scoresText, potentialBadge, potentialText
+            ]);
+        });
+        
+        // Confessional quote
+        const playerRanking = currentNpc.rankings.find((r: any) => r.playerId === this.currentMatch?.playerId);
+        if (playerRanking) {
+            const quoteBg = this.add.rectangle(
+                width / 2,
+                height * 0.75,
+                width * 0.85,
+                120,
+                0x2d1b2d,
+                0.8
+            );
+            quoteBg.setStrokeStyle(2, 0xff69b4, 0.5);
+            
+            const quoteText = this.add.text(
+                width / 2,
+                height * 0.75,
+                `"${playerRanking.confessionalStatement}"`,
+                {
+                    fontSize: '18px',
+                    color: '#ffccdd',
+                    fontFamily: '"Segoe UI", Arial, sans-serif',
+                    fontStyle: 'italic',
+                    wordWrap: { width: width * 0.75 },
+                    align: 'center',
+                    lineSpacing: 5
+                }
+            ).setOrigin(0.5);
+            
+            this.resultsContainer?.add([quoteBg, quoteText]);
+        }
+        
+        this.resultsContainer?.add([
+            npcNameBg, npcName, pageText, rankingsContainer
+        ]);
+    }
+
+    private clearResultContent() {
+        if (!this.resultsContainer) return;
+        
+        // Remove all children except the base UI elements (first 9 elements)
+        const baseElementCount = 9;
+        while (this.resultsContainer.length > baseElementCount) {
+            const child = this.resultsContainer.getAt(baseElementCount);
+            this.resultsContainer.remove(child, true);
+        }
+    }
+
+    private showPreviousResult() {
+        if (!this.resultsData || !this.resultsData.npcResults) return;
+        
+        this.resultsPageIndex--;
+        if (this.resultsPageIndex < 0) {
+            this.resultsPageIndex = this.resultsData.npcResults.length - 1;
+        }
+        this.displayResultsPage();
+    }
+
+    private showNextResult() {
+        if (!this.resultsData || !this.resultsData.npcResults) return;
+        
+        this.resultsPageIndex++;
+        if (this.resultsPageIndex >= this.resultsData.npcResults.length) {
+            this.resultsPageIndex = 0;
+        }
+        this.displayResultsPage();
+    }
+
+    private getRankColor(rank: number): number {
+        switch (rank) {
+            case 1: return 0xffd700; // Gold
+            case 2: return 0xc0c0c0; // Silver
+            case 3: return 0xcd7f32; // Bronze
+            default: return 0x666666; // Gray
+        }
+    }
+
+    private getPotentialColor(potential: string): number {
+        switch (potential) {
+            case 'soulmate': return 0xff1493; // Deep pink
+            case 'romantic_interest': return 0xff69b4; // Hot pink
+            case 'friends': return 0x87ceeb; // Sky blue
+            case 'not_interested': return 0x808080; // Gray
+            default: return 0x666666;
+        }
+    }
+
+    private getPotentialLabel(potential: string): string {
+        switch (potential) {
+            case 'soulmate': return '💕 SOULMATE';
+            case 'romantic_interest': return '💗 INTERESTED';
+            case 'friends': return '👫 FRIENDS';
+            case 'not_interested': return '❌ NOT INTERESTED';
+            default: return '❓ UNKNOWN';
+        }
     }
 
     // UI Display methods
@@ -672,8 +1217,8 @@ export class SpeedDatingScene extends Scene {
             const seconds = this.matchTimer % 60;
             this.timerText.setText(`Time: ${minutes}:${seconds.toString().padStart(2, '0')}`);
             
-            // Reset color
-            this.timerText.setColor('#ffffff');
+            // Start with green color for better visibility
+            this.timerText.setColor('#00ff00');
         }
         
         // Create real-time countdown timer for UI feedback
@@ -694,6 +1239,8 @@ export class SpeedDatingScene extends Scene {
                         this.timerText.setColor('#ff4444');
                     } else if (this.matchTimer <= 60) {
                         this.timerText.setColor('#ffaa00');
+                    } else {
+                        this.timerText.setColor('#00ff00');
                     }
                 }
             },
@@ -703,18 +1250,12 @@ export class SpeedDatingScene extends Scene {
         console.log(`💕 [SPEED_DATING] Match timer set to ${this.matchTimer} seconds with real-time countdown`);
     }
 
-    private showResults(data: any) {
-        this.resultsContainer?.setVisible(true);
-        // TODO: Display actual results
-        this.addToConversationLog('🎉 Gauntlet complete! Results will be displayed here.');
-    }
-
     private addToConversationLog(message: string) {
         console.log(`💬 [SPEED_DATING] Adding to conversation: "${message}"`);
         this.conversationLog.push(message);
         
-        // Keep last 20 messages (increased from 10)
-        if (this.conversationLog.length > 20) {
+        // Keep last 50 messages for better scrolling
+        if (this.conversationLog.length > 50) {
             const removed = this.conversationLog.shift();
             console.log(`💬 [SPEED_DATING] Removed old message: "${removed}"`);
         }
@@ -723,17 +1264,54 @@ export class SpeedDatingScene extends Scene {
             // Join messages with proper spacing
             const displayText = this.conversationLog.join('\n\n');
             this.chatHistory.setText(displayText);
+            
+            // Auto-scroll to bottom if near bottom
+            const textHeight = this.chatHistory.height;
+            const viewHeight = this.cameras.main.height * 0.42;
+            if (textHeight > viewHeight) {
+                // Scroll to show latest message
+                this.chatHistory.y = viewHeight - textHeight - 20;
+            }
+            
             console.log(`💬 [SPEED_DATING] Conversation log now has ${this.conversationLog.length} messages`);
         }
     }
 
+    private scrollChat(delta: number) {
+        if (!this.chatHistory) return;
+        
+        const newY = this.chatHistory.y - delta;
+        const textHeight = this.chatHistory.height;
+        const viewHeight = this.cameras.main.height * 0.42;
+        
+        // Limit scrolling to keep text within bounds
+        const minY = viewHeight - textHeight - 20;
+        const maxY = this.cameras.main.height * 0.05;
+        
+        if (textHeight > viewHeight) {
+            this.chatHistory.y = Phaser.Math.Clamp(newY, minY, maxY);
+        }
+    }
 
 
     private sendMessage() {
-        if (!this.currentMessage.trim() || !this.currentMatch || this.sendingMessage) {
-            if (this.sendingMessage) {
-                console.log('⚠️ [SPEED_DATING] Already sending a message, please wait');
-            }
+        console.log('💕 [SPEED_DATING] sendMessage called');
+        console.log('Current message:', this.currentMessage);
+        console.log('Current match:', this.currentMatch);
+        console.log('Sending message flag:', this.sendingMessage);
+        
+        if (!this.currentMessage.trim()) {
+            console.log('⚠️ [SPEED_DATING] Message is empty');
+            return;
+        }
+        
+        if (!this.currentMatch) {
+            console.log('⚠️ [SPEED_DATING] No current match');
+            return;
+        }
+        
+        if (this.sendingMessage) {
+            console.log('⚠️ [SPEED_DATING] Already sending a message, please wait');
             return;
         }
         
@@ -746,10 +1324,17 @@ export class SpeedDatingScene extends Scene {
         // Send to game server
         const gameScene = this.scene.get('GameScene') as any;
         if (gameScene && gameScene.room) {
+            console.log('💕 [SPEED_DATING] Sending message to server:', {
+                matchId: this.currentMatch.id,
+                message: this.currentMessage.trim()
+            });
+            
             gameScene.room.send('speed_dating_message', {
                 matchId: this.currentMatch.id,
                 message: this.currentMessage.trim()
             });
+        } else {
+            console.error('❌ [SPEED_DATING] GameScene or room not available');
         }
         
         // Clear input
@@ -775,7 +1360,7 @@ export class SpeedDatingScene extends Scene {
         // Clean up event listeners
         this.cleanupEventListeners();
         
-        super.destroy();
+        // Note: Phaser scenes don't have a destroy method, cleanup is handled by the scene manager
     }
 }
 

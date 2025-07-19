@@ -284,6 +284,48 @@ export function datingRoutes(pool: Pool, redisClient: ReturnType<typeof createCl
     }
   });
 
+  // GET /dating/gauntlet-results/:eventId - Get all results for a gauntlet
+  router.get('/gauntlet-results/:eventId', async (req, res) => {
+    try {
+      const { eventId } = req.params;
+      
+      const results = await speedDatingService.getGauntletResults(parseInt(eventId));
+      
+      res.json(results);
+
+    } catch (error) {
+      console.error('Error in GET /dating/gauntlet-results/:eventId:', error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  // GET /dating/player-leaderboard/:eventId/:playerId - Get player's rankings across all NPCs
+  router.get('/player-leaderboard/:eventId/:playerId', async (req, res) => {
+    try {
+      const { eventId, playerId } = req.params;
+      
+      const leaderboard = await speedDatingService.getPlayerLeaderboard(
+        parseInt(eventId),
+        playerId
+      );
+      
+      res.json({
+        success: true,
+        eventId: parseInt(eventId),
+        playerId,
+        leaderboard
+      });
+
+    } catch (error) {
+      console.error('Error in GET /dating/player-leaderboard/:eventId/:playerId:', error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  });
+
   // ============================================
   // NPC GENERATION ROUTES
   // ============================================

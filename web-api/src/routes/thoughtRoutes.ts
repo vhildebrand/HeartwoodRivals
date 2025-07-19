@@ -463,6 +463,86 @@ export function thoughtRoutes(pool: Pool, redisClient: ReturnType<typeof createC
     }
   });
 
+  // Speed Dating Vibe Score Endpoint - Real-time evaluation
+  router.post('/speed-dating-vibe', async (req, res) => {
+    try {
+      const { agentId, playerMessage, matchContext } = req.body;
+      
+      // Get agent personality and preferences
+      const agentResult = await pool.query(`
+        SELECT * FROM agents WHERE id = $1
+      `, [agentId]);
+
+      const agent = agentResult.rows[0];
+      if (!agent) {
+        throw new Error(`Agent not found: ${agentId}`);
+      }
+
+      // Parse personality seed for dating preferences
+      let personalitySeed = null;
+      if (agent.personality_seed) {
+        try {
+          personalitySeed = JSON.parse(agent.personality_seed);
+        } catch (error) {
+          console.error(`Error parsing personality seed for ${agentId}:`, error);
+        }
+      }
+
+      // Build prompt for vibe evaluation
+      const prompt = `You are ${agent.name}, evaluating a message from someone you're speed dating.
+
+YOUR PERSONALITY:
+${agent.constitution}
+
+YOUR DATING PREFERENCES:
+${personalitySeed ? `
+- Dating style: ${personalitySeed.datingStyle}
+- Attraction triggers: ${personalitySeed.attractionTriggers?.join(', ')}
+- Dealbreakers: ${personalitySeed.dealbreakers?.join(', ')}
+- Conversation style: ${personalitySeed.conversationStyle}
+` : 'Standard preferences'}
+
+THEIR MESSAGE: "${playerMessage}"
+
+Evaluate this message for romantic compatibility. Consider:
+1. Does it align with your interests and values?
+2. Does it trigger attraction or turn-offs?
+3. Is their communication style appealing to you?
+4. Do they show genuine interest or understanding?
+
+Respond with a JSON object:
+{
+  "vibeScore": -10 to +10 (negative for turn-offs, positive for attraction),
+  "vibeReason": "Brief explanation of your reaction",
+  "attractionFactors": ["list", "of", "specific", "things", "you", "liked"],
+  "turnOffFactors": ["list", "of", "specific", "things", "you", "disliked"],
+  "emotionalReaction": "How this makes you feel emotionally"
+}`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.8,
+        max_tokens: 200
+      });
+
+      const vibeEvaluation = parseVibeResponse(response.choices[0].message.content);
+      
+      res.json({
+        vibeScore: vibeEvaluation.vibeScore,
+        vibeReason: vibeEvaluation.vibeReason,
+        evaluation: vibeEvaluation,
+        success: true
+      });
+    } catch (error) {
+      console.error('Error in speed dating vibe evaluation:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Helper functions for thought processing
   async function processImmediateThought(agentId: string, eventType: string, eventData: any, importance: number) {
     // Get agent context
@@ -1325,6 +1405,51 @@ Respond in JSON format:
     }
   }
 
+  function parseVibeResponse(responseText: string | null | undefined): any {
+    if (!responseText) {
+      return {
+        vibeScore: 0,
+        vibeReason: 'No response',
+        attractionFactors: [],
+        turnOffFactors: [],
+        emotionalReaction: 'Neutral'
+      };
+    }
+
+    try {
+      // Clean up the response
+      let cleanedResponse = responseText.trim();
+      if (cleanedResponse.includes('```json')) {
+        cleanedResponse = cleanedResponse.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      } else if (cleanedResponse.includes('```')) {
+        cleanedResponse = cleanedResponse.replace(/```\s*/, '').replace(/```\s*$/, '');
+      }
+      
+      const parsed = JSON.parse(cleanedResponse);
+      
+      // Ensure vibe score is within bounds
+      parsed.vibeScore = Math.max(-10, Math.min(10, parsed.vibeScore || 0));
+      
+      return {
+        vibeScore: parsed.vibeScore,
+        vibeReason: parsed.vibeReason || 'Evaluating...',
+        attractionFactors: parsed.attractionFactors || [],
+        turnOffFactors: parsed.turnOffFactors || [],
+        emotionalReaction: parsed.emotionalReaction || 'Processing...'
+      };
+    } catch (error) {
+      console.error('Error parsing vibe response:', error);
+      console.error('Raw response:', responseText);
+      return {
+        vibeScore: 0,
+        vibeReason: 'Unable to evaluate',
+        attractionFactors: [],
+        turnOffFactors: [],
+        emotionalReaction: 'Confused'
+      };
+    }
+  }
+
   async function processSpeedDatingEvaluation(agentId: string, playerMessage: string, playerResponse: string, matchContext: any) {
     // Get agent context with full personality and memory
     const context = await buildSpeedDatingContext(agentId, playerMessage, matchContext);
@@ -1332,9 +1457,9 @@ Respond in JSON format:
     // Get reputation and relationship context
     const reputationResult = await pool.query(`
       SELECT reputation_score, reputation_notes 
-      FROM agent_reputations 
-      WHERE agent_id = $1 AND character_id = $2
-    `, [agentId, matchContext.playerId]);
+      FROM player_reputations 
+      WHERE character_id = $1
+    `, [matchContext.playerId]);
     
     const reputation = reputationResult.rows[0] || { reputation_score: 0, reputation_notes: 'First time meeting' };
     
@@ -1521,12 +1646,15 @@ Respond with your INTERNAL THOUGHTS (not what you'd say out loud) in JSON format
 
     const agent = agentResult.rows[0];
 
-    // Get personality seed data for dating preferences
-    const personalitySeedResult = await pool.query(`
-      SELECT * FROM personality_seeds WHERE agent_id = $1
-    `, [agentId]);
-
-    const personalitySeed = personalitySeedResult.rows[0];
+    // Get personality seed data for dating preferences from the personality_seed JSON column
+    let personalitySeed = null;
+    if (agent.personality_seed) {
+      try {
+        personalitySeed = JSON.parse(agent.personality_seed);
+      } catch (error) {
+        console.error(`Error parsing personality seed for ${agentId}:`, error);
+      }
+    }
 
     // Get recent memories
     const recentMemories = await memoryManager.getContextualMemories(agentId, 'recent thoughts and activities', 10);

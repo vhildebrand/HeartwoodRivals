@@ -90,8 +90,25 @@ CREATE TABLE agent_player_relationships (
 CREATE TABLE player_reputations (
     character_id UUID PRIMARY KEY REFERENCES characters(id),
     reputation_score INT DEFAULT 50, -- Starts at a neutral 50 on a 0-100 scale
-    last_updated TIMESTAMPTZ DEFAULT now()
+    reputation_notes TEXT DEFAULT 'No reputation established yet',
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Create a view to map agent_reputations to player_reputations for backward compatibility
+-- This allows queries looking for agent_reputations to work without code changes
+CREATE OR REPLACE VIEW agent_reputations AS
+SELECT 
+    character_id,
+    character_id as agent_id,  -- Map character_id to agent_id for compatibility
+    reputation_score,
+    reputation_notes,
+    created_at,
+    updated_at
+FROM player_reputations;
+
+-- Add comment explaining the view
+COMMENT ON VIEW agent_reputations IS 'Compatibility view mapping player_reputations to agent_reputations for legacy queries';
 
 -- Gossip Logs (for social manipulation tracking)
 CREATE TABLE gossip_logs (
