@@ -3,6 +3,7 @@ import { Client } from "colyseus.js";
 import { InputManager } from "../input/InputManager";
 import { PlayerController } from "../controllers/PlayerController";
 import { MapManager } from "../maps/MapManager";
+import { AudioManager } from "../utils/AudioManager";
 
 export class GameScene extends Scene {
     private client: Client;
@@ -68,6 +69,9 @@ export class GameScene extends Scene {
         
         // Create time control instructions
         this.createTimeControlInstructions();
+        
+        // Initialize audio manager and start background music
+        this.initializeAudio();
         
         // Connect to server
         this.connectToServer();
@@ -325,9 +329,23 @@ export class GameScene extends Scene {
             this.toggleSpeed();
         });
         
+        // Audio control keys
+        this.input.keyboard?.addKey('M').on('down', () => {
+            this.toggleBackgroundMusic();
+        });
+        
+        this.input.keyboard?.addKey('NUMPAD_PLUS').on('down', () => {
+            this.increaseVolume();
+        });
+        
+        this.input.keyboard?.addKey('NUMPAD_MINUS').on('down', () => {
+            this.decreaseVolume();
+        });
+        
         console.log("GameScene: Controllers initialized");
         console.log("🎮 Controls: WASD to move, E to interact, Q to zoom out, Z to zoom in");
         console.log("🕐 Time: 1-6 to set time, +/- to advance time, R to toggle speed");
+        console.log("🎵 Audio: M to start/toggle music, Numpad +/- to adjust volume");
     }
 
     private setGameTime(time: string) {
@@ -355,6 +373,41 @@ export class GameScene extends Scene {
             this.room.send("set_speed", { speedMultiplier: newSpeed });
             console.log(`🚀 [CLIENT] Set speed to: ${newSpeed}x`);
         }
+    }
+
+    private toggleBackgroundMusic() {
+        const audioManager = AudioManager.getInstance();
+        
+        // If music is waiting for interaction, start it manually
+        if (audioManager.isMusicWaitingForInteraction()) {
+            audioManager.manualStart();
+            console.log('🎵 Background music started manually');
+            return;
+        }
+        
+        if (audioManager.isBackgroundMusicPlaying()) {
+            audioManager.pauseBackgroundMusic();
+            console.log('🎵 Background music paused');
+        } else {
+            audioManager.resumeBackgroundMusic();
+            console.log('🎵 Background music resumed');
+        }
+    }
+
+    private increaseVolume() {
+        const audioManager = AudioManager.getInstance();
+        const currentVolume = audioManager.getBackgroundVolume();
+        const newVolume = Math.min(1.0, currentVolume + 0.1);
+        audioManager.setBackgroundVolume(newVolume);
+        console.log(`🔊 Volume increased to ${Math.round(newVolume * 100)}%`);
+    }
+
+    private decreaseVolume() {
+        const audioManager = AudioManager.getInstance();
+        const currentVolume = audioManager.getBackgroundVolume();
+        const newVolume = Math.max(0.0, currentVolume - 0.1);
+        audioManager.setBackgroundVolume(newVolume);
+        console.log(`🔉 Volume decreased to ${Math.round(newVolume * 100)}%`);
     }
 
     private async createNPCs() {
@@ -445,6 +498,74 @@ export class GameScene extends Scene {
         instructionsText.setVisible(true); // Ensure it's visible
         
         console.log('🕐 Time control instructions created');
+    }
+
+    private initializeAudio() {
+        // Initialize AudioManager with this scene
+        const audioManager = AudioManager.getInstance();
+        audioManager.initialize(this);
+        
+        // Add a slight delay to ensure all audio assets are loaded
+        this.time.delayedCall(1000, () => {
+            // Start background music (will cycle through the playlist)
+            audioManager.startBackgroundMusic();
+            console.log('🎵 Background music system ready');
+            
+            // Show visual indicator if music is waiting for user interaction
+            this.time.delayedCall(500, () => {
+                if (audioManager.isMusicWaitingForInteraction()) {
+                    this.showMusicPrompt();
+                }
+            });
+        });
+        
+        console.log('🎵 Audio system initialized');
+    }
+
+    private showMusicPrompt() {
+        // Create a temporary visual prompt for music activation
+        const musicPrompt = this.add.text(
+            this.cameras.main.width / 2,
+            80,
+            '🎵 Click anywhere or press any key to start music!',
+            {
+                fontSize: '16px',
+                color: '#FFD700',
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                padding: { x: 12, y: 6 },
+                stroke: '#000000',
+                strokeThickness: 2
+            }
+        );
+        
+        musicPrompt.setOrigin(0.5, 0.5);
+        musicPrompt.setDepth(2000);
+        musicPrompt.setScrollFactor(0); // Fixed to camera
+        
+        // Make it pulse to draw attention
+        this.tweens.add({
+            targets: musicPrompt,
+            alpha: { from: 1, to: 0.5 },
+            duration: 1000,
+            yoyo: true,
+            repeat: -1
+        });
+        
+        // Remove the prompt once user interacts or music starts
+        const checkAndRemove = () => {
+            const audioManager = AudioManager.getInstance();
+            if (audioManager.hasUserInteracted() || audioManager.isBackgroundMusicPlaying()) {
+                musicPrompt.destroy();
+                console.log('🎵 Music prompt removed - music started');
+                return;
+            }
+            
+            // Check again in 500ms
+            this.time.delayedCall(500, checkAndRemove);
+        };
+        
+        // Start checking after 1 second
+        this.time.delayedCall(1000, checkAndRemove);
     }
 
     private handleInteraction() {
@@ -763,6 +884,12 @@ export class GameScene extends Scene {
                 existingAgent.actionLabel.x = agent.x * 16;
                 existingAgent.actionLabel.y = agent.y * 16 + 20;
                 
+                // Update depths based on new Y position to maintain proper layering
+                const newDepth = 10000 + (agent.y * 16);
+                existingAgent.sprite.setDepth(newDepth);
+                existingAgent.nameLabel.setDepth(newDepth + 5);
+                existingAgent.actionLabel.setDepth(newDepth + 5);
+                
                 // Update action label text
                 const actionText = agent.currentActivity || 'idle';
                 existingAgent.actionLabel.setText(actionText);
@@ -845,7 +972,9 @@ export class GameScene extends Scene {
     private createAgent(agentId: string, agentData: any) {
         const agentSprite = this.add.sprite(agentData.x * 16, agentData.y * 16, 'player');
         agentSprite.setScale(1);
-        agentSprite.setDepth(10);
+        // Set NPC depth high enough to always be above building objects (which use obj.y)
+        // Using 10000 + Y position ensures proper sorting among NPCs while staying above buildings
+        agentSprite.setDepth(10000 + (agentData.y * 16));
         agentSprite.setTint(0x00ff00); // Green tint to distinguish from players
         
         // Create name label above agent
@@ -856,7 +985,7 @@ export class GameScene extends Scene {
             padding: { x: 3, y: 1 }
         });
         nameLabel.setOrigin(0.5, 0.5);
-        nameLabel.setDepth(15);
+        nameLabel.setDepth(10000 + (agentData.y * 16) + 5);
         
         // Create action label below agent
         const actionText = agentData.currentActivity || 'idle';
@@ -867,7 +996,7 @@ export class GameScene extends Scene {
             padding: { x: 3, y: 1 }
         });
         actionLabel.setOrigin(0.5, 0.5);
-        actionLabel.setDepth(15);
+        actionLabel.setDepth(10000 + (agentData.y * 16) + 5);
         
         // Store agent data
         this.npcs.set(agentId, {
@@ -921,14 +1050,14 @@ export class GameScene extends Scene {
             // Show interaction indicator above the NPC
             const npcData = this.npcs.get(nearbyNpc.id);
             if (npcData) {
-                this.interactionIndicator.setPosition(
+                this.interactionIndicator?.setPosition(
                     npcData.sprite.x - 40, 
                     npcData.sprite.y - 30
                 );
-                this.interactionIndicator.setVisible(true);
+                this.interactionIndicator?.setVisible(true);
             }
         } else {
-            this.interactionIndicator.setVisible(false);
+            this.interactionIndicator?.setVisible(false);
         }
     }
 
@@ -1018,7 +1147,7 @@ export class GameScene extends Scene {
     private checkNearbyNPCs() {
         if (!this.myPlayerId) return;
         
-        const player = this.playerController.players.get(this.myPlayerId);
+        const player = this.playerController.getPlayerSprite(this.myPlayerId);
         if (!player) return;
         
         const nearbyNPCs: any[] = [];
@@ -1026,7 +1155,7 @@ export class GameScene extends Scene {
         
         this.npcs.forEach((npc, id) => {
             const distance = Phaser.Math.Distance.Between(
-                player.sprite.x, player.sprite.y,
+                player.x, player.y,
                 npc.sprite.x, npc.sprite.y
             );
             
@@ -1055,7 +1184,7 @@ export class GameScene extends Scene {
                 this.interactionIndicator.setVisible(true);
             }
         } else {
-            this.interactionIndicator.setVisible(false);
+            this.interactionIndicator?.setVisible(false);
         }
     }
 
@@ -1080,6 +1209,10 @@ export class GameScene extends Scene {
         if (this.interactionIndicator) {
             this.interactionIndicator.destroy();
         }
+        
+        // Clean up audio manager
+        const audioManager = AudioManager.getInstance();
+        audioManager.cleanup();
         
         // Clean up Colyseus connection
         if (this.room) {

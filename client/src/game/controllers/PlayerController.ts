@@ -99,6 +99,10 @@ export class PlayerController {
             sprite.setOrigin(0.5, 0.5);
             sprite.setScale(1);
             
+            // Set player depth high enough to always be above building objects
+            // Using 10000 + Y position ensures proper sorting among players while staying above buildings
+            sprite.setDepth(10000 + playerData.y);
+            
             // Set sprite properties
             sprite.setData('sessionId', sessionId);
             sprite.setData('playerName', playerData.name || sessionId);
@@ -119,7 +123,7 @@ export class PlayerController {
                 padding: { x: 3, y: 1 }
             });
             nameLabel.setOrigin(0.5, 0.5);
-            nameLabel.setDepth(15);
+            nameLabel.setDepth(10000 + playerData.y + 5);
             
             // Create activity label below name
             const activityLabel = this.scene.add.text(playerData.x, playerData.y - 8, "No activity set", {
@@ -129,7 +133,7 @@ export class PlayerController {
                 padding: { x: 2, y: 1 }
             });
             activityLabel.setOrigin(0.5, 0.5);
-            activityLabel.setDepth(15);
+            activityLabel.setDepth(10000 + playerData.y + 5);
             
             // Create movement controller
             movementController = new MovementController(this.scene);
@@ -156,6 +160,8 @@ export class PlayerController {
             if (playerData.isMoving) {
                 // For moving players, trust server position directly to avoid interpolation conflicts
                 sprite.setPosition(playerData.x, playerData.y);
+                // Update depth for server position updates
+                sprite.setDepth(10000 + playerData.y);
                 movementController!.setPosition(playerData.x, playerData.y);
             } else {
                 // For stationary players, use smooth interpolation for corrections
@@ -168,6 +174,7 @@ export class PlayerController {
                 // Only interpolate if the correction is significant
                 if (distance > 3) {
                     movementController!.setTargetPosition(playerData.x, playerData.y);
+                    // Depth will be updated in the update() method when position changes
                 }
             }
         }
@@ -257,27 +264,36 @@ export class PlayerController {
                 
                 if (sprite) {
                     sprite.setPosition(newPosition.x, newPosition.y);
+                    // Update depth based on new Y position to maintain proper layering
+                    sprite.setDepth(10000 + newPosition.y);
                 }
                 
                 if (nameLabel) {
                     nameLabel.setPosition(newPosition.x, newPosition.y - 20);
+                    nameLabel.setDepth(10000 + newPosition.y + 5);
                 }
                 
                 // Update activity label position
                 const activityLabel = this.activityLabels.get(sessionId);
                 if (activityLabel) {
                     activityLabel.setPosition(newPosition.x, newPosition.y - 8);
+                    activityLabel.setDepth(10000 + newPosition.y + 5);
                 }
             } else {
                 // For moving players, just update name label position to match sprite
                 if (nameLabel && sprite) {
                     nameLabel.setPosition(sprite.x, sprite.y - 20);
+                    nameLabel.setDepth(10000 + sprite.y + 5);
                 }
                 
                 // Update activity label position for moving players
                 const activityLabel = this.activityLabels.get(sessionId);
                 if (activityLabel && sprite) {
                     activityLabel.setPosition(sprite.x, sprite.y - 8);
+                    activityLabel.setDepth(10000 + sprite.y + 5);
+                    
+                    // Update sprite depth for moving players too
+                    sprite.setDepth(10000 + sprite.y);
                 }
             }
         });

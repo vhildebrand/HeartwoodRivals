@@ -1,4 +1,5 @@
 import { Scene } from "phaser";
+import { AudioManager } from "../utils/AudioManager";
 
 interface SpeedDatingMatch {
     id: number;
@@ -815,6 +816,13 @@ export class SpeedDatingScene extends Scene {
             participants: data.participants || []
         };
         
+        // Start speed dating music
+        const audioManager = AudioManager.getInstance();
+        audioManager.playSceneMusic('background_music_1', true).then(() => {
+            console.log('🎵 [SPEED_DATING] Romantic music fully started (Struggle Sandwich)');
+        });
+        console.log('🎵 [SPEED_DATING] Starting romantic music transition...');
+        
         this.hideCountdown();
         console.log('💕 [SPEED_DATING] Event ID stored:', this.currentEvent.id);
     }
@@ -999,6 +1007,11 @@ export class SpeedDatingScene extends Scene {
         
         this.inputActive = false;
         this.hideDialogue();
+        
+        // Return to background music
+        const audioManager = AudioManager.getInstance();
+        audioManager.returnToBackgroundMusic();
+        console.log('🎵 [SPEED_DATING] Returned to background music');
         
         // Store event ID if provided
         if (data.eventId && this.currentEvent) {
@@ -1785,6 +1798,13 @@ export class SpeedDatingScene extends Scene {
     }
 
     private returnToGame() {
+        // Return to background music if speed dating music was playing
+        const audioManager = AudioManager.getInstance();
+        if (audioManager.isSceneMusicPlaying()) {
+            audioManager.returnToBackgroundMusic();
+            console.log('🎵 [SPEED_DATING] Returned to background music on scene exit');
+        }
+        
         this.scene.setVisible(false);
         this.scene.sendToBack();
         this.scene.resume('GameScene');

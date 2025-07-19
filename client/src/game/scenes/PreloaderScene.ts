@@ -37,6 +37,13 @@ export class PreloaderScene extends Scene {
         this.load.image('bg', 'assets/bg.png');
         this.load.image('logo', 'assets/logo.png');
         
+        // Load audio files
+        console.log("Loading audio files...");
+        this.load.audio('background_music_1', 'assets/struggle_sandwich.mp3');
+        this.load.audio('background_music_2', 'assets/bad_year_blimp.mp3');
+        this.load.audio('background_music_3', 'assets/ten_hours_ceiling.mp3');
+        this.load.audio('speed_dating_music', 'assets/tranquility.mp3');
+        
         // Load the beacon bay locations data
         this.load.json('beacon_bay_locations', 'assets/beacon_bay_locations.json');
         
