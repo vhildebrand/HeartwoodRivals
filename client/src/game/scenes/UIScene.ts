@@ -42,6 +42,13 @@ export class UIScene extends Scene {
     private activityPrompt: Phaser.GameObjects.Text | null = null;
     private rangeIndicator: Phaser.GameObjects.Text | null = null;
 
+    // Speed dating manual trigger UI
+    private speedDatingContainer: Phaser.GameObjects.Container | null = null;
+    private speedDatingButton: Phaser.GameObjects.Rectangle | null = null;
+    private speedDatingButtonText: Phaser.GameObjects.Text | null = null;
+    private playerCountText: Phaser.GameObjects.Text | null = null;
+    private currentPlayerCount: number = 0;
+
     constructor() {
         super("UIScene");
     }
@@ -67,6 +74,9 @@ export class UIScene extends Scene {
         
         // Create speed dating countdown UI
         this.createSpeedDatingCountdownUI();
+        
+        // Create speed dating manual trigger UI
+        this.createSpeedDatingTriggerUI();
         
         // Set up event listeners
         this.setupEventListeners();
@@ -147,6 +157,96 @@ export class UIScene extends Scene {
         this.speedDatingCountdown.setDepth(1000);
     }
 
+    private createSpeedDatingTriggerUI() {
+        console.log("💕 [UI] Creating speed dating manual trigger UI");
+        
+        // Create container for speed dating trigger UI (top right)
+        this.speedDatingContainer = this.add.container(this.cameras.main.width - 250, 60);
+        
+        // Player count display (above button)
+        this.playerCountText = this.add.text(0, 0, 'Players Online: 0', {
+            fontSize: '14px',
+            color: '#FFD700',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            padding: { x: 8, y: 4 },
+            fontFamily: 'Arial'
+        }).setOrigin(0.5, 0);
+        
+        // Speed dating start button
+        this.speedDatingButton = this.add.rectangle(0, 35, 200, 40, 0xe24a90, 1)
+            .setStrokeStyle(2, 0xffffff);
+        
+        this.speedDatingButtonText = this.add.text(0, 35, 'Start Speed Dating!', {
+            fontSize: '16px',
+            color: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }).setOrigin(0.5, 0.5);
+        
+        // Make button interactive
+        this.speedDatingButton.setInteractive();
+        
+        this.speedDatingButton.on('pointerdown', () => {
+            this.triggerSpeedDating();
+        });
+        
+        // Hover effects
+        this.speedDatingButton.on('pointerover', () => {
+            this.speedDatingButton.setFillStyle(0xff6bb3);
+            this.speedDatingButtonText.setScale(1.05);
+        });
+        
+        this.speedDatingButton.on('pointerout', () => {
+            this.speedDatingButton.setFillStyle(0xe24a90);
+            this.speedDatingButtonText.setScale(1.0);
+        });
+        
+        // Add elements to container
+        this.speedDatingContainer.add([
+            this.playerCountText,
+            this.speedDatingButton,
+            this.speedDatingButtonText
+        ]);
+        
+        // Set depth to appear above other UI
+        this.speedDatingContainer.setDepth(500);
+        
+        console.log("💕 [UI] Speed dating manual trigger UI created");
+    }
+
+    private triggerSpeedDating() {
+        console.log("🎯 [UI] Player triggered speed dating manually");
+        
+        // Send message to game server to start speed dating
+        const gameScene = this.scene.get('GameScene') as any;
+        if (gameScene && gameScene.room) {
+            gameScene.room.send('start_speed_dating', {
+                triggeredBy: 'player_ui',
+                timestamp: Date.now()
+            });
+            
+            console.log("✅ [UI] Speed dating start request sent to server");
+            
+            // Disable button temporarily to prevent spam clicking
+            if (this.speedDatingButton && this.speedDatingButtonText) {
+                this.speedDatingButton.setFillStyle(0x666666);
+                this.speedDatingButtonText.setText('Starting...');
+                this.speedDatingButton.disableInteractive();
+                
+                // Re-enable after 3 seconds
+                this.time.delayedCall(3000, () => {
+                    if (this.speedDatingButton && this.speedDatingButtonText) {
+                        this.speedDatingButton.setFillStyle(0xe24a90);
+                        this.speedDatingButtonText.setText('Start Speed Dating!');
+                        this.speedDatingButton.setInteractive();
+                    }
+                });
+            }
+        } else {
+            console.error("❌ [UI] Cannot trigger speed dating - game room not available");
+        }
+    }
+
     private setupEventListeners() {
         // Listen for speed dating countdown events
         this.game.events.on('speed_dating_countdown', (data: any) => {
@@ -165,6 +265,26 @@ export class UIScene extends Scene {
             console.log("🎮 [UI] Player ID set:", playerId);
             // Any player-specific UI setup can go here
         });
+
+        // Listen for game state updates to track player count
+        this.game.events.on('gameStateUpdate', (gameState: any) => {
+            // This might include player count, but we need to track it from GameScene
+        });
+
+        // Listen for player count updates from GameScene
+        this.game.events.on('playerCountUpdate', (playerCount: number) => {
+            this.updatePlayerCount(playerCount);
+        });
+    }
+
+    private updatePlayerCount(playerCount: number) {
+        this.currentPlayerCount = playerCount;
+        
+        if (this.playerCountText) {
+            this.playerCountText.setText(`Players Online: ${playerCount}`);
+        }
+        
+        console.log(`👥 [UI] Player count updated: ${playerCount}`);
     }
 
     private startSpeedDatingCountdown(seconds: number) {

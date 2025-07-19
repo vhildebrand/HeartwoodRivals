@@ -201,6 +201,11 @@ export class HeartwoodRoom extends Room<GameState> {
         this.onMessage("speed_dating_message", (client: Client, message: { matchId: number; message: string }) => {
             this.handleSpeedDatingMessage(client, message);
         });
+
+        // Manual speed dating start message handler
+        this.onMessage("start_speed_dating", (client: Client, message: any) => {
+            this.handleManualSpeedDatingStart(client, message);
+        });
         
         // Start the game loop
         this.startGameLoop();
@@ -540,6 +545,13 @@ export class HeartwoodRoom extends Room<GameState> {
         );
     }
 
+    private handleManualSpeedDatingStart(client: Client, message: any) {
+        console.log(`🎯 [SPEED_DATING] Player ${client.sessionId} manually triggered speed dating start`);
+        
+        // Check if player is authorized to start speed dating (for now, any player can start)
+        this.startSpeedDatingEvent();
+    }
+
     private formatTimeMinutes(minutes: number): string {
         const hours = Math.floor(minutes / 60);
         const mins = Math.floor(minutes % 60);
@@ -709,13 +721,8 @@ export class HeartwoodRoom extends Room<GameState> {
             });
             console.log('💕 [SERVER] Speed Dating Manager initialized');
             
-            // Schedule daily speed dating event at 6:15am
-            this.gameTime.scheduleEvent('daily_speed_dating', '06:15', () => {
-                console.log('💕 [SERVER] Starting daily speed dating event at 6:15am');
-                this.startSpeedDatingEvent();
-            }, true); // recurring = true for daily events
-            
-            console.log('💕 [SERVER] Daily speed dating event scheduled for 6:15am');
+            // Speed dating is now manually triggered by players via UI button
+            console.log('💕 [SERVER] Speed dating ready for manual activation');
             
             // Update game state with time
             this.updateGameTimeState();

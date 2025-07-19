@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <tileset version="1.10" tiledversion="1.11.2" name="modern_exteriors_city" tilewidth="432" tileheight="544" tilecount="183" columns="0">
+ <editorsettings>
+  <export target="modern_exteriors_city.tsx" format="tsx"/>
+ </editorsettings>
  <grid orientation="orthogonal" width="1" height="1"/>
  <tile id="2372">
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/21_Beach_16x16_Bamboo_Bar_Counter_2_Sand.png" width="48" height="64"/>
@@ -494,15 +497,9 @@
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Villas_16x16_Toy_House_1.png" width="64" height="80"/>
  </tile>
  <tile id="2535">
-  <properties>
-   <property name="type" value="ME_Singles_Villas_16x16_Toy_House_3"/>
-  </properties>
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Villas_16x16_Toy_House_3.png" width="64" height="80"/>
  </tile>
  <tile id="2536">
-  <properties>
-   <property name="type" value="ME_Singles_Villas_16x16_Toy_House_5"/>
-  </properties>
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Villas_16x16_Toy_House_5.png" width="64" height="80"/>
  </tile>
  <tile id="2537">

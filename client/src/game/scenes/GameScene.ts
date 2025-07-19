@@ -50,10 +50,12 @@ export class GameScene extends Scene {
     }
 
     create() {
-        console.log("=== GameScene.create() started ===");
+        console.log("🎮 === GAME SCENE CREATE() STARTED ===");
         
         // Create the game world
+        console.log("🌍 Starting world creation...");
         this.createWorld();
+        console.log("🌍 World creation completed");
         
         // Initialize controllers
         this.initializeControllers();
@@ -97,24 +99,40 @@ export class GameScene extends Scene {
 
     private createWorld() {
         // Create the tilemap object
-        console.log("Creating tilemap...");
+        console.log("🗺️ === WORLD CREATION START ===");
+        console.log("Creating tilemap with key 'beacon_bay'...");
         const map = this.make.tilemap({ key: 'beacon_bay' });
+        
+        if (!map) {
+            console.error("❌ Failed to create tilemap!");
+            return;
+        }
+        console.log("✅ Tilemap created successfully");
         
         // Add the tileset to the map
         console.log("Adding tileset...");
         const tileset = map.addTilesetImage('tileset', 'tileset', 16, 16);
         
         if (!tileset) {
-            console.error("Failed to load tileset");
+            console.error("❌ Failed to load tileset");
             return;
         }
+        console.log("✅ Tileset loaded successfully");
         
         // Render layers - Beacon Bay map has a single 'ground' layer
+        console.log("Creating ground layer...");
         const groundLayer = map.createLayer('ground', tileset);
+        if (!groundLayer) {
+            console.error("❌ Failed to create ground layer");
+        } else {
+            console.log("✅ Ground layer created successfully");
+        }
+        
         this.wallsLayer = null; // No walls layer in Beacon Bay map
         // const aboveLayer = map.createLayer('Above', tileset); // No above layer in Beacon Bay map
         
         // Create building sprites from the object layer
+        console.log("🏢 Attempting to create building sprites...");
         this.createBuildingSprites(map);
         
         // Set up camera with proper bounds
@@ -141,37 +159,87 @@ export class GameScene extends Scene {
     }
 
     private createBuildingSprites(map: Phaser.Tilemaps.Tilemap) {
-        console.log("Creating building sprites from object layer...");
+        console.log("🏗️ === BUILDING SPRITE CREATION START ===");
+        
+        // Debug: Log all available layers in the map
+        console.log("🔍 Map layers:", map.layers.map((layer: any) => `${layer.name} (type: ${layer.type})`));
+        console.log("🔍 Object layers:", map.objects);
+        console.log("🔍 Object layer count:", map.objects.length);
+        
+        if (map.objects && map.objects.length > 0) {
+            map.objects.forEach((objLayer: any, index: number) => {
+                console.log(`🔍 Object layer ${index}: name="${objLayer.name}", objectCount=${objLayer.objects.length}`);
+            });
+        }
         
         // Get the city object layer
         const cityLayer = map.getObjectLayer('city');
         if (!cityLayer) {
-            console.log("No 'city' object layer found in map");
+            console.error("❌ No 'city' object layer found in map!");
+            console.log("🔍 Available object layer names:", map.objects.map((layer: any) => layer.name));
+            
+            // Try to find any object layer
+            if (map.objects && map.objects.length > 0) {
+                console.log("🔍 Let's try the first object layer instead...");
+                const firstObjectLayer = map.objects[0];
+                console.log("🔍 First object layer:", firstObjectLayer.name, "with", firstObjectLayer.objects.length, "objects");
+            }
             return;
         }
         
-        console.log(`Found ${cityLayer.objects.length} building objects to create`);
+        console.log(`✅ Found city object layer with ${cityLayer.objects.length} building objects`);
+        
+        if (cityLayer.objects.length === 0) {
+            console.warn("⚠️ City object layer is empty - no buildings to create");
+            return;
+        }
         
         // Create sprites for each building object
-        cityLayer.objects.forEach((obj: any) => {
+        cityLayer.objects.forEach((obj: any, index: number) => {
             // Since you didn't set type properties, we'll use the object name or a default
             // You can customize this logic based on your object naming scheme
             let textureKey = 'tile_ME_Singles_Generic_Building_16x16_Condo_4_30'; // Default texture
+            let debugInfo = '';
             
             // Check if the object has a type property set in Tiled
-            if (obj.type) {
+            // First check the direct type field
+            let typeValue = obj.type;
+            
+            // If direct type is empty, check the properties array for a "type" property
+            if (!typeValue && obj.properties && obj.properties.length > 0) {
+                const typeProperty = obj.properties.find((prop: any) => prop.name === 'type');
+                if (typeProperty && typeProperty.value) {
+                    typeValue = typeProperty.value;
+                    debugInfo += `properties.type="${typeValue}"`;
+                }
+            } else if (typeValue) {
+                debugInfo += `direct.type="${typeValue}"`;
+            }
+            
+            if (typeValue) {
                 // Use the type as the texture key (it should already include 'tile_' prefix or be the full texture name)
-                const possibleKey = obj.type.startsWith('tile_') ? obj.type : `tile_${obj.type}`;
+                const possibleKey = typeValue.startsWith('tile_') ? typeValue : `tile_${typeValue}`;
+                debugInfo += ` -> key="${possibleKey}"`;
                 if (this.textures.exists(possibleKey)) {
                     textureKey = possibleKey;
+                    debugInfo += ' ✓ EXISTS';
+                } else {
+                    debugInfo += ' ✗ NOT_FOUND';
+                    console.warn(`⚠️ Texture "${possibleKey}" not found for object type "${typeValue}"`);
                 }
             }
             // Fallback: also check object name for backwards compatibility
             else if (obj.name) {
                 const possibleKey = `tile_${obj.name}`;
+                debugInfo += `name="${obj.name}" -> key="${possibleKey}"`;
                 if (this.textures.exists(possibleKey)) {
                     textureKey = possibleKey;
+                    debugInfo += ' ✓ EXISTS';
+                } else {
+                    debugInfo += ' ✗ NOT_FOUND';
                 }
+            } else {
+                debugInfo = 'NO_TYPE_OR_NAME -> using default';
             }
             
             // Create the sprite at the object's position
@@ -179,7 +247,7 @@ export class GameScene extends Scene {
             sprite.setOrigin(0, 0); // Set origin to top-left to match Tiled positioning
             sprite.setDepth(obj.y); // Set depth based on Y position for proper layering
             
-            console.log(`Created building sprite at (${obj.x}, ${obj.y}) with texture: ${textureKey}`);
+            console.log(`🏢 Building ${index + 1}: ${debugInfo} -> USING: ${textureKey}`);
         });
         
         console.log("Building sprites creation complete!");
@@ -630,6 +698,10 @@ export class GameScene extends Scene {
                     this.playerController.removePlayer(sessionId);
                 }
             });
+            
+            // Emit player count update to UI
+            const playerCount = state.players.size;
+            this.game.events.emit('playerCountUpdate', playerCount);
             
             // Update camera to follow current player
             this.updateCameraFollow();
