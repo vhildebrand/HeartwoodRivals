@@ -27,6 +27,14 @@ interface VibeUpdate {
     cumulativeScore: number;
 }
 
+// New interface for tracking vibe feedback per message
+interface MessageVibeData {
+    messageIndex: number;
+    vibeScore: number;
+    vibeReason: string;
+    timestamp: number;
+}
+
 export class SpeedDatingScene extends Scene {
     // Scene state
     private currentEvent: SpeedDatingEvent | null = null;
@@ -34,6 +42,10 @@ export class SpeedDatingScene extends Scene {
     private vibeScore: number = 0;
     private matchTimer: number = 0;
     private conversationLog: string[] = [];
+    
+    // New: Track vibe feedback per message
+    private messageVibeData: Map<number, MessageVibeData> = new Map();
+    private userMessageCount: number = 0;
     
     // UI Elements (simplified dialogue-style)
     private dialogueContainer: Phaser.GameObjects.Container | null = null;
@@ -50,6 +62,12 @@ export class SpeedDatingScene extends Scene {
     private instructionsText: Phaser.GameObjects.Text | null = null;
     private vibeBarBackground: Phaser.GameObjects.Rectangle | null = null;
     private vibeBarFill: Phaser.GameObjects.Rectangle | null = null;
+    
+    // New: Hover tooltip elements
+    private hoverTooltip: Phaser.GameObjects.Container | null = null;
+    private hoverTooltipBg: Phaser.GameObjects.Rectangle | null = null;
+    private hoverTooltipText: Phaser.GameObjects.Text | null = null;
+    private messageTextObjects: Phaser.GameObjects.Text[] = [];
     
     // Input state
     private currentMessage: string = '';
@@ -300,7 +318,7 @@ export class SpeedDatingScene extends Scene {
         this.instructionsText = this.add.text(
             width / 2, 
             height * 0.9,
-            'Press ENTER to send • Arrow keys to scroll • ESC to close results', 
+            'Press ENTER to send • Arrow keys to scroll • ESC to close results • Hover over your messages to see NPC reactions', 
             {
                 fontSize: '14px',
                 color: '#ff69b4',
@@ -308,6 +326,9 @@ export class SpeedDatingScene extends Scene {
                 fontStyle: 'italic'
             }
         ).setOrigin(0.5);
+
+        // Create hover tooltip
+        this.createHoverTooltip();
 
         // Add all elements to container
         this.dialogueContainer.add([
@@ -333,6 +354,12 @@ export class SpeedDatingScene extends Scene {
         
         // Create results UI
         this.createResultsUI();
+        
+        // Add the hover tooltip to the main scene (not to any container) so it appears on top
+        if (this.hoverTooltip) {
+            // Remove from any existing parent and add directly to the scene
+            this.add.existing(this.hoverTooltip);
+        }
         
         // Set up input handling
         this.setupInputHandlers();
@@ -525,6 +552,29 @@ export class SpeedDatingScene extends Scene {
             backButton, 
             backButtonText
         ]);
+    }
+
+    private createHoverTooltip() {
+        // Create hover tooltip container
+        this.hoverTooltip = this.add.container(0, 0);
+        this.hoverTooltip.setDepth(2000); // Ensure it's on top
+        this.hoverTooltip.setVisible(false);
+        
+        // Tooltip background
+        this.hoverTooltipBg = this.add.rectangle(0, 0, 300, 80, 0x2d1b2d, 0.95);
+        this.hoverTooltipBg.setStrokeStyle(2, 0xff69b4, 0.8);
+        
+        // Tooltip text
+        this.hoverTooltipText = this.add.text(0, 0, '', {
+            fontSize: '16px',
+            color: '#ffffff',
+            fontFamily: '"Segoe UI", Arial, sans-serif',
+            wordWrap: { width: 280 },
+            align: 'center',
+            lineSpacing: 5
+        }).setOrigin(0.5);
+        
+        this.hoverTooltip.add([this.hoverTooltipBg, this.hoverTooltipText]);
     }
 
     private setupInputHandlers() {
@@ -795,6 +845,12 @@ export class SpeedDatingScene extends Scene {
         // Clear processed messages for new match
         this.processedMessages.clear();
         
+        // Reset message tracking for hover functionality
+        this.messageVibeData.clear();
+        this.userMessageCount = 0;
+        this.messageTextObjects.forEach(textObj => textObj.destroy());
+        this.messageTextObjects = [];
+        
         // Reset sending flag
         this.sendingMessage = false;
         
@@ -906,11 +962,17 @@ export class SpeedDatingScene extends Scene {
             }
         }
         
-        // Only show vibe feedback when there's an actual score change (non-zero)
-        if (data.vibeScore !== 0) {
-            const vibeSign = data.vibeScore > 0 ? '+' : '';
-            const feedbackMessage = `💝 ${data.vibeReason || 'Vibe changed'} (${vibeSign}${data.vibeScore})`;
-            this.addToConversationLog(feedbackMessage);
+        // Store vibe feedback for the latest user message (instead of adding to chat)
+        if (data.vibeScore !== 0 && this.userMessageCount > 0) {
+            const vibeData: MessageVibeData = {
+                messageIndex: this.userMessageCount - 1,
+                vibeScore: data.vibeScore,
+                vibeReason: data.vibeReason || 'Vibe changed',
+                timestamp: Date.now()
+            };
+            
+            this.messageVibeData.set(this.userMessageCount - 1, vibeData);
+            console.log(`💕 [SPEED_DATING] Stored vibe feedback for message ${this.userMessageCount - 1}: ${data.vibeScore} (${data.vibeReason})`);
         }
     }
 
@@ -1199,7 +1261,7 @@ export class SpeedDatingScene extends Scene {
                 }
             ).setOrigin(0, 0.5);
             
-            // Scores
+            // Scores - make these hoverable
             const scoresText = this.add.text(
                 -width * 0.25,
                 yOffset + 15,
@@ -1210,6 +1272,18 @@ export class SpeedDatingScene extends Scene {
                     fontFamily: '"Segoe UI", Arial, sans-serif'
                 }
             ).setOrigin(0, 0.5);
+            
+            // Add hover functionality to scores to show detailed thoughts
+            scoresText.setInteractive({ useHandCursor: true });
+            scoresText.setTint(0xccccff); // Subtle tint to indicate it's hoverable
+            
+            scoresText.on('pointerover', () => {
+                this.showResultsTooltip(scoresText, ranking);
+            });
+            
+            scoresText.on('pointerout', () => {
+                this.hideVibeTooltip();
+            });
             
             // Relationship potential badge
             const potentialBadge = this.add.rectangle(
@@ -1272,9 +1346,57 @@ export class SpeedDatingScene extends Scene {
             this.resultsContainer?.add([quoteBg, quoteText]);
         }
         
+        // Add instruction text for hover functionality
+        const instructionText = this.add.text(
+            width / 2,
+            height * 0.85,
+            'Hover over scores to see detailed thoughts',
+            {
+                fontSize: '14px',
+                color: '#888888',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'italic'
+            }
+        ).setOrigin(0.5);
+        
         this.resultsContainer?.add([
-            npcNameBg, npcName, pageText, rankingsContainer
+            npcNameBg, npcName, pageText, rankingsContainer, instructionText
         ]);
+    }
+
+    private showResultsTooltip(scoreText: Phaser.GameObjects.Text, ranking: any) {
+        if (!this.hoverTooltip || !this.hoverTooltipText || !this.hoverTooltipBg) return;
+        if (!this.resultsData || !this.resultsData.npcResults) return;
+        
+        const currentNpc = this.resultsData.npcResults[this.resultsPageIndex];
+        if (!currentNpc) return;
+        
+        // Create detailed tooltip content
+        let tooltipContent = `💭 ${this.getNPCDisplayName(currentNpc.npcId)}'s Thoughts:\n\n`;
+        tooltipContent += `"${ranking.reasoning}"\n\n`;
+        
+        if (ranking.memorableMoments && ranking.memorableMoments.length > 0) {
+            tooltipContent += `Memorable moment: "${ranking.memorableMoments[0]}"`;
+        }
+        
+        this.hoverTooltipText.setText(tooltipContent);
+        
+        // Position tooltip near the score text
+        const scoreWorldPos = scoreText.getWorldTransformMatrix();
+        const tooltipX = scoreWorldPos.tx + 200; // Offset to the right
+        const tooltipY = scoreWorldPos.ty;
+        
+        // Ensure tooltip stays within screen bounds
+        const { width, height } = this.cameras.main;
+        const clampedX = Phaser.Math.Clamp(tooltipX, 200, width - 200);
+        const clampedY = Phaser.Math.Clamp(tooltipY, 100, height - 150);
+        
+        this.hoverTooltip.setPosition(clampedX, clampedY);
+        this.hoverTooltip.setVisible(true);
+        
+        // Adjust background size based on text (make it larger for results)
+        const textBounds = this.hoverTooltipText.getBounds();
+        this.hoverTooltipBg.setSize(Math.max(300, textBounds.width + 30), Math.max(120, textBounds.height + 30));
     }
 
     private clearResultContent() {
@@ -1464,6 +1586,11 @@ export class SpeedDatingScene extends Scene {
         console.log(`💬 [SPEED_DATING] Adding to conversation: "${message}"`);
         this.conversationLog.push(message);
         
+        // Track user messages for hover functionality
+        if (message.startsWith('You: ')) {
+            this.userMessageCount++;
+        }
+        
         // Keep last 50 messages for better scrolling
         if (this.conversationLog.length > 50) {
             const removed = this.conversationLog.shift();
@@ -1471,19 +1598,119 @@ export class SpeedDatingScene extends Scene {
         }
         
         if (this.chatHistory) {
-            // Join messages with proper spacing
-            const displayText = this.conversationLog.join('\n\n');
-            this.chatHistory.setText(displayText);
+            // Clear message text objects
+            this.messageTextObjects.forEach(textObj => textObj.destroy());
+            this.messageTextObjects = [];
             
-            // Auto-scroll to bottom if near bottom
-            const textHeight = this.chatHistory.height;
-            const viewHeight = this.cameras.main.height * 0.42;
-            if (textHeight > viewHeight) {
-                // Scroll to show latest message
-                this.chatHistory.y = viewHeight - textHeight - 20;
-            }
+            // Create interactive text objects for each message
+            this.createInteractiveMessages();
             
             console.log(`💬 [SPEED_DATING] Conversation log now has ${this.conversationLog.length} messages`);
+        }
+    }
+
+    private createInteractiveMessages() {
+        if (!this.chatHistory || !this.chatContainer) return;
+        
+        const { width } = this.cameras.main;
+        let yOffset = this.cameras.main.height * 0.05;
+        let userMessageIndex = 0;
+        
+        this.conversationLog.forEach((message, index) => {
+            const isUserMessage = message.startsWith('You: ');
+            const textColor = isUserMessage ? '#ffff99' : '#ffffff';
+            
+            const messageText = this.add.text(
+                0,
+                yOffset,
+                message,
+                {
+                    fontSize: '17px',
+                    color: textColor,
+                    fontFamily: '"Segoe UI", Arial, sans-serif',
+                    fontStyle: 'normal',
+                    wordWrap: { width: width * 0.8 },
+                    align: 'left',
+                    lineSpacing: 10,
+                    padding: { x: 15, y: 5 }
+                }
+            ).setOrigin(0.5, 0);
+            
+            // Apply mask
+            if (this.chatMask) {
+                messageText.setMask(this.chatMask.createGeometryMask());
+            }
+            
+            // Add hover functionality for user messages
+            if (isUserMessage) {
+                const vibeData = this.messageVibeData.get(userMessageIndex);
+                if (vibeData) {
+                    messageText.setInteractive({ useHandCursor: true });
+                    
+                    messageText.on('pointerover', () => {
+                        this.showVibeTooltip(messageText, vibeData);
+                    });
+                    
+                    messageText.on('pointerout', () => {
+                        this.hideVibeTooltip();
+                    });
+                    
+                    // Add subtle highlight for hoverable messages
+                    messageText.setTint(0xffffcc);
+                }
+                userMessageIndex++;
+            }
+            
+            if (this.chatContainer) {
+                this.chatContainer.add(messageText);
+            }
+            this.messageTextObjects.push(messageText);
+            
+            // Calculate height and update yOffset
+            const messageHeight = messageText.height + 20;
+            yOffset += messageHeight;
+        });
+        
+        // Auto-scroll to bottom if needed
+        const totalHeight = yOffset;
+        const viewHeight = this.cameras.main.height * 0.42;
+        if (totalHeight > viewHeight) {
+            const scrollOffset = totalHeight - viewHeight + 20;
+            this.messageTextObjects.forEach(textObj => {
+                textObj.y -= scrollOffset;
+            });
+        }
+    }
+
+    private showVibeTooltip(messageText: Phaser.GameObjects.Text, vibeData: MessageVibeData) {
+        if (!this.hoverTooltip || !this.hoverTooltipText || !this.hoverTooltipBg) return;
+        
+        const vibeSign = vibeData.vibeScore > 0 ? '+' : '';
+        const tooltipContent = `💝 ${vibeData.vibeReason}\nVibe Impact: ${vibeSign}${vibeData.vibeScore}`;
+        
+        this.hoverTooltipText.setText(tooltipContent);
+        
+        // Position tooltip above the message
+        const messageWorldPos = messageText.getWorldTransformMatrix();
+        const tooltipX = messageWorldPos.tx;
+        const tooltipY = messageWorldPos.ty - 60;
+        
+        // Ensure tooltip stays within screen bounds
+        const { width, height } = this.cameras.main;
+        const clampedX = Phaser.Math.Clamp(tooltipX, 150, width - 150);
+        const clampedY = Phaser.Math.Clamp(tooltipY, 50, height - 100);
+        
+        this.hoverTooltip.setPosition(clampedX, clampedY);
+        this.hoverTooltip.setVisible(true);
+        
+        // Adjust background size based on text
+        const textBounds = this.hoverTooltipText.getBounds();
+        this.hoverTooltipBg.setSize(textBounds.width + 20, textBounds.height + 20);
+    }
+
+    private hideVibeTooltip() {
+        if (this.hoverTooltip) {
+            this.hoverTooltip.setVisible(false);
         }
     }
 
