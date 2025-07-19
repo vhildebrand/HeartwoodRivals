@@ -732,7 +732,7 @@ export class HeartwoodRoom extends Room<GameState> {
                 console.error('❌ Failed to spawn agents:', spawnError);
             }
             
-            // Initialize Speed Dating Manager with targeted broadcast support
+            // Initialize Speed Dating Manager with targeted broadcast support and player name lookup
             this.speedDatingManager = new SpeedDatingManager(this.agents, (eventType: string, data: any, targetPlayer?: string) => {
                 if (targetPlayer) {
                     // Send to specific player
@@ -745,6 +745,10 @@ export class HeartwoodRoom extends Room<GameState> {
                     // Broadcast to all players
                     this.broadcast(eventType, data);
                 }
+            }, (playerId: string) => {
+                // Player name lookup function
+                const player = this.state.players.get(playerId);
+                return player?.name || `Player_${playerId.substring(0, 8)}`;
             });
             console.log('💕 [SERVER] Speed Dating Manager initialized');
             

@@ -76,7 +76,7 @@ export class SpeedDatingManager {
     family: ['family', 'children', 'home', 'future', 'together', 'commitment', 'marriage', 'settle', 'build']
   };
 
-  constructor(agents: Map<string, SpawnedAgent>, broadcastCallback: (eventType: string, data: any, targetPlayer?: string) => void) {
+  constructor(agents: Map<string, SpawnedAgent>, broadcastCallback: (eventType: string, data: any, targetPlayer?: string) => void, private getPlayerName?: (playerId: string) => string) {
     this.agents = agents;
     this.broadcastCallback = broadcastCallback;
   }
@@ -717,16 +717,26 @@ export class SpeedDatingManager {
   private async triggerPostGauntletReflections(): Promise<void> {
     if (!this.currentEvent) return;
 
-    const npcParticipants = this.currentEvent.participants.filter(p => p.participantType === 'npc');
+    // Get only NPCs who actually had matches (not all registered NPCs)
+    const npcIds = [...new Set(this.currentEvent.matches.map(m => m.npcId))];
+    console.log(`💭 [SPEED_DATING] Processing reflections for ${npcIds.length} NPCs who had matches: ${npcIds.join(', ')}`);
     
-    // Process all NPC reflections
-    const reflectionPromises = npcParticipants.map(participant => {
-      const npcMatches = this.currentEvent!.matches.filter(m => m.npcId === participant.participantId);
+    // Process reflections only for NPCs who had matches
+    const reflectionPromises = npcIds.map(npcId => {
+      const npcMatches = this.currentEvent!.matches.filter(m => m.npcId === npcId);
+      
+      // Add player names to matches for better processing
+      const matchesWithPlayerNames = npcMatches.map(match => ({
+        ...match,
+        playerName: this.getPlayerName ? this.getPlayerName(match.playerId) : match.playerId
+      }));
+      
+      console.log(`💭 [SPEED_DATING] NPC ${npcId} had ${npcMatches.length} matches with players: ${matchesWithPlayerNames.map(m => m.playerName).join(', ')}`);
       
       return this.notifyWebAPI('post_gauntlet_reflection', {
         eventId: this.currentEvent!.id,
-        npcId: participant.participantId,
-        matches: npcMatches,
+        npcId: npcId,
+        matches: matchesWithPlayerNames,
         vibeScores: npcMatches.map(m => ({
           matchId: m.id,
           scores: this.vibeScores.get(m.id) || []
@@ -1027,7 +1037,8 @@ export class SpeedDatingManager {
           const npcRankings = results
             .filter((r: any) => r.npc_id === npcId)
             .map((r: any) => ({
-              playerId: r.player_id,
+              playerId: r.player_name || r.player_id, // Use player_name for display if available
+              playerIdOriginal: r.player_id, // Keep original ID for matching
               finalRank: r.final_rank,
               overallImpression: r.overall_impression,
               attractionLevel: r.attraction_level,
@@ -1038,6 +1049,8 @@ export class SpeedDatingManager {
               memorableMoments: r.memorable_moments
             }))
             .sort((a: any, b: any) => a.finalRank - b.finalRank);
+          
+          console.log(`📊 [SPEED_DATING] NPC ${npcId} rankings:`, npcRankings.map(r => `${r.playerId} (#${r.finalRank})`));
           
           npcGroupedResults.push({
             npcId,

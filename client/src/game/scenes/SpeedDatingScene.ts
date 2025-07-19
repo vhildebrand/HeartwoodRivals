@@ -1183,11 +1183,14 @@ export class SpeedDatingScene extends Scene {
                 }
             ).setOrigin(0.5);
             
-            // Player info
+            // Player info - use playerIdOriginal for matching, playerId for display
+            const isCurrentPlayer = ranking.playerIdOriginal === this.currentMatch?.playerId || ranking.playerId === this.currentMatch?.playerId;
+            const displayName = isCurrentPlayer ? 'You' : ranking.playerId;
+            
             const playerText = this.add.text(
                 -width * 0.25,
                 yOffset - 15,
-                `${ranking.playerId === this.currentMatch?.playerId ? 'You' : `Player ${ranking.playerId.substring(0, 8)}`}`,
+                displayName,
                 {
                     fontSize: '20px',
                     color: '#ffffff',
@@ -1236,8 +1239,10 @@ export class SpeedDatingScene extends Scene {
             ]);
         });
         
-        // Confessional quote
-        const playerRanking = currentNpc.rankings.find((r: any) => r.playerId === this.currentMatch?.playerId);
+        // Confessional quote - use playerIdOriginal for matching if available
+        const playerRanking = currentNpc.rankings.find((r: any) => 
+            r.playerIdOriginal === this.currentMatch?.playerId || r.playerId === this.currentMatch?.playerId
+        );
         if (playerRanking) {
             const quoteBg = this.add.rectangle(
                 width / 2,

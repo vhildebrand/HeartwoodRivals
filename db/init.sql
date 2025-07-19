@@ -358,7 +358,7 @@ CREATE TABLE date_vibe_scores (
     player_message TEXT NOT NULL,
     npc_response TEXT,
     vibe_score INT NOT NULL, -- -10 to +10 scale
-    vibe_reason TEXT, -- LLM-generated explanation of score
+    vibe_reason TEXT, -- LLM-generated explanation of score (changed from VARCHAR to TEXT for LLM responses)
     keyword_matches TEXT[], -- Keywords that triggered the score
     timestamp TIMESTAMPTZ DEFAULT now()
 );
@@ -383,6 +383,7 @@ CREATE TABLE gauntlet_results (
     id BIGSERIAL PRIMARY KEY,
     event_id BIGINT REFERENCES speed_dating_events(id) ON DELETE CASCADE,
     player_id VARCHAR(50) NOT NULL, -- Player session ID from game server
+    player_name VARCHAR(255), -- Display name of the player for speed dating results UI
     npc_id VARCHAR(50) REFERENCES agents(id),
     final_rank INT NOT NULL, -- NPC's ranking of this player (1 = best)
     overall_impression TEXT NOT NULL, -- NPC's overall thoughts
@@ -438,15 +439,11 @@ CREATE INDEX idx_date_vibe_scores_timestamp ON date_vibe_scores(timestamp);
 CREATE INDEX idx_date_assessments_match_id ON date_assessments(match_id);
 CREATE INDEX idx_gauntlet_results_event_player ON gauntlet_results(event_id, player_id);
 CREATE INDEX idx_gauntlet_results_npc_rank ON gauntlet_results(npc_id, final_rank);
+CREATE INDEX idx_gauntlet_results_player_name ON gauntlet_results(player_name);
 CREATE INDEX idx_social_seasons_dates ON social_seasons(start_date, end_date);
 CREATE INDEX idx_dating_system_config_key ON dating_system_config(config_key);
 
 
--- Migration 003: Fix vibe_reason column type
--- The vibe_reason column was too small (VARCHAR(100)) for LLM-generated reasons
-
-ALTER TABLE date_vibe_scores 
-ALTER COLUMN vibe_reason TYPE TEXT;
-
--- Add comment to clarify purpose
-COMMENT ON COLUMN date_vibe_scores.vibe_reason IS 'LLM-generated explanation of the vibe score change'; 
+-- Add comments to clarify purpose
+COMMENT ON COLUMN date_vibe_scores.vibe_reason IS 'LLM-generated explanation of the vibe score change';
+COMMENT ON COLUMN gauntlet_results.player_name IS 'Display name of the player for speed dating results UI'; 

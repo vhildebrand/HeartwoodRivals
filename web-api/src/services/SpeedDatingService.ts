@@ -481,12 +481,22 @@ export class SpeedDatingService {
         assessments
       );
       
+      console.log(`📝 [SPEED_DATING] Ranking prompt for ${request.npcId} (first 500 chars):`);
+      console.log(rankingPrompt.substring(0, 500) + '...');
+      console.log(`📊 [SPEED_DATING] Matches data for ${request.npcId}:`, request.matches.map(m => ({ id: m.id, playerId: m.playerId, playerName: (m as any).playerName })));
+      console.log(`📊 [SPEED_DATING] Assessments data for ${request.npcId}:`, assessments.length > 0 ? assessments.map(a => ({ match_id: a.match_id, player_id: a.player_id })) : 'No assessments');
+      console.log(`📊 [SPEED_DATING] Vibe scores data for ${request.npcId}:`, request.vibeScores.map(v => ({ matchId: v.matchId, scoresCount: v.scores.length })));
+      
+      // Create list of valid player IDs to constrain LLM output
+      const validPlayerIds = request.matches.map((m: any) => m.playerId);
+      console.log(`🎯 [SPEED_DATING] Valid player IDs for ${request.npcId}:`, validPlayerIds);
+      
       // Call LLM for ranking
       const llmResponse = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: rankingPrompt },
-          { role: 'user', content: 'Please rank all the players you met during the speed dating gauntlet.' }
+          { role: 'user', content: `Please rank all the players you met during the speed dating gauntlet. You must rank exactly these players (use their exact Player IDs): ${validPlayerIds.join(', ')}` }
         ],
         max_tokens: 1200,
         temperature: 0.8,
@@ -534,8 +544,19 @@ export class SpeedDatingService {
       
       const rankingData = JSON.parse(functionCall.arguments);
       
+      // Validate and filter rankings to only include actual players
+      const validRankings = rankingData.rankings.filter((ranking: any) => {
+        const isValid = validPlayerIds.includes(ranking.player_id);
+        if (!isValid) {
+          console.warn(`⚠️ [SPEED_DATING] LLM created ranking for invalid player ID: ${ranking.player_id}, ignoring`);
+        }
+        return isValid;
+      });
+      
+      console.log(`✅ [SPEED_DATING] Filtered rankings: ${validRankings.length}/${rankingData.rankings.length} valid for ${request.npcId}`);
+
       // Create rankings
-      const rankings: PlayerRanking[] = rankingData.rankings.map((ranking: any) => ({
+      const rankings: PlayerRanking[] = validRankings.map((ranking: any) => ({
         playerId: ranking.player_id,
         finalRank: ranking.final_rank,
         overallImpression: ranking.overall_impression,
@@ -547,8 +568,23 @@ export class SpeedDatingService {
         memorableMoments: ranking.memorable_moments
       }));
       
-      // Store rankings in database
-      await this.storeGauntletRankings(request.eventId, request.npcId, rankings);
+      // Ensure we have rankings for all expected players
+      if (rankings.length !== validPlayerIds.length) {
+        console.warn(`⚠️ [SPEED_DATING] Expected ${validPlayerIds.length} rankings but got ${rankings.length} for ${request.npcId}`);
+        console.warn(`⚠️ [SPEED_DATING] Missing rankings for:`, validPlayerIds.filter(id => !rankings.find(r => r.playerId === id)));
+      }
+      
+      // Extract player names from matches for storage
+      const playerNameLookup = new Map<string, string>();
+      request.matches.forEach((match: any) => {
+        if (match.playerName) {
+          playerNameLookup.set(match.playerId, match.playerName);
+        }
+      });
+      console.log(`📝 [SPEED_DATING] Player name lookup for ${request.npcId}:`, Array.from(playerNameLookup.entries()));
+      
+      // Store rankings in database with player names
+      await this.storeGauntletRankings(request.eventId, request.npcId, rankings, playerNameLookup);
       
       console.log(`✅ [SPEED_DATING] Completed gauntlet ranking for NPC ${request.npcId} - ${rankings.length} players ranked`);
       
@@ -562,14 +598,27 @@ export class SpeedDatingService {
   /**
    * Store gauntlet rankings in database and create reflection memories
    */
-  private async storeGauntletRankings(eventId: number, npcId: string, rankings: PlayerRanking[]): Promise<void> {
+  private async storeGauntletRankings(eventId: number, npcId: string, rankings: PlayerRanking[], playerNameLookup: Map<string, string> = new Map()): Promise<void> {
     for (const ranking of rankings) {
+      const playerName = playerNameLookup.get(ranking.playerId) || `Player_${ranking.playerId.substring(0, 8)}`;
+      
       await this.pool.query(
-        `INSERT INTO gauntlet_results (event_id, player_id, npc_id, final_rank, overall_impression, attraction_level, compatibility_rating, relationship_potential, confessional_statement, reasoning, memorable_moments)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        `INSERT INTO gauntlet_results (event_id, player_id, player_name, npc_id, final_rank, overall_impression, attraction_level, compatibility_rating, relationship_potential, confessional_statement, reasoning, memorable_moments)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ON CONFLICT (event_id, player_id, npc_id) DO UPDATE SET
+           player_name = EXCLUDED.player_name,
+           final_rank = EXCLUDED.final_rank,
+           overall_impression = EXCLUDED.overall_impression,
+           attraction_level = EXCLUDED.attraction_level,
+           compatibility_rating = EXCLUDED.compatibility_rating,
+           relationship_potential = EXCLUDED.relationship_potential,
+           confessional_statement = EXCLUDED.confessional_statement,
+           reasoning = EXCLUDED.reasoning,
+           memorable_moments = EXCLUDED.memorable_moments`,
         [
           eventId,
           ranking.playerId,
+          playerName,
           npcId,
           ranking.finalRank,
           ranking.overallImpression,
@@ -646,7 +695,7 @@ export class SpeedDatingService {
   async getGauntletResults(eventId: number): Promise<any[]> {
     try {
       const result = await this.pool.query(
-        `SELECT event_id, player_id, npc_id, final_rank, overall_impression, attraction_level, compatibility_rating, relationship_potential, confessional_statement, reasoning, memorable_moments, created_at
+        `SELECT event_id, player_id, player_name, npc_id, final_rank, overall_impression, attraction_level, compatibility_rating, relationship_potential, confessional_statement, reasoning, memorable_moments, created_at
          FROM gauntlet_results
          WHERE event_id = $1
          ORDER BY npc_id, final_rank ASC`,
@@ -797,16 +846,55 @@ export class SpeedDatingService {
       prompt += `Your dealbreakers: ${personalitySeed.dealbreakers.join(', ')}\n`;
     }
     
-    // Add assessment summaries
-    if (assessments.length > 0) {
+    // Add detailed information about each player and conversation
+    if (request.matches && request.matches.length > 0) {
+      prompt += `\n\nHere are the players you actually met and your conversations with them:\n`;
+      
+      request.matches.forEach((match: any) => {
+        const playerName = (match as any).playerName || match.playerId;
+        prompt += `\n${playerName} (Player ID: ${match.playerId}):\n`;
+        
+        // Find the assessment for this specific match
+        const assessment = assessments.find(a => a.match_id === match.id);
+        if (assessment) {
+          prompt += `- Overall chemistry: ${assessment.chemistry_score}/100\n`;
+          prompt += `- Compatibility: ${assessment.compatibility_score}/100\n`;
+          prompt += `- Personality match: ${assessment.personality_match_score}/100\n`;
+          prompt += `- Your perspective: ${assessment.npc_perspective}\n`;
+          prompt += `- Key moments: ${assessment.highlighted_moments?.join(', ') || 'None recorded'}\n`;
+          
+          // Include actual conversation transcript
+          if (assessment.conversation_transcript) {
+            prompt += `- Conversation transcript:\n${assessment.conversation_transcript}\n`;
+          }
+        }
+        
+        // Add vibe scores for this match
+        const matchVibes = request.vibeScores.find(v => v.matchId === match.id);
+        if (matchVibes && matchVibes.scores && matchVibes.scores.length > 0) {
+          prompt += `- Your real-time reactions during the date:\n`;
+          matchVibes.scores.forEach((vibe: any) => {
+            prompt += `  "${vibe.playerMessage}" -> You felt: ${vibe.vibeScore}/10 (${vibe.vibeReason})\n`;
+          });
+          
+          // Calculate total vibe score for this match
+          const totalVibe = matchVibes.scores.reduce((sum: number, v: any) => sum + v.vibeScore, 0);
+          prompt += `  Total vibe score: ${totalVibe}/${matchVibes.scores.length * 10}\n`;
+        }
+      });
+      
+      prompt += `\nYou met ${request.matches.length} players total. Please rank them based on the actual conversations and interactions above.\n`;
+    } else if (assessments.length > 0) {
+      // Fallback to assessment-only data if matches are missing
       prompt += `\n\nHere are the detailed assessments from your conversations:\n`;
       assessments.forEach((assessment, index) => {
-        prompt += `\nPlayer ${index + 1}:\n`;
+        const playerName = assessment.player_id || `Player ${index + 1}`;
+        prompt += `\n${playerName}:\n`;
         prompt += `- Overall chemistry: ${assessment.chemistry_score}/100\n`;
         prompt += `- Compatibility: ${assessment.compatibility_score}/100\n`;
         prompt += `- Personality match: ${assessment.personality_match_score}/100\n`;
         prompt += `- Your perspective: ${assessment.npc_perspective}\n`;
-        prompt += `- Key moments: ${assessment.highlighted_moments.join(', ')}\n`;
+        prompt += `- Key moments: ${assessment.highlighted_moments?.join(', ') || 'None recorded'}\n`;
       });
     }
     
@@ -818,10 +906,13 @@ export class SpeedDatingService {
     
     const placeholders = matchIds.map((_, index) => `$${index + 1}`).join(', ');
     const result = await this.pool.query(
-      `SELECT match_id, chemistry_score, compatibility_score, personality_match_score, npc_perspective, highlighted_moments
-       FROM date_assessments
-       WHERE match_id IN (${placeholders})
-       ORDER BY match_id`,
+      `SELECT da.match_id, da.chemistry_score, da.compatibility_score, da.personality_match_score, 
+              da.npc_perspective, da.highlighted_moments, da.conversation_transcript,
+              sdm.player_id, sdm.npc_id
+       FROM date_assessments da
+       JOIN speed_dating_matches sdm ON da.match_id = sdm.id
+       WHERE da.match_id IN (${placeholders})
+       ORDER BY da.match_id`,
       matchIds
     );
     
