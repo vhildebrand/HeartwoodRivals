@@ -59,6 +59,8 @@ export class SpeedDatingScene extends Scene {
     // Countdown UI
     private countdownContainer: Phaser.GameObjects.Container | null = null;
     private countdownText: Phaser.GameObjects.Text | null = null;
+    private countdownEndTime: number = 0;
+    private countdownInterval: number | null = null;
     
     // Results UI
     private resultsContainer: Phaser.GameObjects.Container | null = null;
@@ -359,7 +361,8 @@ export class SpeedDatingScene extends Scene {
         this.countdownContainer.setDepth(1100);
         this.countdownContainer.setVisible(false);
 
-        const countdownBg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.8);
+        // Make background more transparent to avoid white box appearance
+        const countdownBg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.6);
         
         const eventTitle = this.add.text(
             width / 2, 
@@ -376,7 +379,7 @@ export class SpeedDatingScene extends Scene {
         this.countdownText = this.add.text(
             width / 2, 
             height / 2, 
-            '', // Start with empty text, will be set by server data
+            'Starting...', // Set initial text instead of empty
             {
                 fontSize: '72px',
                 color: '#ffffff',
@@ -617,10 +620,17 @@ export class SpeedDatingScene extends Scene {
         this.game.events.on('speed_dating_npc_response', (data: any) => {
             const listenerId = Math.random().toString(36).substring(7);
             console.log(`💕 [SPEED_DATING] NPC response received by listener ${listenerId}:`, data);
+            console.log(`💕 [SPEED_DATING] Current match ID: ${this.currentMatch?.id}, Response match ID: ${data.matchId}`);
             
             // Validate data
             if (!data || !data.message) {
                 console.error('❌ [SPEED_DATING] Invalid NPC response data:', data);
+                return;
+            }
+            
+            // Ensure we're processing responses for the current match
+            if (this.currentMatch && data.matchId !== this.currentMatch.id) {
+                console.log(`⚠️ [SPEED_DATING] Ignoring response for different match. Current: ${this.currentMatch.id}, Received: ${data.matchId}`);
                 return;
             }
             
@@ -668,13 +678,22 @@ export class SpeedDatingScene extends Scene {
     private handleCountdownUpdate(data: any) {
         console.log('💕 [SPEED_DATING] Countdown update received:', JSON.stringify(data));
         
+        // Store the countdown end time if provided
+        if (data.countdownEndTime) {
+            this.countdownEndTime = data.countdownEndTime;
+        }
+        
         // Handle both initial countdown and countdown updates
-        if (data.countdownSeconds !== undefined) {
-            // Initial countdown start
-            console.log(`💕 [SPEED_DATING] Initial countdown: ${data.countdownSeconds} seconds`);
+        if (data.countdownSeconds !== undefined || data.countdownEndTime !== undefined) {
+            // Initial countdown start or late joiner
+            const remainingTime = this.countdownEndTime ? 
+                Math.max(0, Math.ceil((this.countdownEndTime - Date.now()) / 1000)) : 
+                data.countdownSeconds;
+            
+            console.log(`💕 [SPEED_DATING] Starting countdown: ${remainingTime} seconds`);
             this.scene.setVisible(true);
             this.scene.bringToTop();
-            this.showCountdown(data.countdownSeconds);
+            this.showCountdown(remainingTime);
         } else if (data.remainingSeconds !== undefined) {
             // Countdown update
             console.log(`💕 [SPEED_DATING] Countdown update: ${data.remainingSeconds} seconds remaining`);
@@ -705,13 +724,26 @@ export class SpeedDatingScene extends Scene {
     }
 
     private handleGauntletStart(data: any) {
-        this.currentEvent = data;
+        console.log('💕 [SPEED_DATING] Gauntlet started:', data);
+        
+        // Store event data
+        this.currentEvent = {
+            id: data.eventId?.toString() || data.id?.toString() || Date.now().toString(),
+            eventName: data.eventName || 'Speed Dating Gauntlet',
+            status: 'active',
+            participants: data.participants || []
+        };
+        
         this.hideCountdown();
-        this.showDialogue();
+        console.log('💕 [SPEED_DATING] Event ID stored:', this.currentEvent.id);
     }
 
     private handleMatchStart(data: any) {
         console.log('💕 [SPEED_DATING] handleMatchStart called with data:', data);
+        
+        // Ensure scene is visible and on top
+        this.scene.setVisible(true);
+        this.scene.bringToTop();
         
         // Store the full match data
         this.currentMatch = {
@@ -746,6 +778,13 @@ export class SpeedDatingScene extends Scene {
         
         // Clear previous conversation
         this.conversationLog = [];
+        
+        // Reset chat display position
+        if (this.chatHistory) {
+            this.chatHistory.setText('');
+            this.chatHistory.y = this.cameras.main.height * 0.05; // Reset to initial position
+        }
+        
         this.addToConversationLog(`💕 Starting your date with ${this.getNPCDisplayName(data.npcId)}!`);
         this.addToConversationLog(`⏱️ You have ${Math.floor(data.duration / 60)} minutes to impress them.`);
         this.addToConversationLog(`💬 Type your messages and press ENTER to send.`);
@@ -863,29 +902,29 @@ export class SpeedDatingScene extends Scene {
     }
 
     private handleGauntletComplete(data: any) {
+        console.log('💕 [SPEED_DATING] Gauntlet complete received:', data);
+        
         this.inputActive = false;
         this.hideDialogue();
         
-        // Request full results from the server
-        this.requestGauntletResults();
+        // Store event ID if provided
+        if (data.eventId && this.currentEvent) {
+            this.currentEvent.id = data.eventId.toString();
+        }
+        
+        // Request full results from the server after a short delay for better UX
+        this.time.delayedCall(500, () => {
+            this.requestGauntletResults();
+        });
     }
 
     private async requestGauntletResults() {
-        try {
-            // First, show loading message
-            this.showResults({ loading: true });
-            
-            // Request results from web API via game server
-            const gameScene = this.scene.get('GameScene') as any;
-            if (gameScene && gameScene.room) {
-                gameScene.room.send('request_gauntlet_results', {
-                    eventId: this.currentEvent?.id
-                });
-            }
-        } catch (error) {
-            console.error('❌ [SPEED_DATING] Error requesting gauntlet results:', error);
-            this.showResults({ error: true });
-        }
+        // Show loading message while waiting for automatic results broadcast
+        console.log('💕 [SPEED_DATING] Waiting for results to be broadcast...');
+        this.showResults({ loading: true });
+        
+        // Results will be automatically broadcast by the server after processing
+        // No need to manually request them
     }
 
     private showResults(data: any) {
@@ -1175,7 +1214,7 @@ export class SpeedDatingScene extends Scene {
     private showCountdown(seconds: number) {
         this.countdownContainer?.setVisible(true);
         
-        // Set initial countdown value and let server updates handle the countdown
+        // Set initial countdown value
         if (this.countdownText) {
             this.countdownText.setText(seconds.toString());
             
@@ -1189,16 +1228,42 @@ export class SpeedDatingScene extends Scene {
             }
         }
         
+        // Clear any existing countdown interval
+        if (this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+        }
+        
+        // Start client-side countdown timer if we have an end time
+        if (this.countdownEndTime > 0) {
+            this.countdownInterval = window.setInterval(() => {
+                const remaining = Math.max(0, Math.ceil((this.countdownEndTime - Date.now()) / 1000));
+                this.updateCountdown(remaining);
+                
+                if (remaining <= 0 && this.countdownInterval) {
+                    clearInterval(this.countdownInterval);
+                    this.countdownInterval = null;
+                }
+            }, 100); // Update every 100ms for smooth countdown
+        }
+        
         // Don't create local timer - let server handle countdown updates
         console.log(`💕 [SPEED_DATING] Showing countdown: ${seconds} seconds`);
     }
 
     private hideCountdown() {
         this.countdownContainer?.setVisible(false);
+        
+        // Clear countdown interval
+        if (this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+            this.countdownInterval = null;
+        }
     }
 
     private showDialogue() {
+        console.log('💕 [SPEED_DATING] showDialogue called');
         this.dialogueContainer?.setVisible(true);
+        console.log('💕 [SPEED_DATING] dialogueContainer visible:', this.dialogueContainer?.visible);
         this.addToConversationLog('💕 Welcome to the Speed Dating Gauntlet!');
         this.addToConversationLog('You will meet several NPCs in quick succession.');
         this.addToConversationLog('Try to make a good impression with each one!');
@@ -1360,8 +1425,14 @@ export class SpeedDatingScene extends Scene {
         // Clean up event listeners
         this.cleanupEventListeners();
         
+        // Clear countdown interval
+        if (this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+            this.countdownInterval = null;
+        }
+        
         // Note: Phaser scenes don't have a destroy method, cleanup is handled by the scene manager
     }
 }
 
-export default SpeedDatingScene;
+export default SpeedDatingScene; 

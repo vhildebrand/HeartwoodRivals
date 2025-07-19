@@ -1455,13 +1455,23 @@ Respond in JSON format:
     const context = await buildSpeedDatingContext(agentId, playerMessage, matchContext);
     
     // Get reputation and relationship context
-    const reputationResult = await pool.query(`
-      SELECT reputation_score, reputation_notes 
-      FROM player_reputations 
-      WHERE character_id = $1
-    `, [matchContext.playerId]);
+    // Note: matchContext.playerId is a Colyseus ID, not a UUID
+    // For now, we'll skip the reputation lookup for non-UUID player IDs
+    let reputation = { reputation_score: 0, reputation_notes: 'First time meeting' };
     
-    const reputation = reputationResult.rows[0] || { reputation_score: 0, reputation_notes: 'First time meeting' };
+    // Only try to get reputation if the playerId looks like a UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (matchContext.playerId && uuidRegex.test(matchContext.playerId)) {
+      const reputationResult = await pool.query(`
+        SELECT reputation_score, reputation_notes 
+        FROM player_reputations 
+        WHERE character_id = $1
+      `, [matchContext.playerId]);
+      
+      if (reputationResult.rows.length > 0) {
+        reputation = reputationResult.rows[0];
+      }
+    }
     
     // Build comprehensive speed dating evaluation prompt
     const prompt = buildSpeedDatingEvaluationPrompt(context, playerMessage, reputation, matchContext);

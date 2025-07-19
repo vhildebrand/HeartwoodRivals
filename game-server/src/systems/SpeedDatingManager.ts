@@ -48,7 +48,7 @@ interface VibeScoreEntry {
 
 export class SpeedDatingManager {
   private agents: Map<string, SpawnedAgent>;
-  private broadcastCallback: (eventType: string, data: any) => void;
+  private broadcastCallback: (eventType: string, data: any, targetPlayer?: string) => void;
   private currentEvent: SpeedDatingEvent | null = null;
   private currentMatch: SpeedDatingMatch | null = null;
   private activeMatches: Map<string, SpeedDatingMatch> = new Map(); // Track active matches per player
@@ -58,9 +58,11 @@ export class SpeedDatingManager {
   private countdownTimer: NodeJS.Timeout | null = null;
   private isCountingDown: boolean = false;
   private eventStartCountdown: number = 0;
+  private countdownEndTime: number = 0; // Store the end time for countdown synchronization
   private pausedActivities: Map<string, any> = new Map();
   private currentRound: number = 0; // Track current round
   private maxRounds: number = 0; // Maximum number of rounds
+  private matchIdCounter: number = 1; // Counter for generating unique match IDs
 
   // Dating-specific configuration (using real-world time, not game time)
   private readonly DEFAULT_DATE_DURATION = 2 * 60 * 1000; // 2 minutes in real-world milliseconds
@@ -74,7 +76,7 @@ export class SpeedDatingManager {
     family: ['family', 'children', 'home', 'future', 'together', 'commitment', 'marriage', 'settle', 'build']
   };
 
-  constructor(agents: Map<string, SpawnedAgent>, broadcastCallback: (eventType: string, data: any) => void) {
+  constructor(agents: Map<string, SpawnedAgent>, broadcastCallback: (eventType: string, data: any, targetPlayer?: string) => void) {
     this.agents = agents;
     this.broadcastCallback = broadcastCallback;
   }
@@ -222,12 +224,14 @@ export class SpeedDatingManager {
     
     this.isCountingDown = true;
     this.eventStartCountdown = this.COUNTDOWN_DURATION / 1000; // Convert to seconds
+    this.countdownEndTime = Date.now() + this.COUNTDOWN_DURATION; // Store the end time
 
-    // Broadcast countdown start
+    // Broadcast countdown start to all players
     await this.broadcastEvent('speed_dating_countdown', {
       eventId: this.currentEvent.id,
       eventName: this.currentEvent.eventName,
       countdownSeconds: this.eventStartCountdown,
+      countdownEndTime: this.countdownEndTime,
       location: this.currentEvent.location
     });
 
@@ -237,10 +241,11 @@ export class SpeedDatingManager {
       
       console.log(`⏰ [SPEED_DATING] Countdown: ${this.eventStartCountdown} seconds remaining`);
       
-      // Broadcast countdown update
+      // Broadcast countdown update to all players
       await this.broadcastEvent('speed_dating_countdown', {
         eventId: this.currentEvent?.id || 0,
-        remainingSeconds: this.eventStartCountdown
+        remainingSeconds: this.eventStartCountdown,
+        countdownEndTime: this.countdownEndTime
       });
 
       if (this.eventStartCountdown <= 0) {
@@ -334,7 +339,7 @@ export class SpeedDatingManager {
         const npc = npcs[npcIndex];
         
         const match: SpeedDatingMatch = {
-          id: Date.now() + Math.floor(Math.random() * 1000000) + playerIndex * 1000 + round,
+          id: this.currentEvent.id * 10000 + this.matchIdCounter++,
           eventId: this.currentEvent.id,
           playerId: player.participantId,
           npcId: npc.participantId,
@@ -415,7 +420,7 @@ export class SpeedDatingManager {
       // Track active match for each player
       this.activeMatches.set(match.playerId, match);
       
-      // Broadcast match start to specific player
+      // Send match start to specific player only
       await this.broadcastEvent('speed_dating_match_start', {
         eventId: this.currentEvent.id,
         matchId: match.id,
@@ -426,7 +431,7 @@ export class SpeedDatingManager {
         duration: match.durationSeconds,
         npcName: match.npcId,
         totalRounds: this.maxRounds
-      });
+      }, match.playerId);
       
       console.log(`💕 [SPEED_DATING] Started match for player ${match.playerId} with NPC ${match.npcId} (Round ${match.round})`);
     }
@@ -450,7 +455,7 @@ export class SpeedDatingManager {
       match.status = 'completed';
       match.endTime = new Date();
       
-      // Broadcast match end to specific player
+      // Send match end to specific player only
       await this.broadcastEvent('speed_dating_match_end', {
         eventId: this.currentEvent?.id || 0,
         matchId: match.id,
@@ -458,7 +463,7 @@ export class SpeedDatingManager {
         npcId: match.npcId,
         matchOrder: match.matchOrder,
         round: match.round
-      });
+      }, match.playerId);
       
       // Trigger post-date assessment
       await this.triggerPostDateAssessment(match);
@@ -507,17 +512,17 @@ export class SpeedDatingManager {
       }
     }
 
-    // Broadcast NPC response to specific player
-    console.log(`📢 [SPEED_DATING] Broadcasting NPC response for match ${currentMatch.id}: "${npcResponse}"`);
+    // Send NPC response to specific player only
+    console.log(`📢 [SPEED_DATING] Sending NPC response to player ${playerId} for match ${currentMatch.id}: "${npcResponse}"`);
     await this.broadcastEvent('speed_dating_npc_response', {
       eventId: this.currentEvent?.id || 0,
       matchId: currentMatch.id,
-      playerId: playerId, // Specify target player
+      playerId: playerId,
       npcId: currentMatch.npcId,
       npcName: currentMatch.npcId,
       message: npcResponse,
       timestamp: Date.now()
-    });
+    }, playerId);
 
     // Get sophisticated vibe score from LLM evaluation
     let vibeScore: { score: number, reason: string, keywords: string[] } = { score: 0, reason: 'Evaluating...', keywords: [] };
@@ -582,7 +587,7 @@ export class SpeedDatingManager {
     matchVibes.push(vibeEntry);
     this.vibeScores.set(currentMatch.id, matchVibes);
 
-    // Only broadcast vibe update if there's an actual score change (non-zero)
+    // Only send vibe update to specific player if there's an actual score change (non-zero)
     if (vibeScore.score !== 0) {
       await this.broadcastEvent('speed_dating_vibe_update', {
         eventId: this.currentEvent?.id || 0,
@@ -591,7 +596,7 @@ export class SpeedDatingManager {
         vibeScore: vibeScore.score,
         vibeReason: vibeScore.reason,
         cumulativeScore: this.calculateCumulativeVibeScore(currentMatch.id)
-      });
+      }, playerId);
     }
 
     // Notify web API for storage
@@ -706,7 +711,7 @@ export class SpeedDatingManager {
     
     this.currentEvent.status = 'completed';
 
-    // Broadcast event completion
+    // Broadcast event completion to all players
     await this.broadcastEvent('speed_dating_complete', {
       eventId: this.currentEvent.id,
       eventName: this.currentEvent.eventName,
@@ -719,9 +724,12 @@ export class SpeedDatingManager {
     // Resume normal NPC activities
     await this.resumeNPCActivities();
 
-    // Clean up
-    this.currentEvent = null;
-    this.vibeScores.clear();
+    // Wait a bit for reflections to complete before clearing data
+    setTimeout(() => {
+      // Clean up
+      this.currentEvent = null;
+      this.vibeScores.clear();
+    }, 5000);
     
     console.log(`✅ [SPEED_DATING] Event completed successfully`);
   }
@@ -734,11 +742,12 @@ export class SpeedDatingManager {
 
     const npcParticipants = this.currentEvent.participants.filter(p => p.participantType === 'npc');
     
-    for (const participant of npcParticipants) {
-      const npcMatches = this.currentEvent.matches.filter(m => m.npcId === participant.participantId);
+    // Process all NPC reflections
+    const reflectionPromises = npcParticipants.map(participant => {
+      const npcMatches = this.currentEvent!.matches.filter(m => m.npcId === participant.participantId);
       
-      await this.notifyWebAPI('post_gauntlet_reflection', {
-        eventId: this.currentEvent.id,
+      return this.notifyWebAPI('post_gauntlet_reflection', {
+        eventId: this.currentEvent!.id,
         npcId: participant.participantId,
         matches: npcMatches,
         vibeScores: npcMatches.map(m => ({
@@ -746,7 +755,17 @@ export class SpeedDatingManager {
           scores: this.vibeScores.get(m.id) || []
         }))
       });
-    }
+    });
+    
+    // Wait for all reflections to complete
+    await Promise.allSettled(reflectionPromises);
+    
+    console.log(`✅ [SPEED_DATING] All NPC reflections completed`);
+    
+    // After reflections are done, fetch and broadcast results to all players
+    setTimeout(async () => {
+      await this.fetchAndBroadcastResults();
+    }, 2000); // Give the web API time to process reflections
   }
 
   /**
@@ -826,13 +845,17 @@ export class SpeedDatingManager {
   }
 
   /**
-   * Broadcast event to all clients
+   * Broadcast event to all clients or a specific player
    */
-  private async broadcastEvent(eventType: string, data: any): Promise<void> {
-    console.log(`📢 [SPEED_DATING] Broadcasting ${eventType}:`, data);
+  private async broadcastEvent(eventType: string, data: any, targetPlayer?: string): Promise<void> {
+    if (targetPlayer) {
+      console.log(`📢 [SPEED_DATING] Sending ${eventType} to player ${targetPlayer}:`, data);
+    } else {
+      console.log(`📢 [SPEED_DATING] Broadcasting ${eventType} to all players:`, data);
+    }
     
     // Use the broadcast callback from HeartwoodRoom
-    this.broadcastCallback(eventType, data);
+    this.broadcastCallback(eventType, data, targetPlayer);
   }
 
   /**
@@ -957,6 +980,75 @@ export class SpeedDatingManager {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.warn(`⚠️ [SPEED_DATING] Failed to notify web API of ${eventType}:`, errorMessage);
       console.warn(`⚠️ [SPEED_DATING] Speed dating event will continue without web API integration`);
+    }
+  }
+
+  /**
+   * Fetch and broadcast results to all players
+   */
+  private async fetchAndBroadcastResults(): Promise<void> {
+    if (!this.currentEvent) return;
+    
+    try {
+      console.log(`📊 [SPEED_DATING] Fetching results for event ${this.currentEvent.id}`);
+      
+      // Fetch results from web API
+      const response = await fetch(`http://web-api:3000/dating/gauntlet-results/${this.currentEvent.id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(10000)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch results: ${response.status}`);
+      }
+      
+      const results = await response.json() as any[];
+      
+      // Group results by NPC
+      const npcGroupedResults: any[] = [];
+      const npcIds = [...new Set(results.map((r: any) => r.npc_id))];
+      
+      for (const npcId of npcIds) {
+        const npcRankings = results
+          .filter((r: any) => r.npc_id === npcId)
+          .map((r: any) => ({
+            playerId: r.player_id,
+            finalRank: r.final_rank,
+            overallImpression: r.overall_impression,
+            attractionLevel: r.attraction_level,
+            compatibilityRating: r.compatibility_rating,
+            relationshipPotential: r.relationship_potential,
+            confessionalStatement: r.confessional_statement,
+            reasoning: r.reasoning,
+            memorableMoments: r.memorable_moments
+          }))
+          .sort((a: any, b: any) => a.finalRank - b.finalRank);
+        
+        npcGroupedResults.push({
+          npcId,
+          rankings: npcRankings
+        });
+      }
+      
+      // Broadcast results to all players
+      await this.broadcastEvent('speed_dating_results', {
+        eventId: this.currentEvent.id,
+        npcResults: npcGroupedResults
+      });
+      
+      console.log(`✅ [SPEED_DATING] Results broadcast to all players`);
+      
+    } catch (error) {
+      console.error('❌ [SPEED_DATING] Error fetching/broadcasting results:', error);
+      
+      // Send error to all players
+      await this.broadcastEvent('speed_dating_results', {
+        error: true,
+        message: 'Failed to load results'
+      });
     }
   }
 
