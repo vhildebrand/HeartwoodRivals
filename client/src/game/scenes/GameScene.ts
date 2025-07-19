@@ -114,6 +114,9 @@ export class GameScene extends Scene {
         this.wallsLayer = null; // No walls layer in Beacon Bay map
         // const aboveLayer = map.createLayer('Above', tileset); // No above layer in Beacon Bay map
         
+        // Create building sprites from the object layer
+        this.createBuildingSprites(map);
+        
         // Set up camera with proper bounds
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         
@@ -135,6 +138,51 @@ export class GameScene extends Scene {
         if (mapData) {
             console.log(`MapManager: Loaded map with ${mapData.width}x${mapData.height} tiles`);
         }
+    }
+
+    private createBuildingSprites(map: Phaser.Tilemaps.Tilemap) {
+        console.log("Creating building sprites from object layer...");
+        
+        // Get the city object layer
+        const cityLayer = map.getObjectLayer('city');
+        if (!cityLayer) {
+            console.log("No 'city' object layer found in map");
+            return;
+        }
+        
+        console.log(`Found ${cityLayer.objects.length} building objects to create`);
+        
+        // Create sprites for each building object
+        cityLayer.objects.forEach((obj: any) => {
+            // Since you didn't set type properties, we'll use the object name or a default
+            // You can customize this logic based on your object naming scheme
+            let textureKey = 'tile_ME_Singles_Generic_Building_16x16_Condo_4_30'; // Default texture
+            
+            // Check if the object has a type property set in Tiled
+            if (obj.type) {
+                // Use the type as the texture key (it should already include 'tile_' prefix or be the full texture name)
+                const possibleKey = obj.type.startsWith('tile_') ? obj.type : `tile_${obj.type}`;
+                if (this.textures.exists(possibleKey)) {
+                    textureKey = possibleKey;
+                }
+            }
+            // Fallback: also check object name for backwards compatibility
+            else if (obj.name) {
+                const possibleKey = `tile_${obj.name}`;
+                if (this.textures.exists(possibleKey)) {
+                    textureKey = possibleKey;
+                }
+            }
+            
+            // Create the sprite at the object's position
+            const sprite = this.add.sprite(obj.x, obj.y - obj.height, textureKey);
+            sprite.setOrigin(0, 0); // Set origin to top-left to match Tiled positioning
+            sprite.setDepth(obj.y); // Set depth based on Y position for proper layering
+            
+            console.log(`Created building sprite at (${obj.x}, ${obj.y}) with texture: ${textureKey}`);
+        });
+        
+        console.log("Building sprites creation complete!");
     }
 
     private initializeControllers() {

@@ -211,7 +211,7 @@ export class HeartwoodRoom extends Room<GameState> {
     private loadMap() {
         try {
             // Load the Beacon Bay map data
-            const mapPath = path.join(__dirname, '../maps/beacon_bay_map.json');
+            const mapPath = path.join(__dirname, '../maps/beacon_bay_map_copy.json');
             const mapData = JSON.parse(fs.readFileSync(mapPath, 'utf8'));
             
             // Load the map into the MapManager

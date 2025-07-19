@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<tileset version="1.10" tiledversion="1.11.2" name="modern_exteriors_city" tilewidth="432" tileheight="544" tilecount="173" columns="0">
+<tileset version="1.10" tiledversion="1.11.2" name="modern_exteriors_city" tilewidth="432" tileheight="544" tilecount="183" columns="0">
  <grid orientation="orthogonal" width="1" height="1"/>
  <tile id="2372">
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/21_Beach_16x16_Bamboo_Bar_Counter_2_Sand.png" width="48" height="64"/>
@@ -488,12 +488,21 @@
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Vehicles_16x16_Tacos_Truck_1.png" width="112" height="80"/>
  </tile>
  <tile id="2534">
+  <properties>
+   <property name="type" value="ME_Singles_Villas_16x16_Toy_House_1"/>
+  </properties>
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Villas_16x16_Toy_House_1.png" width="64" height="80"/>
  </tile>
  <tile id="2535">
+  <properties>
+   <property name="type" value="ME_Singles_Villas_16x16_Toy_House_3"/>
+  </properties>
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Villas_16x16_Toy_House_3.png" width="64" height="80"/>
  </tile>
  <tile id="2536">
+  <properties>
+   <property name="type" value="ME_Singles_Villas_16x16_Toy_House_5"/>
+  </properties>
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Villas_16x16_Toy_House_5.png" width="64" height="80"/>
  </tile>
  <tile id="2537">
@@ -519,5 +528,35 @@
  </tile>
  <tile id="2544">
   <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Villas_16x16_Villa_5.png" width="144" height="208"/>
+ </tile>
+ <tile id="2545">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_City_Props_16x16_Kiosk_Infopoint_2.png" width="80" height="96"/>
+ </tile>
+ <tile id="2546">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_City_Props_16x16_Wind_Turbine_1.png" width="96" height="160"/>
+ </tile>
+ <tile id="2547">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Generic_Building_16x16_Condo_3_45.png" width="96" height="160"/>
+ </tile>
+ <tile id="2548">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Generic_Building_16x16_Condo_3_46.png" width="112" height="288"/>
+ </tile>
+ <tile id="2549">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Generic_Building_16x16_Condo_3_44.png" width="96" height="128"/>
+ </tile>
+ <tile id="2550">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Generic_Building_16x16_Condo_5_1.png" width="96" height="176"/>
+ </tile>
+ <tile id="2551">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Generic_Building_16x16_Condo_5_2.png" width="96" height="176"/>
+ </tile>
+ <tile id="2552">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Generic_Building_16x16_Condo_5_3.png" width="96" height="176"/>
+ </tile>
+ <tile id="2553">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Generic_Building_16x16_Condo_4_36.png" width="64" height="64"/>
+ </tile>
+ <tile id="2554">
+  <image source="tiles/Modern_Exteriors_Complete_Singles_16x16/ME_Singles_Generic_Building_16x16_Hardware_Store_Example.png" width="128" height="144"/>
  </tile>
 </tileset>
