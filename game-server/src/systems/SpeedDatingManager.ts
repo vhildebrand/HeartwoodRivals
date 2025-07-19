@@ -65,7 +65,7 @@ export class SpeedDatingManager {
   private matchIdCounter: number = 1; // Counter for generating unique match IDs
 
   // Dating-specific configuration (using real-world time, not game time)
-  private readonly DEFAULT_DATE_DURATION = 2 * 60 * 1000; // 2 minutes in real-world milliseconds
+  private readonly DEFAULT_DATE_DURATION = 30 * 1000; // 30 seconds in real-world milliseconds (for debugging)
   private readonly COUNTDOWN_DURATION = 15 * 1000; // 15 seconds in real-world milliseconds
   private readonly VIBE_KEYWORDS = {
     positive: ['love', 'like', 'enjoy', 'fun', 'great', 'amazing', 'wonderful', 'beautiful', 'interesting', 'exciting'],
@@ -326,8 +326,8 @@ export class SpeedDatingManager {
       return;
     }
 
-    // Calculate total rounds (each player should date each NPC)
-    this.maxRounds = npcs.length;
+    // Calculate total rounds (for testing, only do 1 round)
+    this.maxRounds = 1; // Changed from npcs.length to 1 for testing
 
     // Create rotation schedule
     for (let round = 0; round < this.maxRounds; round++) {
@@ -740,7 +740,7 @@ export class SpeedDatingManager {
     console.log(`✅ [SPEED_DATING] All NPC reflections completed`);
     
     // After reflections are done, fetch and broadcast results to all players
-    // Give more time for LLM processing and database writes
+    // Give much more time for LLM processing and database writes
     setTimeout(async () => {
       // Only fetch results if the event is still valid
       if (this.currentEvent) {
@@ -748,7 +748,7 @@ export class SpeedDatingManager {
       } else {
         console.warn('⚠️ [SPEED_DATING] Event was cleared before results could be fetched');
       }
-    }, 8000); // Give the web API 8 seconds to process reflections
+    }, 20000); // Give the web API 20 seconds to process reflections (increased from 8)
   }
 
   /**
@@ -989,7 +989,7 @@ export class SpeedDatingManager {
   private async fetchAndBroadcastResults(): Promise<void> {
     if (!this.currentEvent) return;
     
-    const maxRetries = 3;
+    const maxRetries = 8; // Increased from 3 to 8 for more patience with LLM processing
     let retryCount = 0;
     
     while (retryCount < maxRetries) {
@@ -1013,8 +1013,8 @@ export class SpeedDatingManager {
         
         // Check if results are empty - might need to wait more
         if (!results || results.length === 0) {
-          console.log(`⏳ [SPEED_DATING] No results yet, waiting before retry...`);
-          await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
+          console.log(`⏳ [SPEED_DATING] No results yet, waiting before retry (${retryCount + 1}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, 8000)); // Wait 8 seconds (increased from 3)
           retryCount++;
           continue;
         }
@@ -1060,13 +1060,14 @@ export class SpeedDatingManager {
         
         if (retryCount >= maxRetries) {
           // Send error to all players after all retries failed
+          console.error(`❌ [SPEED_DATING] Failed to fetch results after ${maxRetries} attempts`);
           await this.broadcastEvent('speed_dating_results', {
             error: true,
-            message: 'Results are still being processed. Please wait a moment and check again.'
+            message: 'The NPCs are taking longer than expected to process their thoughts. Results will be available shortly.'
           });
         } else {
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Wait before retrying (longer delay for LLM processing)
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Increased from 2 to 5 seconds
         }
       }
     }

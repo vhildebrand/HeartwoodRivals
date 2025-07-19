@@ -300,7 +300,7 @@ export class SpeedDatingScene extends Scene {
         this.instructionsText = this.add.text(
             width / 2, 
             height * 0.9,
-            'Press ENTER to send • Use arrow keys to scroll chat', 
+            'Press ENTER to send • Arrow keys to scroll • ESC to close results', 
             {
                 fontSize: '14px',
                 color: '#ff69b4',
@@ -530,6 +530,19 @@ export class SpeedDatingScene extends Scene {
     private setupInputHandlers() {
         // Keyboard input
         this.input.keyboard!.on('keydown', (event: KeyboardEvent) => {
+            // Handle Escape key to close results screen
+            if (event.key === 'Escape') {
+                console.log('💕 [SPEED_DATING] ESC key pressed!');
+                console.log('💕 [SPEED_DATING] Results container visible:', this.resultsContainer?.visible);
+                if (this.resultsContainer?.visible) {
+                    console.log('💕 [SPEED_DATING] Closing results screen with ESC');
+                    this.returnToGame();
+                    return;
+                } else {
+                    console.log('💕 [SPEED_DATING] Results container not visible, ESC ignored');
+                }
+            }
+            
             if (!this.inputActive) return;
             
             if (event.key === 'Enter') {
@@ -984,8 +997,8 @@ export class SpeedDatingScene extends Scene {
         
         const loadingText = this.add.text(
             width / 2,
-            height / 2,
-            'Loading results...\n\nNPCs are sharing their thoughts...',
+            height / 2 - 40,
+            'Loading results...\n\nNPCs are sharing their thoughts...\nThis may take up to a minute.',
             {
                 fontSize: '24px',
                 color: '#ffffff',
@@ -995,7 +1008,38 @@ export class SpeedDatingScene extends Scene {
             }
         ).setOrigin(0.5);
         
-        this.resultsContainer?.add(loadingText);
+        const tipText = this.add.text(
+            width / 2,
+            height / 2 + 40,
+            'You can close this screen and return to the game while waiting.',
+            {
+                fontSize: '16px',
+                color: '#aaaaaa',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                align: 'center',
+                fontStyle: 'italic'
+            }
+        ).setOrigin(0.5);
+
+        // Add close button to loading screen too
+        const closeButton = this.add.rectangle(width / 2, height / 2 + 100, 200, 50, 0x666666, 0.8);
+        closeButton.setStrokeStyle(2, 0xffffff);
+        closeButton.setInteractive({ useHandCursor: true });
+        closeButton.on('pointerdown', () => this.returnToGame());
+
+        const closeButtonText = this.add.text(
+            width / 2, 
+            height / 2 + 100, 
+            'CLOSE & RETURN TO GAME', 
+            {
+                fontSize: '16px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+        
+        this.resultsContainer?.add([loadingText, tipText, closeButton, closeButtonText]);
     }
 
     private displayErrorResults() {
@@ -1006,7 +1050,7 @@ export class SpeedDatingScene extends Scene {
         
         const errorText = this.add.text(
             width / 2,
-            height / 2 - 40,
+            height / 2 - 60,
             'Results are still being processed',
             {
                 fontSize: '28px',
@@ -1018,7 +1062,7 @@ export class SpeedDatingScene extends Scene {
         
         const subText = this.add.text(
             width / 2,
-            height / 2,
+            height / 2 - 20,
             'The NPCs need more time to reflect on their dates.\nResults will appear automatically when ready.',
             {
                 fontSize: '18px',
@@ -1031,17 +1075,36 @@ export class SpeedDatingScene extends Scene {
         
         const tipText = this.add.text(
             width / 2,
-            height / 2 + 60,
-            'Tip: You can close this and results will appear when ready',
+            height / 2 + 20,
+            'You can close this screen and return to the game.\nResults will be available when ready.',
             {
-                fontSize: '14px',
+                fontSize: '16px',
                 color: '#aaaaaa',
                 fontFamily: '"Segoe UI", Arial, sans-serif',
-                fontStyle: 'italic'
+                align: 'center',
+                lineSpacing: 5
+            }
+        ).setOrigin(0.5);
+
+        // Add close button
+        const closeButton = this.add.rectangle(width / 2, height / 2 + 80, 200, 50, 0xcc4444, 0.9);
+        closeButton.setStrokeStyle(2, 0xffffff);
+        closeButton.setInteractive({ useHandCursor: true });
+        closeButton.on('pointerdown', () => this.returnToGame());
+
+        const closeButtonText = this.add.text(
+            width / 2, 
+            height / 2 + 80, 
+            'CLOSE & RETURN TO GAME', 
+            {
+                fontSize: '16px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold'
             }
         ).setOrigin(0.5);
         
-        this.resultsContainer?.add([errorText, subText, tipText]);
+        this.resultsContainer?.add([errorText, subText, tipText, closeButton, closeButtonText]);
     }
 
     private displayResultsPage() {

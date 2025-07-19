@@ -1007,6 +1007,12 @@ export class GameScene extends Scene {
             console.log('💕 [GAME_SCENE] NPC response:', data);
             this.game.events.emit('speed_dating_npc_response', data);
         });
+        
+        // Speed dating results ready
+        this.room.onMessage('speed_dating_results', (data: any) => {
+            console.log('💕 [GAME_SCENE] Speed dating results received:', data);
+            this.game.events.emit('speed_dating_results', data);
+        });
     }
 
     private checkNearbyNPCs() {
