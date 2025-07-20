@@ -927,7 +927,7 @@ export class HeartwoodRoom extends Room<GameState> {
             await this.speedDatingManager.registerNPCs(selectedNPCs);
             console.log(`💕 [SPEED_DATING] Registered ${selectedNPCs.length} NPCs for ${playerCount} players`);
             
-            // Start countdown (15 seconds as specified in requirements)
+            // Start countdown (10 seconds as specified in requirements)
             // The SpeedDatingManager will handle all countdown broadcasts
             this.speedDatingManager.startCountdown();
             

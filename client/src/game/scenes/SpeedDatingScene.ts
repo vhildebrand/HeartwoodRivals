@@ -69,6 +69,9 @@ export class SpeedDatingScene extends Scene {
     private vibeBarBackground: Phaser.GameObjects.Rectangle | null = null;
     private vibeBarFill: Phaser.GameObjects.Rectangle | null = null;
     
+    // Character portrait
+    private characterPortrait: Phaser.GameObjects.Image | null = null;
+    
     // Minimize/restore functionality
     private minimizeButton: Phaser.GameObjects.Rectangle | null = null;
     private minimizeButtonText: Phaser.GameObjects.Text | null = null;
@@ -142,6 +145,17 @@ export class SpeedDatingScene extends Scene {
             0.9
         );
         headerBg.setStrokeStyle(2, 0xff69b4, 0.5);
+
+        // Character portrait (initially hidden)
+        this.characterPortrait = this.add.image(
+            width / 2 - 150,
+            height * 0.15,
+            'portrait_amelia_librarian' // Default portrait, will be updated
+        );
+        this.characterPortrait.setOrigin(0.5, 0.5);
+        this.characterPortrait.setScale(0.08); // Much smaller scale to fit properly
+        this.characterPortrait.setVisible(false); // Hidden initially
+        this.characterPortrait.setDepth(1001); // Above other UI elements
 
         // NPC name and match info with better styling
         this.npcNameText = this.add.text(
@@ -394,6 +408,7 @@ export class SpeedDatingScene extends Scene {
         this.dialogueContainer.add([
             this.backgroundPanel,
             headerBg,
+            this.characterPortrait,
             this.npcNameText,
             timerIcon,
             this.timerText,
@@ -962,6 +977,22 @@ export class SpeedDatingScene extends Scene {
             const npcName = this.getNPCDisplayName(data.npcId);
             this.npcNameText.setText(`💕 Dating: ${npcName}`);
         }
+
+        // Update character portrait
+        if (this.characterPortrait) {
+            const portraitKey = this.getPortraitTextureKey(data.npcId);
+            
+            // Check if the texture exists before trying to use it
+            if (this.textures.exists(portraitKey)) {
+                this.characterPortrait.setTexture(portraitKey);
+                this.characterPortrait.setVisible(true);
+                console.log(`💕 [SPEED_DATING] Updated portrait to: ${portraitKey}`);
+            } else {
+                // Hide portrait if texture doesn't exist (fallback)
+                this.characterPortrait.setVisible(false);
+                console.warn(`⚠️ [SPEED_DATING] Portrait texture not found: ${portraitKey}`);
+            }
+        }
         
         // Update round display
         if (this.roundText) {
@@ -1032,6 +1063,10 @@ export class SpeedDatingScene extends Scene {
         return npcNames[npcId] || npcId;
     }
 
+    private getPortraitTextureKey(npcId: string): string {
+        return `portrait_${npcId}`;
+    }
+
     private handleVibeUpdate(data: VibeUpdate) {
         console.log('💕 [SPEED_DATING] Vibe update received:', JSON.stringify(data));
         
@@ -1044,20 +1079,42 @@ export class SpeedDatingScene extends Scene {
         // Update cumulative score
         this.vibeScore = data.cumulativeScore;
         
-        // Update UI with cumulative score
+        // Update UI with cumulative score and add animations
         if (this.vibeText) {
             const color = data.cumulativeScore > 0 ? '#66ff66' : data.cumulativeScore < 0 ? '#ff6666' : '#ffffff';
             this.vibeText.setText(`Vibe: ${data.cumulativeScore > 0 ? '+' : ''}${data.cumulativeScore}`);
             this.vibeText.setColor(color);
+            
+            // Add pulse animation to vibe text
+            this.tweens.add({
+                targets: this.vibeText,
+                scaleX: 1.3,
+                scaleY: 1.3,
+                duration: 200,
+                ease: 'Back.easeOut',
+                yoyo: true,
+                repeat: 0
+            });
+            
+            // Add floating text animation for the vibe change
+            if (data.vibeScore !== 0) {
+                this.createFloatingVibeText(data.vibeScore);
+            }
         }
         
-        // Update vibe bar
+        // Update vibe bar with animation
         if (this.vibeBarFill && this.vibeBarBackground) {
             const barWidth = this.vibeBarBackground.width;
             const fillWidth = Math.abs(data.cumulativeScore) / 100 * (barWidth / 2);
             const centerX = this.cameras.main.width / 2;
             
-            this.vibeBarFill.width = fillWidth;
+            // Animate the bar fill change
+            this.tweens.add({
+                targets: this.vibeBarFill,
+                width: fillWidth,
+                duration: 300,
+                ease: 'Power2.easeOut'
+            });
             
             if (data.cumulativeScore > 0) {
                 this.vibeBarFill.x = centerX + fillWidth / 2;
@@ -1067,6 +1124,17 @@ export class SpeedDatingScene extends Scene {
                 this.vibeBarFill.setFillStyle(0xff6666);
             } else {
                 this.vibeBarFill.width = 0;
+            }
+            
+            // Add a flash effect to the bar background for significant changes
+            if (Math.abs(data.vibeScore) >= 5) {
+                this.tweens.add({
+                    targets: this.vibeBarBackground,
+                    alpha: 0.5,
+                    duration: 100,
+                    yoyo: true,
+                    repeat: 1
+                });
             }
         }
         
@@ -1091,6 +1159,11 @@ export class SpeedDatingScene extends Scene {
         this.currentMessage = '';
         this.updateInputDisplay();
         
+        // Hide character portrait
+        if (this.characterPortrait) {
+            this.characterPortrait.setVisible(false);
+        }
+        
         // Show transition message
         this.addToConversationLog(`⏰ Time's up with ${this.getNPCDisplayName(data.npcId)}!`);
         this.addToConversationLog(`💭 They're thinking about your conversation...`);
@@ -1106,6 +1179,12 @@ export class SpeedDatingScene extends Scene {
         console.log('💕 [SPEED_DATING] Gauntlet complete received:', data);
         
         this.inputActive = false;
+        
+        // Hide character portrait
+        if (this.characterPortrait) {
+            this.characterPortrait.setVisible(false);
+        }
+        
         this.hideDialogue();
         
         // Return to background music
@@ -1942,6 +2021,49 @@ export class SpeedDatingScene extends Scene {
             this.game.events.emit('speed_dating_restored');
             
             console.log(`💕 [SPEED_DATING] Scene restored (woken up)${shouldPauseGame ? ' and GameScene paused' : ''}`);
+        }
+    }
+
+    private createFloatingVibeText(vibeScore: number) {
+        if (!this.vibeText) return;
+        
+        const sign = vibeScore > 0 ? '+' : '';
+        const color = vibeScore > 0 ? '#66ff66' : '#ff6666';
+        
+        // Create floating text near the vibe display
+        const floatingText = this.add.text(
+            this.vibeText.x + 50,
+            this.vibeText.y,
+            `${sign}${vibeScore}`,
+            {
+                fontSize: '20px',
+                color: color,
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 2
+            }
+        );
+        floatingText.setOrigin(0.5);
+        floatingText.setDepth(2000); // High depth to appear above everything
+        
+        // Animate the floating text
+        this.tweens.add({
+            targets: floatingText,
+            y: floatingText.y - 30,
+            alpha: 0,
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 1000,
+            ease: 'Power2.easeOut',
+            onComplete: () => {
+                floatingText.destroy();
+            }
+        });
+        
+        // Add screen shake for big vibe changes
+        if (Math.abs(vibeScore) >= 8) {
+            this.cameras.main.shake(200, 0.005);
         }
     }
 

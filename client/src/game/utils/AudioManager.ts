@@ -10,6 +10,12 @@ export class AudioManager {
     private userInteracted: boolean = false;
     private musicReadyToStart: boolean = false;
     
+    // Background music cycling improvements
+    private trackCompletionTimer: Phaser.Time.TimerEvent | null = null;
+    private trackCheckInterval: number = 1000; // Check every second
+    private lastTrackPosition: number = 0;
+    private trackStuckCounter: number = 0;
+    
     // Background music playlist (for walking around the city)
     private backgroundTracks = [
         'background_music_3', // Irisu Syndrome - About 10 Hours Looking At The Ceiling
@@ -88,31 +94,114 @@ export class AudioManager {
         if (!this.scene) return;
 
         const trackKey = this.backgroundTracks[this.currentTrackIndex];
-        console.log(`🎵 Playing background track: ${trackKey}`);
+        console.log(`🎵 Playing background track ${this.currentTrackIndex + 1}/${this.backgroundTracks.length}: ${trackKey}`);
+        
+        // Stop any existing timer
+        this.stopCompletionTimer();
         
         this.currentBackgroundMusic = this.scene.sound.add(trackKey, {
             volume: this.backgroundVolume,
             loop: false // We'll handle looping manually to cycle through tracks
         });
 
-        // Set up track completion handler to play next track
+        // Set up track completion handler (primary method)
         this.currentBackgroundMusic.once('complete', () => {
+            console.log(`🎵 Track completed via 'complete' event: ${trackKey}`);
             this.playNextBackgroundTrack();
         });
+
+        // Set up fallback completion detection system
+        this.setupCompletionFallback();
 
         this.currentBackgroundMusic.play();
     }
 
+    private setupCompletionFallback() {
+        if (!this.scene || !this.currentBackgroundMusic) return;
+
+        // Reset tracking variables
+        this.lastTrackPosition = 0;
+        this.trackStuckCounter = 0;
+
+        // Set up periodic check for track completion
+        this.trackCompletionTimer = this.scene.time.addEvent({
+            delay: this.trackCheckInterval,
+            callback: this.checkTrackCompletion,
+            callbackScope: this,
+            loop: true
+        });
+    }
+
+    private checkTrackCompletion() {
+        if (!this.currentBackgroundMusic || !this.scene) return;
+
+        try {
+            // Check if track is still playing
+            if (!this.currentBackgroundMusic.isPlaying && !this.currentBackgroundMusic.isPaused) {
+                console.log(`🎵 Track completion detected via fallback system`);
+                this.stopCompletionTimer();
+                this.playNextBackgroundTrack();
+                return;
+            }
+
+            // Check if track position is progressing (detect if stuck)
+            const currentPosition = (this.currentBackgroundMusic as any).seek || 0;
+            if (currentPosition === this.lastTrackPosition) {
+                this.trackStuckCounter++;
+                // If stuck for more than 10 seconds, consider it completed
+                if (this.trackStuckCounter >= 10) {
+                    console.log(`🎵 Track appears stuck, forcing next track`);
+                    this.stopCompletionTimer();
+                    this.playNextBackgroundTrack();
+                    return;
+                }
+            } else {
+                this.trackStuckCounter = 0;
+                this.lastTrackPosition = currentPosition;
+            }
+
+            // Additional check: if track has a duration and we're at/near the end
+            const duration = (this.currentBackgroundMusic as any).duration || 0;
+            if (duration > 0 && currentPosition >= duration - 1) {
+                console.log(`🎵 Track completion detected via duration check`);
+                this.stopCompletionTimer();
+                this.playNextBackgroundTrack();
+            }
+        } catch (error) {
+            console.warn(`🎵 Error checking track completion:`, error);
+            // If we can't check the track state, try to continue anyway
+            this.stopCompletionTimer();
+            this.playNextBackgroundTrack();
+        }
+    }
+
+    private stopCompletionTimer() {
+        if (this.trackCompletionTimer) {
+            this.trackCompletionTimer.remove();
+            this.trackCompletionTimer = null;
+        }
+    }
+
     private playNextBackgroundTrack() {
+        console.log(`🎵 Advancing from track ${this.currentTrackIndex + 1} to next track`);
         this.currentTrackIndex = (this.currentTrackIndex + 1) % this.backgroundTracks.length;
-        this.playBackgroundTrack();
+        console.log(`🎵 Next track index: ${this.currentTrackIndex + 1}/${this.backgroundTracks.length} (cycling: ${this.currentTrackIndex === 0 ? 'YES' : 'NO'})`);
+        
+        // Small delay before starting next track to avoid issues
+        if (this.scene) {
+            this.scene.time.delayedCall(500, () => {
+                this.playBackgroundTrack();
+            });
+        }
     }
 
     public stopBackgroundMusic() {
+        this.stopCompletionTimer();
         if (this.currentBackgroundMusic) {
             this.currentBackgroundMusic.stop();
             this.currentBackgroundMusic.destroy();
             this.currentBackgroundMusic = null;
+            console.log(`🎵 Background music stopped`);
         }
     }
 

@@ -66,7 +66,7 @@ export class SpeedDatingManager {
 
   // Dating-specific configuration (using real-world time, not game time)
   private readonly DEFAULT_DATE_DURATION = 1 * 60 * 1000; // 1 minute in real-world milliseconds
-  private readonly COUNTDOWN_DURATION = 15 * 1000; // 15 seconds in real-world milliseconds
+  private readonly COUNTDOWN_DURATION = 10 * 1000; // 10 seconds in real-world milliseconds
   private readonly VIBE_KEYWORDS = {
     positive: ['love', 'like', 'enjoy', 'fun', 'great', 'amazing', 'wonderful', 'beautiful', 'interesting', 'exciting'],
     negative: ['hate', 'dislike', 'boring', 'terrible', 'awful', 'disgusting', 'annoying', 'stupid', 'waste', 'pointless'],

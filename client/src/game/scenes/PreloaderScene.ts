@@ -47,6 +47,34 @@ export class PreloaderScene extends Scene {
         // Load the beacon bay locations data
         this.load.json('beacon_bay_locations', 'assets/beacon_bay_locations.json');
         
+        // Load character portraits for speed dating
+        console.log("Loading character portraits...");
+        this.load.image('portrait_amelia_librarian', 'assets/portraits/amelia_librarian.png');
+        this.load.image('portrait_captain_finn', 'assets/portraits/captain_finn.png');
+        this.load.image('portrait_captain_rodriguez', 'assets/portraits/captain_rodriguez.png');
+        this.load.image('portrait_coach_jason', 'assets/portraits/coach_jason.png');
+        this.load.image('portrait_dj_nova', 'assets/portraits/dj_nova.png');
+        this.load.image('portrait_dr_helena', 'assets/portraits/dr_helena.png');
+        this.load.image('portrait_elara_blacksmith', 'assets/portraits/elara_blacksmith.png');
+        this.load.image('portrait_father_michael', 'assets/portraits/father_michael.png');
+        this.load.image('portrait_isabella_baker', 'assets/portraits/isabella_baker.png');
+        this.load.image('portrait_judge_patricia_wells', 'assets/portraits/judge_patricia_wells.png');
+        this.load.image('portrait_luna_tailor', 'assets/portraits/luna_tailor.png');
+        this.load.image('portrait_marcus_merchant', 'assets/portraits/marcus_merchant.png');
+        this.load.image('portrait_maya_teacher', 'assets/portraits/maya_teacher.png');
+        this.load.image('portrait_mayor_henderson', 'assets/portraits/mayor_henderson.png');
+        this.load.image('portrait_melody_sinclair', 'assets/portraits/melody_sinclair.png');
+        this.load.image('portrait_officer_blake', 'assets/portraits/officer_blake.png');
+        this.load.image('portrait_oliver_lighthouse_keeper', 'assets/portraits/oliver_lighthouse_keeper.png');
+        this.load.image('portrait_professor_cornelius', 'assets/portraits/professor_cornelius.png');
+        this.load.image('portrait_sarah_farmer', 'assets/portraits/sarah_farmer.png');
+        this.load.image('portrait_sophia_apothecary', 'assets/portraits/sophia_apothecary.png');
+        this.load.image('portrait_sterling_blackwood', 'assets/portraits/sterling_blackwood.png');
+        this.load.image('portrait_thomas_tavern_keeper', 'assets/portraits/thomas_tavern_keeper.png');
+        this.load.image('portrait_victoria_woodworker', 'assets/portraits/victoria_woodworker.png');
+        this.load.image('portrait_william_shipwright', 'assets/portraits/william_shipwright.png');
+        console.log("Character portraits loaded!");
+        
         // Auto-generated tile loading code
         console.log("Loading 183 individual tile images...");
         
