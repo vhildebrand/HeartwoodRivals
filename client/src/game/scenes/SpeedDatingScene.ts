@@ -357,7 +357,8 @@ export class SpeedDatingScene extends Scene {
                 fontSize: '14px',
                 color: '#ff69b4',
                 fontFamily: '"Segoe UI", Arial, sans-serif',
-                fontStyle: 'italic'
+                fontStyle: 'italic',
+                align: 'center'
             }
         ).setOrigin(0.5);
 
@@ -542,12 +543,13 @@ export class SpeedDatingScene extends Scene {
         const subtitle = this.add.text(
             width / 2,
             height * 0.13,
-            'See how each NPC ranked their dates!',
+            'See how each NPC ranked their dates!\nUse arrow buttons to navigate • Click [-] to minimize • Press ESC to return to game',
             {
-                fontSize: '18px',
+                fontSize: '16px',
                 color: '#ffffff',
                 fontFamily: '"Segoe UI", Arial, sans-serif',
-                fontStyle: 'italic'
+                fontStyle: 'italic',
+                align: 'center'
             }
         ).setOrigin(0.5);
 
@@ -586,6 +588,31 @@ export class SpeedDatingScene extends Scene {
             }
         ).setOrigin(0.5);
 
+        // Minimize button for results screen
+        const resultsMinimizeButton = this.add.rectangle(
+            width * 0.95,
+            height * 0.08,
+            40,
+            30,
+            0x666666,
+            0.8
+        );
+        resultsMinimizeButton.setStrokeStyle(2, 0xffffff, 0.6);
+        resultsMinimizeButton.setInteractive({ useHandCursor: true });
+        resultsMinimizeButton.on('pointerdown', () => this.toggleMinimize());
+
+        const resultsMinimizeButtonText = this.add.text(
+            width * 0.95,
+            height * 0.08,
+            '−',
+            {
+                fontSize: '24px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+
         // Back to game button
         const backButton = this.add.rectangle(width / 2, height * 0.92, 200, 50, 0x4a90e2, 0.9);
         backButton.setStrokeStyle(2, 0xffffff);
@@ -612,6 +639,8 @@ export class SpeedDatingScene extends Scene {
             prevArrow,
             nextButton, 
             nextArrow,
+            resultsMinimizeButton,
+            resultsMinimizeButtonText,
             backButton, 
             backButtonText
         ]);
@@ -1883,26 +1912,36 @@ export class SpeedDatingScene extends Scene {
             this.currentMessage = '';
             this.updateInputDisplay();
             
+            // Determine what's being minimized for appropriate indicator
+            const isShowingResults = this.resultsContainer?.visible;
+            const displayText = isShowingResults ? 'Speed Dating Results' : 'Speed Dating';
+            
             // Show minimized indicator in UIScene
             this.game.events.emit('speed_dating_minimized', { 
                 currentRound: this.currentRound, 
                 totalRounds: this.totalRounds,
-                matchActive: this.currentMatch !== null
+                matchActive: this.currentMatch !== null,
+                showingResults: isShowingResults,
+                displayText: displayText
             });
             
-            console.log('💕 [SPEED_DATING] Scene minimized (sleeping) and GameScene resumed for movement');
+            console.log(`💕 [SPEED_DATING] Scene minimized (sleeping) and GameScene resumed for movement - ${displayText}`);
         } else {
             // Restore - wake the scene to bring it back into input processing
             this.scene.wake();
             this.scene.bringToTop();
             
-            // Pause the GameScene again during active speed dating
-            this.scene.pause('GameScene');
+            // Only pause GameScene if we're in active dating or showing results
+            // (don't pause if speed dating has fully ended)
+            const shouldPauseGame = this.currentMatch !== null || this.resultsContainer?.visible;
+            if (shouldPauseGame) {
+                this.scene.pause('GameScene');
+            }
             
             // Hide minimized indicator
             this.game.events.emit('speed_dating_restored');
             
-            console.log('💕 [SPEED_DATING] Scene restored (woken up) and GameScene paused');
+            console.log(`💕 [SPEED_DATING] Scene restored (woken up)${shouldPauseGame ? ' and GameScene paused' : ''}`);
         }
     }
 

@@ -588,7 +588,7 @@ export function thoughtRoutes(pool: Pool, redisClient: ReturnType<typeof createC
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 300,
+      max_tokens: 500, // Increased from 300 to prevent JSON truncation
       temperature: 0.7
     });
 

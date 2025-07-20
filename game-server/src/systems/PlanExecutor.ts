@@ -9,6 +9,7 @@ import { SpawnedAgent } from './AgentSpawner';
 import { AgentState, WorkingData, MovementData } from './AgentStateMachine';
 import { Point } from './Pathfinding';
 import { Pool } from 'pg';
+import { createClient } from 'redis';
 
 export interface ScheduledAction {
   agentId: string;
@@ -47,12 +48,14 @@ export class PlanExecutor {
   private executionHistory: Map<string, ScheduledAction[]> = new Map();
   private lastDay: number = 1;
   private pool?: Pool;
+  private redisClient: any = null;
 
   constructor(pool?: Pool) {
     this.gameTime = GameTime.getInstance();
     this.pool = pool;
     this.setupActionProcessors();
     this.initializeLocationMappings();
+    this.setupEmergencyScheduleListener();
   }
 
   /**
@@ -846,5 +849,99 @@ export class PlanExecutor {
       locationMappings: this.locationMappings.size,
       currentTime: this.gameTime.getCurrentTimeString()
     };
+  }
+
+  /**
+   * Setup Redis listener for emergency schedule reloads
+   */
+  private async setupEmergencyScheduleListener(): Promise<void> {
+    try {
+      this.redisClient = createClient({
+        url: process.env.REDIS_URL || 'redis://localhost:6379'
+      });
+
+      await this.redisClient.connect();
+      
+      console.log('📡 [PLAN_EXECUTOR] Connected to Redis for emergency schedule reloads');
+      
+      // Start listening for schedule reload notifications
+      this.pollScheduleReloadQueue();
+      
+    } catch (error) {
+      console.error('❌ [PLAN_EXECUTOR] Failed to setup Redis connection for schedule reloads:', error);
+      // Continue without Redis - not critical for basic functionality
+    }
+  }
+
+  /**
+   * Poll the schedule reload queue for emergency updates
+   */
+  private async pollScheduleReloadQueue(): Promise<void> {
+    if (!this.redisClient) return;
+    
+    // Poll every 2 seconds for emergency schedule reloads
+    setInterval(async () => {
+      try {
+        const notification = await this.redisClient.brPop('schedule_reload_queue', 0.1);
+        if (notification) {
+          await this.handleEmergencyScheduleReload(JSON.parse(notification.element));
+        }
+      } catch (error: any) {
+        // Ignore timeout errors, but log other issues
+        if (!error.message?.includes('timeout')) {
+          console.error('❌ [PLAN_EXECUTOR] Error polling schedule reload queue:', error);
+        }
+      }
+    }, 2000);
+  }
+
+  /**
+   * Handle emergency schedule reload notification
+   */
+  private async handleEmergencyScheduleReload(notification: any): Promise<void> {
+    const { agent_id, type } = notification;
+    
+    console.log(`🚨 [PLAN_EXECUTOR] Processing ${type} for agent ${agent_id}`);
+    
+    try {
+      // Reload the agent's schedule from database
+      await this.reloadAgentScheduleEmergency(agent_id);
+      
+      console.log(`✅ [PLAN_EXECUTOR] Successfully reloaded schedule for agent ${agent_id}`);
+      
+    } catch (error) {
+      console.error(`❌ [PLAN_EXECUTOR] Error reloading schedule for agent ${agent_id}:`, error);
+    }
+  }
+
+  /**
+   * Reload a specific agent's schedule from database for emergency situations
+   */
+  private async reloadAgentScheduleEmergency(agentId: string): Promise<void> {
+    if (!this.pool) {
+      console.warn('⚠️ [PLAN_EXECUTOR] No database connection for schedule reload');
+      return;
+    }
+
+    try {
+      // Load fresh generated plan from database
+      const generatedSchedule = await this.loadGeneratedPlan(agentId);
+      
+      if (generatedSchedule.length > 0) {
+        // Replace existing schedule with emergency plan
+        this.scheduledActions.set(agentId, generatedSchedule);
+        
+        console.log(`📅 [PLAN_EXECUTOR] Replaced schedule for ${agentId} with ${generatedSchedule.length} emergency activities`);
+        
+        // Clear execution history for this agent so emergency activities can execute immediately
+        const currentHistory = this.executionHistory.get(agentId) || [];
+        this.executionHistory.set(agentId, currentHistory.filter(action => action.priority < 8));
+        
+        console.log(`🔄 [PLAN_EXECUTOR] Cleared low-priority execution history for ${agentId} to allow emergency activities`);
+      }
+      
+    } catch (error: any) {
+      console.error(`❌ [PLAN_EXECUTOR] Database error reloading schedule for ${agentId}:`, error);
+    }
   }
 } 

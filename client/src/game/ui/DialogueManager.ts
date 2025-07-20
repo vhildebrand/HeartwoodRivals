@@ -202,6 +202,22 @@ export class DialogueManager {
         
         // Send conversation begin event
         this.sendConversationBeginEvent();
+
+        // Listen for NPC opening messages
+        this.scene.game.events.on('npcOpeningMessage', (data: { npcId: string, npcName: string, message: string }) => {
+            if (this.currentNpcId === data.npcId) {
+                console.log(`💬 [DIALOGUE] Adding NPC opening message: ${data.message}`);
+                this.chatLog.push(`${data.npcName}: ${data.message}`);
+                this.updateChatHistory();
+                
+                // Add to conversation history
+                this.conversationHistory.push({
+                    message: data.message,
+                    sender: 'npc',
+                    timestamp: Date.now()
+                });
+            }
+        });
     }
 
     closeDialogue() {

@@ -29,7 +29,7 @@ export class NPCAwarenessSystem {
   private observationRange: number = 20; // tiles - for memory storage
   private thoughtTriggerRange: number = 10; // tiles - for LLM-based thoughts (cost optimization)
   private lastObservationTime: Map<string, number> = new Map();
-  private observationCooldown: number = 15000; // 15 seconds between observations per NPC
+  private observationCooldown: number = 10000; // 10 seconds between observations per NPC (faster response)
 
   constructor(
     pool: Pool,
@@ -46,10 +46,10 @@ export class NPCAwarenessSystem {
   }
 
   private async initializeAwarenessSystem(): Promise<void> {
-    // Run awareness checks every 15 seconds - reduced from 30 seconds
+    // Run awareness checks every 10 seconds - improved responsiveness for conversation initiation
     setInterval(async () => {
       await this.processNPCAwareness();
-    }, 15000);
+    }, 10000);
 
     // Subscribe to NPC activity changes
     const subscriber = this.redisClient.duplicate();
@@ -111,7 +111,7 @@ export class NPCAwarenessSystem {
         return;
       }
 
-      console.log(`👁️ [NPC_AWARENESS] ${observer.name} observing ${nearbyNPCs.length} nearby NPCs`);
+      //console.log(`👁️ [NPC_AWARENESS] ${observer.name} observing ${nearbyNPCs.length} nearby NPCs`);
 
       for (const targetNPC of nearbyNPCs) {
         if (targetNPC.id === observer.id) continue; // Don't observe self
@@ -199,7 +199,7 @@ export class NPCAwarenessSystem {
     if (distance <= this.thoughtTriggerRange) {
       console.log(`🧠 [NPC_AWARENESS] ${observer.name} within thought range (${distance.toFixed(1)} tiles) of ${target.name}`);
     } else {
-      console.log(`💾 [NPC_AWARENESS] ${observer.name} observing ${target.name} for memory only (${distance.toFixed(1)} tiles)`);
+      //console.log(`💾 [NPC_AWARENESS] ${observer.name} observing ${target.name} for memory only (${distance.toFixed(1)} tiles)`);
     }
 
     const description = `I noticed ${target.name} ${target.current_activity} at ${target.current_location || 'nearby'}`;
@@ -258,21 +258,43 @@ export class NPCAwarenessSystem {
     // Higher importance for unusual activities
     const unusualActivities = ['emergency', 'urgent', 'crisis', 'fight', 'argument', 'celebration'];
     if (unusualActivities.some(keyword => target.current_activity.toLowerCase().includes(keyword))) {
-      importance += 3;
+      importance += 4; // Boost emergency situations more
     }
     
     // Higher importance for people in same location
     if (observer.current_location === target.current_location) {
-      importance += 1;
+      importance += 2; // Boost same location interactions more
     }
     
-    // Higher importance for social activities
-    const socialActivities = ['talk', 'convers', 'meet', 'gather', 'social'];
+    // SIGNIFICANTLY higher importance for social activities (triggers conversation initiation)
+    const socialActivities = ['talk', 'convers', 'meet', 'gather', 'social', 'greet', 'chat'];
     if (socialActivities.some(keyword => target.current_activity.toLowerCase().includes(keyword))) {
+      importance += 4; // Boosted from 2 to 4 to push social observations over threshold
+    }
+
+    // Higher importance for interesting work activities that warrant conversation
+    const interestingActivities = ['craft', 'create', 'build', 'music', 'performance', 'teach', 'healing', 'baking', 'smithing'];
+    if (interestingActivities.some(keyword => target.current_activity.toLowerCase().includes(keyword))) {
+      importance += 2;
+    }
+
+    // Higher importance if observer and target are friends/have positive relationship
+    if (this.areKnownToEachOther(observer, target)) {
       importance += 2;
     }
     
     return Math.min(importance, 9); // Cap at 9
+  }
+
+  /**
+   * Check if two NPCs are known to each other (simple heuristic)
+   */
+  private areKnownToEachOther(observer: any, target: any): boolean {
+    // Simple heuristic: NPCs in same location category are more likely to know each other
+    const observerLocation = observer.current_location || '';
+    const targetLocation = target.current_location || '';
+    
+    return observerLocation === targetLocation;
   }
 
   /**
@@ -289,7 +311,7 @@ export class NPCAwarenessSystem {
         observation.importance
       );
 
-      console.log(`📝 [NPC_AWARENESS] ${observation.observerName} observed: ${observation.description}`);
+      //console.log(`📝 [NPC_AWARENESS] ${observation.observerName} observed: ${observation.description}`);
     } catch (error) {
       console.error(`❌ [NPC_AWARENESS] Error storing observation:`, error);
     }
@@ -311,14 +333,60 @@ export class NPCAwarenessSystem {
           300, // 5 minute duration estimate
           observation.importance
         );
-      } else {
-        // For medium importance observations (6-7), just store as lightweight memory
-        console.log(`🧠 [NPC_AWARENESS] Medium importance observation - storing as memory only`);
-        // Memory already stored in storeObservation, no additional thought processing needed
+      } 
+      // For medium importance observations (6-7), check if they should trigger spontaneous conversations
+      else if (observation.importance >= 6) {
+        console.log(`💬 [NPC_AWARENESS] Medium importance observation - checking for conversation initiation`);
+        
+        // Check if this observation should trigger a spontaneous conversation
+        if (this.shouldTriggerSpontaneousConversation(observation)) {
+          console.log(`🗨️ [NPC_AWARENESS] Triggering spontaneous conversation thought for ${observation.observerName}`);
+          
+          await this.thoughtSystem.triggerSpontaneousThought(
+            observation.observerId,
+            'npc_observation',
+            {
+              targetId: observation.targetId,
+              targetName: observation.targetName,
+              activity: observation.description,
+              observationType: observation.observationType,
+              location: observation.location,
+              conversationTrigger: true
+            }
+          );
+        } else {
+          console.log(`🧠 [NPC_AWARENESS] Medium importance observation - storing as memory only`);
+        }
       }
     } catch (error) {
       console.error(`❌ [NPC_AWARENESS] Error triggering thought:`, error);
     }
+  }
+
+  /**
+   * Determine if an observation should trigger a spontaneous conversation
+   */
+  private shouldTriggerSpontaneousConversation(observation: NPCObservation): boolean {
+    // Social activities are prime conversation starters
+    const socialTriggers = ['talk', 'convers', 'meet', 'gather', 'social', 'greet', 'chat'];
+    if (socialTriggers.some(keyword => observation.description.toLowerCase().includes(keyword))) {
+      return true;
+    }
+
+    // Interesting work activities can spark conversations
+    const workTriggers = ['craft', 'create', 'build', 'music', 'performance', 'teach', 'healing', 'baking', 'smithing'];
+    if (workTriggers.some(keyword => observation.description.toLowerCase().includes(keyword))) {
+      return true;
+    }
+
+    // Emergency or unusual activities definitely warrant conversation
+    const emergencyTriggers = ['emergency', 'urgent', 'crisis', 'celebration', 'fight', 'argument'];
+    if (emergencyTriggers.some(keyword => observation.description.toLowerCase().includes(keyword))) {
+      return true;
+    }
+
+    // NPCs in same location with high importance observations should talk more
+    return observation.importance >= 7 && observation.observationType === 'npc_activity';
   }
 
   /**

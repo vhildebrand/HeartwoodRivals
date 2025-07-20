@@ -140,7 +140,7 @@ export class Activity {
       if (!targetLocation && this.context.parameters.specificLocation) {
         targetLocation = this.locationRegistry.getLocation(this.context.parameters.specificLocation);
         if (targetLocation) {
-          console.log(`🎯 [ACTIVITY] Using specific location: ${targetLocation.displayName} (${this.context.parameters.specificLocation})`);
+          //console.log(`🎯 [ACTIVITY] Using specific location: ${targetLocation.displayName} (${this.context.parameters.specificLocation})`);
         } else {
           console.warn(`⚠️ [ACTIVITY] Specific location not found: ${this.context.parameters.specificLocation}, falling back to generic search`);
         }
@@ -256,7 +256,7 @@ export class Activity {
     
     if (distance < 5) {
       // Agent has arrived at the location
-      console.log(`🎯 [ACTIVITY] ${agent.data.name} arrived at ${targetLocation.displayName}`);
+      //console.log(`🎯 [ACTIVITY] ${agent.data.name} arrived at ${targetLocation.displayName}`);
       
       // Transition to next phase based on activity type
       if (this.manifest.activityType === ActivityType.SOCIAL_INTERACTION) {

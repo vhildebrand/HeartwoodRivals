@@ -251,6 +251,236 @@ export function npcRoutes(pool: Pool, redisClient: ReturnType<typeof createClien
     }
   });
 
+  // === DEBUG ENDPOINTS FOR CONVERSATION TESTING ===
+
+  // POST /npc/debug/force-player-conversation - Force an NPC to initiate conversation with a player
+  router.post('/debug/force-player-conversation', async (req, res) => {
+    try {
+      const { npcId, playerId, topic, approach, openingMessage } = req.body;
+
+      if (!npcId || !playerId) {
+        return res.status(400).json({
+          error: 'Missing required fields: npcId, playerId'
+        });
+      }
+
+      // Verify NPC exists
+      const npcResult = await pool.query(
+        'SELECT id, name, current_location FROM agents WHERE id = $1',
+        [npcId]
+      );
+
+      if (npcResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'NPC not found'
+        });
+      }
+
+      const npc = npcResult.rows[0];
+
+      // Create conversation initiation message
+      const conversationData = {
+        agentId: npcId,
+        target: playerId,
+        topic: topic || 'general conversation',
+        approach: approach || 'friendly',
+        timing: 'immediate',
+        opening_message: openingMessage || `Hello! I wanted to talk with you about something.`,
+        forced_debug: true,
+        timestamp: Date.now()
+      };
+
+      // Publish to initiate_conversation channel (same channel the ThoughtSystem uses)
+      await redisClient.publish('initiate_conversation', JSON.stringify(conversationData));
+
+      console.log(`🐛 [DEBUG] Forced conversation initiation: ${npc.name} -> Player ${playerId}`);
+      console.log(`🐛 [DEBUG] Topic: ${conversationData.topic}, Opening: "${conversationData.opening_message}"`);
+
+      res.json({
+        success: true,
+        message: `Forced conversation initiation between ${npc.name} and player ${playerId}`,
+        conversationData: conversationData
+      });
+
+    } catch (error) {
+      console.error('❌ [DEBUG] Error in force-player-conversation:', error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  // POST /npc/debug/force-npc-conversation - Force two NPCs to start a conversation
+  router.post('/debug/force-npc-conversation', async (req, res) => {
+    try {
+      const { initiatorId, targetId, topic, approach, openingMessage } = req.body;
+
+      if (!initiatorId || !targetId) {
+        return res.status(400).json({
+          error: 'Missing required fields: initiatorId, targetId'
+        });
+      }
+
+      if (initiatorId === targetId) {
+        return res.status(400).json({
+          error: 'Initiator and target cannot be the same NPC'
+        });
+      }
+
+      // Verify both NPCs exist
+      const npcsResult = await pool.query(
+        'SELECT id, name, current_location FROM agents WHERE id = ANY($1)',
+        [[initiatorId, targetId]]
+      );
+
+      if (npcsResult.rows.length < 2) {
+        return res.status(404).json({
+          error: 'One or both NPCs not found'
+        });
+      }
+
+      const initiator = npcsResult.rows.find(npc => npc.id === initiatorId);
+      const target = npcsResult.rows.find(npc => npc.id === targetId);
+
+      // Create conversation initiation message (NPC-NPC)
+      const conversationData = {
+        agentId: initiatorId,
+        target: targetId,
+        topic: topic || 'general conversation',
+        approach: approach || 'friendly',
+        timing: 'immediate',
+        opening_message: openingMessage || `Hi ${target.name}! I wanted to chat with you about something.`,
+        forced_debug: true,
+        timestamp: Date.now()
+      };
+
+      // Publish to initiate_conversation channel
+      await redisClient.publish('initiate_conversation', JSON.stringify(conversationData));
+
+      console.log(`🐛 [DEBUG] Forced NPC-NPC conversation: ${initiator.name} -> ${target.name}`);
+      console.log(`🐛 [DEBUG] Topic: ${conversationData.topic}, Opening: "${conversationData.opening_message}"`);
+
+      res.json({
+        success: true,
+        message: `Forced NPC-NPC conversation between ${initiator.name} and ${target.name}`,
+        conversationData: conversationData
+      });
+
+    } catch (error) {
+      console.error('❌ [DEBUG] Error in force-npc-conversation:', error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  // GET /npc/debug/conversation-status - Get current conversation status and debug info
+  router.get('/debug/conversation-status', async (req, res) => {
+    try {
+      // Get active conversations from game server (we'll need to query Redis or add this to game state)
+      // For now, return debug info about conversation system status
+
+      // Check Redis for recent conversation messages
+      const recentConversations = await redisClient.lRange('conversation_debug_log', 0, 9);
+
+      // Get NPC locations and activities
+      const npcsResult = await pool.query(`
+        SELECT id, name, current_location, current_activity, 
+               EXTRACT(EPOCH FROM last_activity_change) as last_activity_timestamp
+        FROM agents 
+        ORDER BY last_activity_change DESC 
+        LIMIT 20
+      `);
+
+      // Check for recent conversation intentions
+      const intentionsResult = await pool.query(`
+        SELECT agent_id, target, topic, approach, timing, created_at
+        FROM conversation_intentions 
+        ORDER BY created_at DESC 
+        LIMIT 10
+      `).catch(() => ({ rows: [] })); // Table might not exist yet
+
+      res.json({
+        success: true,
+        debug: {
+          recentConversationAttempts: recentConversations.map(conv => {
+            try {
+              return JSON.parse(conv);
+            } catch {
+              return conv;
+            }
+          }),
+          recentNPCActivities: npcsResult.rows.map(npc => ({
+            ...npc,
+            last_activity_timestamp: npc.last_activity_timestamp ? new Date(npc.last_activity_timestamp * 1000).toISOString() : null
+          })),
+          conversationIntentions: intentionsResult.rows || [],
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ [DEBUG] Error getting conversation status:', error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  // POST /npc/debug/trigger-thought - Force a specific NPC to generate thoughts (which might lead to conversations)
+  router.post('/debug/trigger-thought', async (req, res) => {
+    try {
+      const { npcId, thoughtTrigger, importance } = req.body;
+
+      if (!npcId || !thoughtTrigger) {
+        return res.status(400).json({
+          error: 'Missing required fields: npcId, thoughtTrigger'
+        });
+      }
+
+      // Verify NPC exists
+      const npcResult = await pool.query(
+        'SELECT id, name FROM agents WHERE id = $1',
+        [npcId]
+      );
+
+      if (npcResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'NPC not found'
+        });
+      }
+
+      const npc = npcResult.rows[0];
+
+      // Create forced thought trigger
+      const thoughtData = {
+        agentId: npcId,
+        agentName: npc.name,
+        trigger: thoughtTrigger,
+        importance: importance || 7,
+        forced_debug: true,
+        timestamp: Date.now()
+      };
+
+      // Publish to thought system trigger
+      await redisClient.publish('force_thought_generation', JSON.stringify(thoughtData));
+
+      console.log(`🐛 [DEBUG] Forced thought generation for ${npc.name}: ${thoughtTrigger}`);
+
+      res.json({
+        success: true,
+        message: `Forced thought generation for ${npc.name}`,
+        thoughtData: thoughtData
+      });
+
+    } catch (error) {
+      console.error('❌ [DEBUG] Error in trigger-thought:', error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  });
+
   // POST /npc/test-urgent-scenario - Test urgent scenarios for different character types
   router.post('/test-urgent-scenario', async (req, res) => {
     try {

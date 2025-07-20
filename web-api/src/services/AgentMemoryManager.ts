@@ -65,7 +65,7 @@ export class AgentMemoryManager {
     
     // Check semantic similarity filtering
     if (await this.isMemoryTooSimilar(memory.agent_id, memory.content, embedding)) {
-      console.log(`⏭️  Skipping semantically similar memory for ${memory.agent_id}`);
+      //console.log(`⏭️  Skipping semantically similar memory for ${memory.agent_id}`);
       return -1;
     }
 
@@ -280,7 +280,7 @@ export class AgentMemoryManager {
     
     // Log if memory was filtered out
     if (result === -1) {
-      console.log(`🚫 Filtered observation for ${agent_id}: "${observation.substring(0, 50)}..."`);
+      //console.log(`🚫 Filtered observation for ${agent_id}: "${observation.substring(0, 50)}..."`);
     }
     
     return result;
@@ -315,7 +315,7 @@ export class AgentMemoryManager {
     
     // Log if memory was filtered out
     if (result === -1) {
-      console.log(`🚫 Filtered observation for ${agent_id}: "${observation.substring(0, 50)}..."`);
+      //console.log(`🚫 Filtered observation for ${agent_id}: "${observation.substring(0, 50)}..."`);
     }
     
     return result;
@@ -1043,7 +1043,7 @@ Your reflection:`;
       const tooSimilar = similarMemories.rows.some(row => row.similarity < threshold);
       
       if (tooSimilar) {
-        console.log(`🔍 Found similar memory: "${similarMemories.rows[0].content.substring(0, 50)}..." (similarity: ${similarMemories.rows[0].similarity}, threshold: ${threshold})`);
+        // console.log(`🔍 Found similar memory: "${similarMemories.rows[0].content.substring(0, 50)}..." (similarity: ${similarMemories.rows[0].similarity}, threshold: ${threshold})`);
       }
       
       return tooSimilar;

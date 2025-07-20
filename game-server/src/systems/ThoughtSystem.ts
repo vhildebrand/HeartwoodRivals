@@ -108,6 +108,48 @@ export class ThoughtSystem {
     });
     
     this.initializeThoughtProcessing();
+    this.setupRedisListeners();
+  }
+
+  /**
+   * Setup Redis listeners for debug and external triggers
+   */
+  private async setupRedisListeners(): Promise<void> {
+    try {
+      // Create a subscriber client for debug triggers
+      const subscriber = this.redisClient.duplicate();
+      await subscriber.connect();
+      
+      // Listen for forced thought generation (debug endpoint)
+      await subscriber.subscribe('force_thought_generation', async (message: string) => {
+        try {
+          const data = JSON.parse(message);
+          console.log(`🐛 [DEBUG] Received forced thought generation for ${data.agentName}: ${data.trigger}`);
+          
+          // Create a thought trigger from the debug data
+          const thoughtTrigger: ThoughtTrigger = {
+            type: 'external_event',
+            data: {
+              event: data.trigger,
+              forced_debug: true
+            },
+            importance: data.importance || 7,
+            timestamp: Date.now()
+          };
+          
+          // Trigger the thought
+          await this.triggerThought(data.agentId, thoughtTrigger);
+          
+          console.log(`🐛 [DEBUG] Forced thought triggered for ${data.agentName}`);
+        } catch (error) {
+          console.error('❌ [DEBUG] Error processing forced thought generation:', error);
+        }
+      });
+      
+      console.log('🧠 [THOUGHT_SYSTEM] Redis listeners initialized for debug triggers');
+    } catch (error) {
+      console.error('❌ [THOUGHT_SYSTEM] Failed to setup Redis listeners:', error);
+    }
   }
 
   /**
@@ -631,13 +673,22 @@ Respond in JSON format:
         return basePrompt + `
 
 SPONTANEOUS CONVERSATION THINKING:
-You're considering initiating a conversation with someone.
+You're considering initiating a conversation with someone based on something you observed or remembered.
 
 Consider:
 - Who do you want to talk to?
 - What do you want to talk about?
 - Why is this conversation important to you?
 - When and where should you approach them?
+- What would you actually say as your opening message?
+
+Think about your personality, your relationship with this person, and the context of what prompted this conversation. Your opening message should sound natural and authentic to your character.
+
+IMPORTANT: Create a specific, natural opening message that reflects:
+- Your personality and speaking style
+- Your relationship with the target person
+- The specific context that triggered this conversation
+- How you would naturally greet someone and bring up the topic
 
 Respond in JSON format:
 {
@@ -646,12 +697,13 @@ Respond in JSON format:
     "type": "initiate_conversation" | "none",
     "details": {
       "target": "who_to_talk_to",
-      "topic": "what_to_discuss",
-      "approach": "how_to_start_conversation",
-      "timing": "when_to_do_it"
+      "topic": "what_to_discuss", 
+      "approach": "friendly/professional/casual/urgent/curious",
+      "timing": "immediate/later_today/tomorrow/when_appropriate",
+      "opening_message": "The exact words you would say to start this conversation, naturally and authentically as your character"
     }
   },
-  "reasoning": "Why you want this conversation",
+  "reasoning": "Why you want this conversation and your thought process",
   "importance": 1-10,
   "urgency": 1-10,
   "confidence": 1-10
@@ -789,6 +841,7 @@ Consider what's on your mind and respond in JSON format:
    */
   private async executeInitiateConversation(agentId: string, details: any): Promise<void> {
     console.log(`💬 [THOUGHT_SYSTEM] ${agentId} wants to initiate conversation with ${details.target}`);
+    console.log(`💬 [THOUGHT_SYSTEM] Opening message: "${details.opening_message}"`);
     
     // This would integrate with the conversation system
     await this.redisClient.publish('initiate_conversation', JSON.stringify({
@@ -797,6 +850,7 @@ Consider what's on your mind and respond in JSON format:
       topic: details.topic,
       approach: details.approach,
       timing: details.timing,
+      opening_message: details.opening_message, // Include the LLM-generated opening message
       timestamp: Date.now()
     }));
   }

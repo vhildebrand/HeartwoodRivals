@@ -68,6 +68,19 @@ export class HeartwoodRoom extends Room<GameState> {
     private databasePool!: DatabasePool;
     private agents: Map<string, SpawnedAgent> = new Map();
     private lastPlanningDay: number = 0;
+    
+    // NPC-NPC conversation system
+    private activeNPCConversations: Map<string, {
+        id: string;
+        initiatorId: string;
+        responderId: string;
+        topic: string;
+        approach: string;
+        currentTurn: number;
+        maxTurns: number;
+        conversationLog: Array<{ speaker: string, message: string, timestamp: number }>;
+        startTime: number;
+    }> = new Map();
 
     onJoin(client: Client, options: any) {
         console.log(`👤 [SERVER] Player ${client.sessionId} joined the heartwood_room`);
@@ -665,28 +678,60 @@ export class HeartwoodRoom extends Room<GameState> {
             await thoughtSubscriber.connect();
 
             // Listen for immediate activity changes triggered by thoughts
+            await thoughtSubscriber.subscribe('immediate_activity_change', (message: string) => {
+                try {
+                    const activityChange = JSON.parse(message);
+                    console.log(`🧠 [THOUGHT] Received immediate activity change: ${activityChange.agentId} -> ${activityChange.activity}`);
+                    this.handleImmediateActivityChange(activityChange);
+                } catch (error) {
+                    console.error('❌ Error processing immediate activity change:', error);
+                }
+            });
+
+            // Listen for scheduled activities from thoughts
+            await thoughtSubscriber.subscribe('schedule_activity', (message: string) => {
+                try {
+                    const scheduleData = JSON.parse(message);
+                    console.log(`🧠 [THOUGHT] Received schedule activity request: ${scheduleData.agentId} -> ${scheduleData.activity} at ${scheduleData.time}`);
+                    this.handleScheduleActivity(scheduleData);
+                } catch (error) {
+                    console.error('❌ Error processing scheduled activity:', error);
+                }
+            });
+
+            // Listen for conversation initiation from thoughts
+            await thoughtSubscriber.subscribe('initiate_conversation', (message: string) => {
+                try {
+                    const conversationData = JSON.parse(message);
+                    console.log(`💬 [THOUGHT] NPC ${conversationData.agentId} wants to initiate conversation with ${conversationData.target}`);
+                    this.handleConversationInitiation(conversationData);
+                } catch (error) {
+                    console.error('❌ Error processing conversation initiation:', error);
+                }
+            });
+
+            // Legacy listeners for backward compatibility
             await thoughtSubscriber.subscribe('game_server_activity_change', (message: string) => {
                 try {
                     const activityChange = JSON.parse(message);
-                    console.log(`🧠 [THOUGHT] Received activity change request: ${activityChange.agentId} -> ${activityChange.activityName}`);
+                    console.log(`🧠 [THOUGHT] Received legacy activity change request: ${activityChange.agentId} -> ${activityChange.activityName}`);
                     this.handleThoughtTriggeredActivity(activityChange);
                 } catch (error) {
                     console.error('❌ Error processing thought-triggered activity:', error);
                 }
             });
 
-            // Listen for schedule updates from thoughts
             await thoughtSubscriber.subscribe('planning_system_update', (message: string) => {
                 try {
                     const planUpdate = JSON.parse(message);
-                    console.log(`🧠 [THOUGHT] Received planning update: ${planUpdate.agentId} -> ${planUpdate.activity}`);
+                    console.log(`🧠 [THOUGHT] Received legacy planning update: ${planUpdate.agentId} -> ${planUpdate.activity}`);
                     this.handleThoughtTriggeredScheduleUpdate(planUpdate);
                 } catch (error) {
                     console.error('❌ Error processing thought-triggered schedule update:', error);
                 }
             });
 
-            console.log('✅ Thought system listeners initialized');
+            console.log('✅ Thought system listeners initialized (immediate_activity_change, schedule_activity, initiate_conversation)');
         } catch (error) {
             console.error('❌ Failed to setup thought system listeners:', error);
         }
@@ -1311,6 +1356,534 @@ export class HeartwoodRoom extends Room<GameState> {
         
         // Broadcast to all players
         this.broadcast('chat_message', systemMessage);
+    }
+
+    // Handler for immediate activity changes from ThoughtSystem
+    private async handleImmediateActivityChange(data: any) {
+        const { agentId, activity, location, reason, priority } = data;
+        const agent = this.agents.get(agentId);
+        
+        if (!agent) {
+            console.error(`❌ [THOUGHT] Agent ${agentId} not found for immediate activity change`);
+            return;
+        }
+
+        console.log(`🚨 [THOUGHT] Executing immediate activity change for ${agent.data.name}: ${activity}`);
+        
+        try {
+            // Force interrupt current activity with emergency priority
+            const result = agent.activityManager.requestActivity({
+                activityName: activity,
+                priority: priority || 10,
+                interruptCurrent: true,
+                parameters: {
+                    emergency: true,
+                    reason: reason,
+                    emergencyLocation: location
+                }
+            });
+
+            if (result.success) {
+                console.log(`✅ [THOUGHT] ${agent.data.name} started emergency activity: ${activity}`);
+            } else {
+                console.error(`❌ [THOUGHT] Failed to start emergency activity for ${agent.data.name}: ${result.message}`);
+            }
+        } catch (error) {
+            console.error(`❌ [THOUGHT] Error executing immediate activity change for ${agentId}:`, error);
+        }
+    }
+
+    // Handler for scheduled activities from ThoughtSystem  
+    private async handleScheduleActivity(data: any) {
+        const { agentId, activity, time, location, reason, priority } = data;
+        
+        console.log(`📅 [THOUGHT] Scheduling activity for ${agentId}: ${activity} at ${time}`);
+        
+        try {
+            // Use the existing plan executor method if available
+            if (this.planExecutor && 'addCustomAction' in this.planExecutor) {
+                (this.planExecutor as any).addCustomAction(agentId, {
+                    agentId,
+                    time,
+                    action: activity,
+                    description: reason || `Thought-triggered activity: ${activity}`,
+                    location,
+                    priority: priority || 7,
+                    duration: 1800000 // 30 minutes default
+                });
+                
+                console.log(`✅ [THOUGHT] Scheduled ${activity} for agent ${agentId} at ${time}`);
+            } else {
+                console.error(`❌ [THOUGHT] PlanExecutor method not available for scheduling`);
+            }
+        } catch (error) {
+            console.error(`❌ [THOUGHT] Error scheduling activity for ${agentId}:`, error);
+        }
+    }
+
+    // Handler for conversation initiation from ThoughtSystem
+    private async handleConversationInitiation(data: any) {
+        const { agentId, target, topic, approach, timing, opening_message } = data;
+        const initiatorAgent = this.agents.get(agentId);
+        
+        // Add debug logging for forced conversations
+        if (data.forced_debug) {
+            console.log(`🐛 [DEBUG] Processing forced conversation initiation: ${data.agentId} -> ${data.target}`);
+            // Store in Redis for debug status endpoint
+            await this.redisClient.lPush('conversation_debug_log', JSON.stringify({
+                type: 'forced_initiation',
+                agentId: data.agentId,
+                target: data.target,
+                topic: data.topic,
+                approach: data.approach,
+                timing: data.timing,
+                opening_message: data.opening_message,
+                timestamp: new Date().toISOString()
+            }));
+            await this.redisClient.expire('conversation_debug_log', 3600); // Keep for 1 hour
+        }
+        
+        if (!initiatorAgent) {
+            console.error(`❌ [CONVERSATION] Initiator agent ${agentId} not found`);
+            if (data.forced_debug) {
+                await this.redisClient.lPush('conversation_debug_log', JSON.stringify({
+                    type: 'error',
+                    message: `Initiator agent ${agentId} not found`,
+                    timestamp: new Date().toISOString()
+                }));
+            }
+            return;
+        }
+
+        console.log(`💬 [CONVERSATION] ${initiatorAgent.data.name} wants to initiate conversation with ${target} about ${topic}`);
+        console.log(`💬 [CONVERSATION] Opening message: "${opening_message}"`);
+        
+        try {
+            // Check if target is a player or NPC
+            const isTargetPlayer = this.state.players.has(target);
+            const isTargetNPC = this.agents.has(target);
+            
+            if (!isTargetPlayer && !isTargetNPC) {
+                console.error(`❌ [CONVERSATION] Target ${target} not found (neither player nor NPC)`);
+                if (data.forced_debug) {
+                    await this.redisClient.lPush('conversation_debug_log', JSON.stringify({
+                        type: 'error',
+                        message: `Target ${target} not found`,
+                        timestamp: new Date().toISOString()
+                    }));
+                }
+                return;
+            }
+
+            if (timing === 'immediate') {
+                // Execute conversation initiation immediately
+                await this.executeConversationInitiation(initiatorAgent, target, topic, approach, opening_message, isTargetPlayer);
+            } else {
+                // Schedule conversation for later
+                await this.scheduleConversationInitiation(initiatorAgent, target, topic, approach, timing, isTargetPlayer, opening_message);
+            }
+            
+        } catch (error) {
+            console.error(`❌ [CONVERSATION] Error handling conversation initiation:`, error);
+            if (data.forced_debug) {
+                await this.redisClient.lPush('conversation_debug_log', JSON.stringify({
+                    type: 'error',
+                    message: `Error handling conversation initiation: ${error}`,
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        }
+    }
+
+    // Execute immediate conversation initiation
+    private async executeConversationInitiation(initiatorAgent: any, target: string, topic: string, approach: string, opening_message: string, isTargetPlayer: boolean) {
+        console.log(`💬 [CONVERSATION] Executing immediate conversation: ${initiatorAgent.data.name} -> ${target}`);
+        console.log(`💬 [CONVERSATION] Topic: ${topic}, Approach: ${approach}, IsPlayer: ${isTargetPlayer}`);
+        
+        if (isTargetPlayer) {
+            // Initiate conversation with player
+            const targetPlayer = this.state.players.get(target);
+            if (targetPlayer) {
+                // Calculate distance to verify proximity
+                const distance = Math.sqrt(
+                    Math.pow(initiatorAgent.schema.x - targetPlayer.x, 2) + 
+                    Math.pow(initiatorAgent.schema.y - targetPlayer.y, 2)
+                );
+                
+                const conversationRange = 32;
+                console.log(`💬 [CONVERSATION] Distance check: ${distance.toFixed(1)} pixels (range: ${conversationRange})`);
+                
+                if (distance <= conversationRange) {
+                    // Send conversation initiation to specific player with LLM-generated opening message
+                    this.clients.forEach((client) => {
+                        if (client.sessionId === target) {
+                            console.log(`💬 [CONVERSATION] Sending conversation initiation to client ${target}`);
+                            client.send('npc_conversation_initiated', {
+                                npcId: initiatorAgent.data.id,
+                                npcName: initiatorAgent.data.name,
+                                topic: topic,
+                                approach: approach,
+                                message: opening_message || `${initiatorAgent.data.name} approaches you to chat.`
+                            });
+                        }
+                    });
+                    
+                    console.log(`✅ [CONVERSATION] ${initiatorAgent.data.name} initiated conversation with player ${targetPlayer.name}`);
+                    console.log(`✅ [CONVERSATION] Opening message: "${opening_message}"`);
+                } else {
+                    console.log(`⚠️ [CONVERSATION] ${initiatorAgent.data.name} too far from player ${targetPlayer.name} (${distance.toFixed(1)} pixels)`);
+                    // Schedule approach and then conversation
+                    this.scheduleApproachAndConversation(initiatorAgent, targetPlayer, topic, approach, opening_message);
+                }
+            } else {
+                console.error(`❌ [CONVERSATION] Player ${target} not found in game state`);
+            }
+        } else {
+            // Initiate conversation with another NPC
+            const targetAgent = this.agents.get(target);
+            if (targetAgent) {
+                console.log(`💬 [NPC-NPC] Starting conversation: ${initiatorAgent.data.name} -> ${targetAgent.data.name}`);
+                await this.initiateNPCToNPCConversation(initiatorAgent, targetAgent, topic, approach, opening_message);
+            } else {
+                console.error(`❌ [CONVERSATION] Target NPC ${target} not found in agents map`);
+            }
+        }
+    }
+
+    // Schedule conversation for later
+    private async scheduleConversationInitiation(initiatorAgent: any, target: string, topic: string, approach: string, timing: string, isTargetPlayer: boolean, opening_message: string) {
+        console.log(`📅 [CONVERSATION] Scheduling conversation: ${initiatorAgent.data.name} -> ${target} (timing: ${timing})`);
+        
+        // Convert timing to schedule format
+        let scheduleTime = 'NOW';
+        if (timing === 'later_today') {
+            // Schedule for 1-2 hours later
+            const currentTime = this.gameTime?.getCurrentTimeString() || '12:00';
+            const [hours, minutes] = currentTime.split(':').map(Number);
+            const newHour = (hours + 1 + Math.floor(Math.random() * 2)) % 24;
+            scheduleTime = `${newHour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        } else if (timing === 'tomorrow') {
+            scheduleTime = '09:00'; // Schedule for morning
+        }
+
+        // Schedule as a social activity
+        await this.handleScheduleActivity({
+            agentId: initiatorAgent.data.id,
+            activity: 'initiate_conversation',
+            time: scheduleTime,
+            location: isTargetPlayer ? 'find_player' : 'find_npc',
+            reason: `Initiate conversation with ${target} about ${topic}`,
+            priority: 6,
+            conversationData: { target, topic, approach, opening_message, isTargetPlayer }
+        });
+    }
+
+    // Schedule approach and then conversation for distant targets
+    private async scheduleApproachAndConversation(initiatorAgent: any, targetPlayer: any, topic: string, approach: string, opening_message: string) {
+        console.log(`🚶 [CONVERSATION] ${initiatorAgent.data.name} scheduling approach to ${targetPlayer.name}`);
+        
+        // Schedule movement to player's location first
+        await this.handleScheduleActivity({
+            agentId: initiatorAgent.data.id,
+            activity: 'approach_for_conversation',
+            time: 'NOW',
+            location: targetPlayer.currentLocation || 'find_player',
+            reason: `Approach ${targetPlayer.name} for conversation about ${topic}`,
+            priority: 8,
+            conversationData: { target: targetPlayer.id, topic, approach, opening_message, isTargetPlayer: true }
+        });
+    }
+
+    // Generate conversation opener based on approach and topic
+    private generateConversationOpener(approach: string, topic: string): string {
+        const openers = {
+            friendly: [`Hey there! I wanted to talk to you about ${topic}.`, `Good to see you! Can we chat about ${topic}?`],
+            professional: [`Excuse me, I'd like to discuss ${topic} with you.`, `I have some information about ${topic} to share.`],
+            casual: [`Oh hey, did you hear about ${topic}?`, `I was just thinking about ${topic}...`],
+            urgent: [`This is important - we need to talk about ${topic}!`, `I need to tell you something about ${topic} right away!`],
+            curious: [`I'm curious about ${topic} - what do you think?`, `Have you noticed anything about ${topic}?`]
+        };
+
+        const approachOpeners = openers[approach as keyof typeof openers] || openers.friendly;
+        return approachOpeners[Math.floor(Math.random() * approachOpeners.length)];
+    }
+
+    // NPC-NPC Conversation System (3 turns max)
+    private async initiateNPCToNPCConversation(
+        initiatorAgent: any, 
+        targetAgent: any, 
+        topic: string, 
+        approach: string, 
+        opening_message: string
+    ): Promise<void> {
+        const conversationId = `${initiatorAgent.data.id}_${targetAgent.data.id}_${Date.now()}`;
+        
+        console.log(`💬 [NPC-NPC] Initiating conversation ${conversationId}`);
+        console.log(`💬 [NPC-NPC] ${initiatorAgent.data.name} -> ${targetAgent.data.name}: "${opening_message}"`);
+        
+        // Create conversation record
+        const conversation = {
+            id: conversationId,
+            initiatorId: initiatorAgent.data.id,
+            responderId: targetAgent.data.id,
+            topic,
+            approach,
+            currentTurn: 1,
+            maxTurns: 3,
+            conversationLog: [{
+                speaker: initiatorAgent.data.name,
+                message: opening_message,
+                timestamp: Date.now()
+            }],
+            startTime: Date.now()
+        };
+        
+        this.activeNPCConversations.set(conversationId, conversation);
+        
+        // Broadcast the opening message to all clients for dialogue display
+        this.broadcast('npc_dialogue_message', {
+            speakerId: initiatorAgent.data.id,
+            speakerName: initiatorAgent.data.name,
+            listenerId: targetAgent.data.id,
+            listenerName: targetAgent.data.name,
+            message: opening_message,
+            conversationId: conversationId,
+            turn: 1,
+            maxTurns: 3
+        });
+        
+        // Trigger turn 2 (target NPC responds)
+        setTimeout(async () => {
+            await this.processNPCConversationTurn(conversationId);
+        }, 2000); // 2 second delay between turns
+    }
+
+    private async processNPCConversationTurn(conversationId: string): Promise<void> {
+        const conversation = this.activeNPCConversations.get(conversationId);
+        if (!conversation) {
+            console.error(`❌ [NPC-NPC] Conversation ${conversationId} not found`);
+            return;
+        }
+
+        const initiator = this.agents.get(conversation.initiatorId);
+        const responder = this.agents.get(conversation.responderId);
+        
+        if (!initiator || !responder) {
+            console.error(`❌ [NPC-NPC] Missing agents for conversation ${conversationId}`);
+            return;
+        }
+
+        if (conversation.currentTurn >= conversation.maxTurns) {
+            // End conversation
+            await this.endNPCConversation(conversationId);
+            return;
+        }
+
+        conversation.currentTurn++;
+        
+        // Determine current speaker
+        const isInitiatorTurn = conversation.currentTurn % 2 === 0;
+        const currentSpeaker = isInitiatorTurn ? responder : initiator;
+        const currentListener = isInitiatorTurn ? initiator : responder;
+        
+        console.log(`💬 [NPC-NPC] Turn ${conversation.currentTurn}: ${currentSpeaker.data.name} responding to ${currentListener.data.name}`);
+        
+        try {
+            // Generate response using LLM
+            const response = await this.generateNPCConversationResponse(
+                currentSpeaker,
+                currentListener,
+                conversation
+            );
+            
+            // Add to conversation log
+            conversation.conversationLog.push({
+                speaker: currentSpeaker.data.name,
+                message: response,
+                timestamp: Date.now()
+            });
+            
+            console.log(`💬 [NPC-NPC] ${currentSpeaker.data.name}: "${response}"`);
+            
+            // Broadcast the response message to all clients for dialogue display
+            this.broadcast('npc_dialogue_message', {
+                speakerId: currentSpeaker.data.id,
+                speakerName: currentSpeaker.data.name,
+                listenerId: currentListener.data.id,
+                listenerName: currentListener.data.name,
+                message: response,
+                conversationId: conversationId,
+                turn: conversation.currentTurn,
+                maxTurns: conversation.maxTurns
+            });
+            
+            // Schedule next turn or end conversation
+            if (conversation.currentTurn < conversation.maxTurns) {
+                setTimeout(async () => {
+                    await this.processNPCConversationTurn(conversationId);
+                }, 2000);
+            } else {
+                // End conversation after final turn
+                setTimeout(async () => {
+                    await this.endNPCConversation(conversationId);
+                }, 1000);
+            }
+            
+        } catch (error) {
+            console.error(`❌ [NPC-NPC] Error generating response for ${currentSpeaker.data.name}:`, error);
+            await this.endNPCConversation(conversationId);
+        }
+    }
+
+    private async generateNPCConversationResponse(
+        speaker: any,
+        listener: any,
+        conversation: any
+    ): Promise<string> {
+        // Get recent conversation context
+        const recentMessages = conversation.conversationLog.slice(-2).map((log: any) => 
+            `${log.speaker}: "${log.message}"`
+        ).join('\n');
+        
+        const isLastTurn = conversation.currentTurn === conversation.maxTurns;
+        
+        const prompt = `You are ${speaker.data.name}, having a brief conversation with ${listener.data.name}.
+
+YOUR IDENTITY:
+${speaker.data.constitution}
+
+CONVERSATION CONTEXT:
+- Topic: ${conversation.topic}
+- Approach: ${conversation.approach}
+- Turn ${conversation.currentTurn} of ${conversation.maxTurns} (${isLastTurn ? 'FINAL TURN' : 'continuing'})
+
+RECENT CONVERSATION:
+${recentMessages}
+
+INSTRUCTIONS:
+${isLastTurn ? 
+  '- This is the FINAL turn. Wrap up the conversation naturally with a closing statement.' :
+  '- Respond naturally and briefly to what was just said. Keep it conversational and authentic to your character.'
+}
+- Keep your response to 1-2 sentences maximum
+- Stay in character and reflect your personality
+- Be natural and conversational
+- ${isLastTurn ? 'End on a friendly note' : 'Continue the conversation topic'}
+
+Respond with ONLY your dialogue (no quotes or attribution needed):`;
+
+        try {
+            // Use web-api endpoint for consistency
+            const response = await fetch('http://web-api:3000/npc/interact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    npcId: speaker.data.id,
+                    message: prompt,
+                    characterId: listener.data.id,
+                    context: 'npc_conversation',
+                    contextDetails: {
+                        conversationId: conversation.id,
+                        turn: conversation.currentTurn,
+                        maxTurns: conversation.maxTurns,
+                        topic: conversation.topic,
+                        isLastTurn
+                    }
+                }),
+                signal: AbortSignal.timeout(10000)
+            });
+
+            if (response.ok) {
+                const result = await response.json() as any;
+                if (result.status === 'processing') {
+                    // For NPC conversations, use a simpler fallback if processing fails
+                    return isLastTurn ? 
+                        "Well, it's been good talking with you." :
+                        "That's interesting to think about.";
+                }
+            }
+            
+            // Fallback response
+            return isLastTurn ? 
+                "I should get back to my work now. Good talking with you!" :
+                "I see what you mean.";
+                
+        } catch (error) {
+            console.error(`❌ [NPC-NPC] Error generating response:`, error);
+            return isLastTurn ? 
+                "I should get going now." :
+                "Hmm, that's something to consider.";
+        }
+    }
+
+    private async endNPCConversation(conversationId: string): Promise<void> {
+        const conversation = this.activeNPCConversations.get(conversationId);
+        if (!conversation) return;
+
+        const initiator = this.agents.get(conversation.initiatorId);
+        const responder = this.agents.get(conversation.responderId);
+        
+        console.log(`✅ [NPC-NPC] Ending conversation ${conversationId} after ${conversation.currentTurn} turns`);
+        
+        if (initiator && responder) {
+            // Broadcast conversation end to clients for dialogue cleanup
+            this.broadcast('npc_conversation_ended', {
+                conversationId: conversationId,
+                initiatorId: conversation.initiatorId,
+                responderId: conversation.responderId
+            });
+            
+            // Store conversation as memory for both NPCs
+            await this.storeNPCConversationMemory(conversation, initiator, responder);
+            
+            console.log(`💭 [NPC-NPC] Stored conversation memory for ${initiator.data.name} and ${responder.data.name}`);
+        }
+        
+        // Remove from active conversations
+        this.activeNPCConversations.delete(conversationId);
+    }
+
+    private async storeNPCConversationMemory(
+        conversation: any,
+        initiator: any,
+        responder: any
+    ): Promise<void> {
+        try {
+            const conversationSummary = conversation.conversationLog
+                .map((log: any) => `${log.speaker}: "${log.message}"`)
+                .join(' ');
+
+            const duration = Date.now() - conversation.startTime;
+
+            // Store memory for initiator
+            await this.publishPlayerAction({
+                player_id: 'system',
+                action_type: 'npc_conversation_memory',
+                location: initiator.data.current_location,
+                data: {
+                    agentId: initiator.data.id,
+                    memory: `Had a brief conversation with ${responder.data.name} about ${conversation.topic}. ${conversationSummary}`,
+                    importance: 6,
+                    relatedAgents: [responder.data.id]
+                }
+            });
+
+            // Store memory for responder
+            await this.publishPlayerAction({
+                player_id: 'system',
+                action_type: 'npc_conversation_memory',
+                location: responder.data.current_location,
+                data: {
+                    agentId: responder.data.id,
+                    memory: `Had a brief conversation with ${initiator.data.name} about ${conversation.topic}. ${conversationSummary}`,
+                    importance: 6,
+                    relatedAgents: [initiator.data.id]
+                }
+            });
+
+        } catch (error) {
+            console.error('❌ [NPC-NPC] Error storing conversation memory:', error);
+        }
     }
 
     onDispose() {

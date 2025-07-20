@@ -188,7 +188,7 @@ export class AgentMovementSystem {
     
     this.notifyMovementUpdate(movementUpdate);
     
-    console.log(`✅ Agent ${agent.data.name} reached destination (${movementData.targetX}, ${movementData.targetY})`);
+    //console.log(`✅ Agent ${agent.data.name} reached destination (${movementData.targetX}, ${movementData.targetY})`);
   }
 
   /**

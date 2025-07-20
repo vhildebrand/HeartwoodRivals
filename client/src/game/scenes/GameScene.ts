@@ -27,12 +27,21 @@ export class GameScene extends Scene {
         sprite: Phaser.GameObjects.Sprite, 
         nameLabel: Phaser.GameObjects.Text, 
         actionLabel: Phaser.GameObjects.Text,
+        dialogueBubble: Phaser.GameObjects.Container | null,
         name: string, 
         x: number, 
         y: number 
     }> = new Map();
     private interactionIndicator: Phaser.GameObjects.Text | null = null;
     private lastNpcCount: number = 0; // Track last NPC count to avoid spam logging
+    
+    // Dialogue bubble system
+    private activeDialogueBubbles: Map<string, {
+        container: Phaser.GameObjects.Container,
+        text: Phaser.GameObjects.Text,
+        background: Phaser.GameObjects.Graphics,
+        timer: Phaser.Time.TimerEvent
+    }> = new Map();
     
     // Building labels
     private buildingLabels: Phaser.GameObjects.Text[] = [];
@@ -99,6 +108,12 @@ export class GameScene extends Scene {
         this.game.events.on('blockMovement', (blocked: boolean) => {
             console.log(`🚫 [GAME] Movement ${blocked ? 'blocked' : 'unblocked'} for text input`);
             this.inputManager.setMovementBlocked(blocked);
+        });
+
+        // Listen for NPC-initiated conversations
+        this.game.events.on('npcConversationInitiated', (data: any) => {
+            console.log(`💬 [GAME] NPC ${data.npcName} initiated conversation: ${data.message}`);
+            this.handleNPCConversationInitiation(data);
         });
     }
 
@@ -887,6 +902,13 @@ export class GameScene extends Scene {
                 existingAgent.actionLabel.x = agent.x * 16;
                 existingAgent.actionLabel.y = agent.y * 16 + 20;
                 
+                // Update dialogue bubble position if exists
+                const bubble = this.activeDialogueBubbles.get(agentId);
+                if (bubble) {
+                    bubble.container.x = agent.x * 16;
+                    bubble.container.y = agent.y * 16 - 60;
+                }
+                
                 // Update depths based on new Y position to maintain proper layering
                 const newDepth = 10000 + (agent.y * 16);
                 existingAgent.sprite.setDepth(newDepth);
@@ -1006,6 +1028,7 @@ export class GameScene extends Scene {
             sprite: agentSprite,
             nameLabel: nameLabel,
             actionLabel: actionLabel,
+            dialogueBubble: null,
             name: agentData.name,
             x: agentData.x,
             y: agentData.y
@@ -1020,6 +1043,8 @@ export class GameScene extends Scene {
             agent.sprite.destroy();
             agent.nameLabel.destroy();
             agent.actionLabel.destroy();
+            // Remove any active dialogue bubble
+            this.removeDialogueBubble(agentId);
             this.npcs.delete(agentId);
             console.log(`Removed agent: ${agentId}`);
         }
@@ -1156,6 +1181,39 @@ export class GameScene extends Scene {
             console.log('💬 [GAME_SCENE] Chat history received:', data.messages.length, 'messages');
             this.game.events.emit('chatHistory', data.messages);
         });
+
+        // Handle NPC conversation initiation from server
+        this.room.onMessage("npc_conversation_initiated", (data: { npcId: string, npcName: string, topic: string, approach: string, message: string }) => {
+            console.log("💬 [CLIENT] Received NPC conversation initiation:", data);
+            this.game.events.emit('npcConversationInitiated', data);
+        });
+
+        // Handle NPC-NPC dialogue messages for bubble display
+        this.room.onMessage('npc_dialogue_message', (data: { 
+            speakerId: string, 
+            speakerName: string, 
+            listenerId: string, 
+            listenerName: string, 
+            message: string, 
+            conversationId: string, 
+            turn: number, 
+            maxTurns: number 
+        }) => {
+            console.log(`💬 [BUBBLE] ${data.speakerName} says: "${data.message}"`);
+            this.showNPCDialogueBubble(data);
+        });
+
+        // Handle NPC conversation ended for bubble cleanup
+        this.room.onMessage('npc_conversation_ended', (data: {
+            conversationId: string,
+            initiatorId: string,
+            responderId: string
+        }) => {
+            console.log(`💬 [BUBBLE] Conversation ended: ${data.conversationId}`);
+            // Clean up dialogue bubbles for both participants
+            this.removeDialogueBubble(data.initiatorId);
+            this.removeDialogueBubble(data.responderId);
+        });
     }
 
     private checkNearbyNPCs() {
@@ -1202,6 +1260,192 @@ export class GameScene extends Scene {
         }
     }
 
+    private handleNPCConversationInitiation(data: { npcId: string, npcName: string, topic: string, approach: string, message: string }) {
+        console.log(`💬 [GAME] Handling NPC conversation initiation from ${data.npcName}`);
+        
+        // Show a notification or pop-up about the NPC wanting to talk
+        const npcData = this.npcs.get(data.npcId);
+        if (npcData) {
+            // Create a visual indicator that the NPC wants to talk
+            const conversationBubble = this.add.text(
+                npcData.sprite.x,
+                npcData.sprite.y - 50,
+                '💬',
+                { fontSize: '20px' }
+            );
+            conversationBubble.setDepth(1000);
+            conversationBubble.setOrigin(0.5);
+            
+            // Add a subtle bounce animation
+            this.tweens.add({
+                targets: conversationBubble,
+                y: conversationBubble.y - 10,
+                duration: 1000,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+            
+            // Auto-remove after 10 seconds
+            this.time.delayedCall(10000, () => {
+                conversationBubble.destroy();
+            });
+        }
+        
+        // Check if dialogue is already open
+        const uiScene = this.scene.get('UIScene') as any;
+        if (uiScene && uiScene.getDialogueManager()?.isDialogueActive()) {
+            console.log(`💬 [GAME] Dialogue already active - showing notification for later`);
+            // Could show a different notification here
+            return;
+        }
+        
+        // Auto-open dialogue with the NPC
+        console.log(`💬 [GAME] Auto-opening dialogue with ${data.npcName}`);
+        this.inputManager.setDialogueActive(true);
+        this.game.events.emit('openDialogue', data.npcId, data.npcName);
+        
+        // Send the opening message to the dialogue system
+        setTimeout(() => {
+            this.game.events.emit('npcOpeningMessage', {
+                npcId: data.npcId,
+                npcName: data.npcName,
+                message: data.message
+            });
+        }, 100);
+    }
+
+    private showNPCDialogueBubble(data: { 
+        speakerId: string, 
+        speakerName: string, 
+        listenerId: string, 
+        listenerName: string, 
+        message: string, 
+        conversationId: string, 
+        turn: number, 
+        maxTurns: number 
+    }) {
+        const npcData = this.npcs.get(data.speakerId);
+        if (!npcData) {
+            console.warn(`💬 [BUBBLE] NPC ${data.speakerId} not found for dialogue bubble`);
+            return;
+        }
+
+        // Remove any existing bubble for this NPC
+        this.removeDialogueBubble(data.speakerId);
+
+        // Create dialogue bubble container
+        const bubbleContainer = this.add.container(
+            npcData.sprite.x,
+            npcData.sprite.y - 60 // Position above the NPC
+        );
+        bubbleContainer.setDepth(20000); // High depth to appear above everything
+
+        // Create background bubble (rounded rectangle effect using graphics)
+        const bubbleBackground = this.add.graphics();
+        bubbleBackground.fillStyle(0xFFFFFF, 0.95);
+        bubbleBackground.lineStyle(2, 0x444444, 1);
+        
+        // Word wrap the message to fit in bubble
+        const maxWidth = 200;
+        const wrappedText = this.wrapText(data.message, maxWidth);
+        const lineCount = wrappedText.split('\n').length;
+        const bubbleHeight = Math.max(30, lineCount * 16 + 10);
+        const bubbleWidth = Math.min(maxWidth + 20, data.message.length * 8 + 20);
+
+        // Draw rounded rectangle bubble
+        bubbleBackground.fillRoundedRect(-bubbleWidth/2, -bubbleHeight/2, bubbleWidth, bubbleHeight, 8);
+        bubbleBackground.strokeRoundedRect(-bubbleWidth/2, -bubbleHeight/2, bubbleWidth, bubbleHeight, 8);
+
+        // Add speech bubble tail (small triangle pointing down)
+        bubbleBackground.fillTriangle(
+            -8, bubbleHeight/2,     // left point
+            8, bubbleHeight/2,      // right point  
+            0, bubbleHeight/2 + 10  // bottom point
+        );
+
+        // Create text
+        const bubbleText = this.add.text(0, 0, wrappedText, {
+            fontSize: '12px',
+            color: '#000000',
+            align: 'center',
+            wordWrap: { width: maxWidth, useAdvancedWrap: true }
+        });
+        bubbleText.setOrigin(0.5, 0.5);
+
+        // Add to container
+        bubbleContainer.add([bubbleBackground, bubbleText]);
+
+        // Add subtle bounce-in animation
+        bubbleContainer.setScale(0);
+        this.tweens.add({
+            targets: bubbleContainer,
+            scaleX: 1,
+            scaleY: 1,
+            duration: 200,
+            ease: 'Back.easeOut'
+        });
+
+        // Auto-remove bubble after duration based on message length
+        const displayDuration = Math.max(3000, data.message.length * 50); // At least 3 seconds
+        const timer = this.time.delayedCall(displayDuration, () => {
+            this.removeDialogueBubble(data.speakerId);
+        });
+
+        // Store bubble data for cleanup
+        this.activeDialogueBubbles.set(data.speakerId, {
+            container: bubbleContainer,
+            text: bubbleText,
+            background: bubbleBackground,
+            timer: timer
+        });
+
+        console.log(`💬 [BUBBLE] Created dialogue bubble for ${data.speakerName}`);
+    }
+
+    private removeDialogueBubble(npcId: string) {
+        const bubble = this.activeDialogueBubbles.get(npcId);
+        if (bubble) {
+            // Cancel timer
+            bubble.timer.remove();
+            
+            // Animate out and destroy
+            this.tweens.add({
+                targets: bubble.container,
+                alpha: 0,
+                scaleX: 0.8,
+                scaleY: 0.8,
+                duration: 150,
+                ease: 'Power2.easeIn',
+                onComplete: () => {
+                    bubble.container.destroy();
+                }
+            });
+
+            this.activeDialogueBubbles.delete(npcId);
+        }
+    }
+
+    private wrapText(text: string, maxWidth: number): string {
+        // Simple word wrapping based on character count
+        const wordsPerLine = Math.floor(maxWidth / 8); // Rough estimate: 8px per character
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = '';
+
+        for (const word of words) {
+            if ((currentLine + word).length <= wordsPerLine) {
+                currentLine += (currentLine ? ' ' : '') + word;
+            } else {
+                if (currentLine) lines.push(currentLine);
+                currentLine = word;
+            }
+        }
+        if (currentLine) lines.push(currentLine);
+
+        return lines.join('\n');
+    }
+
     destroy() {
         // Clean up controllers
         this.inputManager?.destroy();
@@ -1212,12 +1456,20 @@ export class GameScene extends Scene {
         this.buildingLabels = [];
         
         // Clean up NPCs and their name labels
-        this.npcs.forEach(npc => {
+        this.npcs.forEach((npc, npcId) => {
             npc.sprite.destroy();
             npc.nameLabel.destroy();
             npc.actionLabel.destroy();
+            // Clean up any active dialogue bubbles
+            this.removeDialogueBubble(npcId);
         });
         this.npcs.clear();
+        
+        // Clean up any remaining dialogue bubbles
+        this.activeDialogueBubbles.forEach((bubble, npcId) => {
+            this.removeDialogueBubble(npcId);
+        });
+        this.activeDialogueBubbles.clear();
         
         // Clean up interaction indicator
         if (this.interactionIndicator) {

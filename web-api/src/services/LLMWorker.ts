@@ -176,7 +176,13 @@ export class LLMWorker {
         await this.storeConversationMemory(npcId, characterId, playerMessage, npcResponse);
 
         // *** POST-RESPONSE ANALYSIS: Check for gossip ***
-        await this.analyzeConversationForGossip(npcId, characterId, playerMessage, npcResponse);
+        // Skip gossip analysis for emergency/urgent statements
+        const isEmergencyStatement = await this.isEmergencyStatement(playerMessage);
+        if (!isEmergencyStatement) {
+          await this.analyzeConversationForGossip(npcId, characterId, playerMessage, npcResponse);
+        } else {
+          console.log(`🚨 [GOSSIP] Skipping gossip analysis - emergency statement detected: "${playerMessage.substring(0, 100)}..."`);
+        }
 
         // Return the response
         return {
@@ -602,10 +608,21 @@ Rules:
 - Direct conversations TO someone are not gossip
 - General statements about groups are not gossip
 - Must be about a specific individual
+- NEVER consider emergency statements as gossip (even if they mention someone)
+- NEVER consider requests for help as gossip
+- NEVER consider urgent situations as gossip
 
-Common gossip patterns to look for:
+NOT GOSSIP - Emergency/Urgent Statements:
+- "Someone is in urgent need of help at the bakery"
+- "There's a fire at the church"
+- "Someone is hurt at the hospital"
+- "I need help with something urgent"
+- "People are in danger"
+- "There's trouble at the market"
+
+GOSSIP - Personal information about individuals:
 - "X is really nice/mean/rude/kind"
-- "I saw X doing Y"
+- "I saw X doing Y" (non-emergency context)
 - "X told me Z"
 - "X is good/bad at something"
 - "X has been acting strange"
@@ -621,11 +638,19 @@ Respond with JSON format:
 }
 
 Examples:
+GOSSIP:
 - "Bob is really helpful" → detected: true, subject_name: "Bob", sentiment: "positive"
 - "I think Alice has been rude lately" → detected: true, subject_name: "Alice", sentiment: "negative"
+- "Sarah and Tom were arguing yesterday" → detected: true, subject_name: "Sarah", sentiment: "negative"
+
+NOT GOSSIP:
 - "Hello there!" → detected: false
 - "How are you?" → detected: false
-- "The weather is nice" → detected: false`;
+- "The weather is nice" → detected: false
+- "Someone is in urgent need of help in the bakery" → detected: false
+- "There's a fire at the church" → detected: false
+- "People are in danger at the market" → detected: false
+- "I need help with something urgent" → detected: false`;
 
       const completion = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -655,8 +680,23 @@ Examples:
       const analysis = JSON.parse(cleanedResponse.trim());
       
       // Map subject name to character ID (for now, use simple mapping)
-      const subjectCharacterId = analysis.subject_name ? 
-        this.mapCharacterNameToId(analysis.subject_name) : null;
+      // Only return valid UUIDs to prevent database errors
+      let subjectCharacterId = null;
+      if (analysis.subject_name) {
+        const mappedId = this.mapCharacterNameToId(analysis.subject_name);
+        // Only use the ID if it's a valid UUID format, otherwise skip gossip logging
+        if (mappedId && this.isValidUUID(mappedId)) {
+          subjectCharacterId = mappedId;
+        } else {
+          console.log(`⚠️ [GOSSIP] Skipping gossip - subject "${analysis.subject_name}" doesn't map to valid character ID`);
+          return {
+            detected: false,
+            subject_character_id: null,
+            sentiment: 'neutral',
+            confidence: 0
+          };
+        }
+      }
       
       return {
         detected: analysis.detected || false,
@@ -768,6 +808,49 @@ Examples:
     } catch (error) {
       console.error('Error processing gossip reputation impact:', error);
     }
+  }
+
+  /**
+   * Detect if a player message is an emergency statement
+   */
+  private async isEmergencyStatement(playerMessage: string): Promise<boolean> {
+    const emergencyKeywords = [
+      'help', 'emergency', 'urgent', 'fire', 'danger', 'trouble', 'injured', 
+      'hurt', 'attack', 'emergency', 'crisis', 'accident', 'breaking', 
+      'steal', 'thief', 'robber', 'crime', 'medical', 'bleeding', 'unconscious',
+      'need help', 'in trouble', 'something wrong', 'immediate', 'right now',
+      'someone is', 'people are', 'there is', 'there are'
+    ];
+
+    const messageLower = playerMessage.toLowerCase();
+    
+    // Check for emergency keywords
+    const hasEmergencyKeywords = emergencyKeywords.some(keyword => 
+      messageLower.includes(keyword)
+    );
+    
+    // Check for urgent sentence patterns
+    const urgentPatterns = [
+      /someone (is|needs|requires).*(help|assistance|medical|hurt|injured|in trouble)/i,
+      /(fire|emergency|danger|trouble|problem).*(at|in|near) (the )?\w+/i,
+      /(urgent|immediate|right now|quickly|hurry|fast)/i,
+      /there (is|are).*(problem|issue|trouble|emergency|fire|danger)/i,
+      /(people are|someone is).*(hurt|injured|in danger|in trouble)/i
+    ];
+    
+    const hasUrgentPattern = urgentPatterns.some(pattern => 
+      pattern.test(playerMessage)
+    );
+    
+    return hasEmergencyKeywords || hasUrgentPattern;
+  }
+
+  /**
+   * Validate UUID format
+   */
+  private isValidUUID(str: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
   }
 
   /**

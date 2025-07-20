@@ -1,0 +1,16 @@
+{
+  "name": "heartwood-rivals-conversation-debug",
+  "version": "1.0.0",
+  "description": "Debug tools for testing NPC conversations in Heartwood Rivals",
+  "main": "test_conversation_debug.js",
+  "scripts": {
+    "debug-conversations": "node test_conversation_debug.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "type": "module"
+} 

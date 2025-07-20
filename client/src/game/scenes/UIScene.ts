@@ -459,12 +459,16 @@ export class UIScene extends Scene {
             ]);
         }
         
-        // Update indicator text with current round info
+        // Update indicator text with current state info
         if (this.minimizedIndicatorText) {
-            let displayText = 'Speed Dating';
-            if (data.matchActive && data.currentRound && data.totalRounds) {
+            let displayText = data.displayText || 'Speed Dating';
+            
+            if (data.showingResults) {
+                displayText = 'Speed Dating Results\n(Click to view)';
+            } else if (data.matchActive && data.currentRound && data.totalRounds) {
                 displayText = `Speed Dating\nRound ${data.currentRound}/${data.totalRounds}`;
             }
+            
             this.minimizedIndicatorText.setText(displayText);
         }
         
