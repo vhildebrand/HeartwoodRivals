@@ -58,6 +58,22 @@ export class UIScene extends Scene {
     private speedDatingButtonText: Phaser.GameObjects.Text | null = null;
     private playerCountText: Phaser.GameObjects.Text | null = null;
     private currentPlayerCount: number = 0;
+    
+    // Skills UI
+    private skillsPanel: Phaser.GameObjects.Container | null = null;
+    private skillsPanelBackground: Phaser.GameObjects.Rectangle | null = null;
+    private totalLevelText: Phaser.GameObjects.Text | null = null;
+    private skillBars: Map<string, {
+        container: Phaser.GameObjects.Container,
+        levelText: Phaser.GameObjects.Text,
+        progressBackground: Phaser.GameObjects.Rectangle,
+        progressFill: Phaser.GameObjects.Rectangle,
+        nameText: Phaser.GameObjects.Text,
+        progressInfoText: Phaser.GameObjects.Text,
+        levelUpInfoText: Phaser.GameObjects.Text,
+        skillIcon: Phaser.GameObjects.Rectangle
+    }> = new Map();
+    private skillsPanelVisible: boolean = false;
 
     constructor() {
         super("UIScene");
@@ -87,6 +103,9 @@ export class UIScene extends Scene {
         
         // Create speed dating manual trigger UI
         this.createSpeedDatingTriggerUI();
+        
+        // Create skills panel
+        this.createSkillsPanel();
         
         // Set up event listeners
         this.setupEventListeners();
@@ -224,6 +243,345 @@ export class UIScene extends Scene {
         console.log("💕 [UI] Speed dating manual trigger UI created");
     }
 
+    private createSkillsPanel() {
+        console.log("🏆 [UI] Creating character panel");
+        
+        // Create skills panel container (right side of screen, larger)
+        this.skillsPanel = this.add.container(this.cameras.main.width - 320, 120);
+        
+        // Background (larger to accommodate more info)
+        this.skillsPanelBackground = this.add.rectangle(0, 0, 310, 400, 0x000000, 0.9);
+        this.skillsPanelBackground.setStrokeStyle(3, 0xFFD700, 1);
+        this.skillsPanelBackground.setOrigin(0, 0);
+        
+        // Title
+        const titleText = this.add.text(15, 15, 'Character Skills', {
+            fontSize: '20px',
+            color: '#FFD700',
+            fontStyle: 'bold'
+        });
+        
+        // Subtitle
+        const subtitleText = this.add.text(15, 40, 'Visit locations and press F to train!', {
+            fontSize: '11px',
+            color: '#CCCCCC'
+        });
+
+        // Total level display
+        this.totalLevelText = this.add.text(15, 55, 'Total Level: 7', {
+            fontSize: '12px',
+            color: '#FFAA00',
+            fontStyle: 'bold'
+        });
+        
+        // Close button (X in top right)
+        const closeButton = this.add.text(280, 10, '✕', {
+            fontSize: '16px',
+            color: '#FF4444',
+            fontStyle: 'bold'
+        }).setInteractive();
+        
+        closeButton.on('pointerdown', () => {
+            this.toggleSkillsPanel();
+        });
+        
+        closeButton.on('pointerover', () => {
+            closeButton.setColor('#FF6666');
+            closeButton.setScale(1.2);
+        });
+        
+        closeButton.on('pointerout', () => {
+            closeButton.setColor('#FF4444');
+            closeButton.setScale(1.0);
+        });
+        
+        // Add elements to container
+        this.skillsPanel.add([this.skillsPanelBackground, titleText, subtitleText, this.totalLevelText, closeButton]);
+        
+        // Initially hide the panel
+        this.skillsPanel.setVisible(false);
+        this.skillsPanel.setDepth(600); // Above other UI but below speed dating
+        
+        console.log("🏆 [UI] Character panel created (hidden by default)");
+    }
+
+    private toggleSkillsPanel() {
+        this.skillsPanelVisible = !this.skillsPanelVisible;
+        
+        if (this.skillsPanel) {
+            this.skillsPanel.setVisible(this.skillsPanelVisible);
+            
+            // Request current skill data when opening panel
+            if (this.skillsPanelVisible) {
+                console.log(`🏆 [UI] Opening character panel, skill bars available: ${this.skillBars.size}`);
+                this.requestSkillDataUpdate();
+            }
+        }
+        
+        console.log(`🏆 [UI] Character panel ${this.skillsPanelVisible ? 'shown' : 'hidden'}`);
+    }
+
+    private requestSkillDataUpdate() {
+        console.log(`🏆 [UI] Requesting skill data update from server`);
+        // Request current skill data from server via GameScene
+        const gameScene = this.scene.get('GameScene') as any;
+        if (gameScene && gameScene.room) {
+            gameScene.room.send('request_skill_data', {});
+        } else {
+            console.warn(`🏆 [UI] Cannot request skill data - no server connection`);
+        }
+    }
+
+    private initializeSkillBars(skillNames: string[]) {
+        console.log(`🏆 [UI] ===== INITIALIZE SKILL BARS CALLED =====`);
+        console.log(`🏆 [UI] Skills panel exists: ${this.skillsPanel ? 'YES' : 'NO'}`);
+        console.log(`🏆 [UI] Skills panel visible: ${this.skillsPanel ? this.skillsPanel.visible : 'N/A'}`);
+        
+        if (!this.skillsPanel) {
+            console.error(`🏆 [UI] Cannot initialize skill bars - skills panel not found`);
+            console.error(`🏆 [UI] Creating skills panel now...`);
+            this.createSkillsPanel(); // Create the panel if it doesn't exist
+            
+            if (!this.skillsPanel) {
+                console.error(`🏆 [UI] Failed to create skills panel - aborting skill bar creation`);
+                return;
+            }
+        }
+        
+        console.log(`🏆 [UI] Initializing skill bars for: [${skillNames.join(', ')}]`);
+        console.log(`🏆 [UI] Number of skills to create bars for: ${skillNames.length}`);
+        
+        // Clear existing skill bars
+        this.skillBars.forEach(skillBar => {
+            skillBar.container.destroy();
+        });
+        this.skillBars.clear();
+        console.log(`🏆 [UI] Cleared existing skill bars`);
+        
+        if (skillNames.length === 0) {
+            console.warn(`🏆 [UI] No skills provided to create bars for!`);
+            return;
+        }
+        
+        // Create skill bars for each skill
+        skillNames.forEach((skillName, index) => {
+            const yOffset = 85 + (index * 45); // More space for additional info (accounting for total level display)
+            
+            // Container for this skill bar
+            const skillContainer = this.add.container(15, yOffset);
+            
+            // Skill icon/color indicator
+            const skillIcon = this.add.rectangle(-5, 5, 8, 20, this.getSkillColor(skillName));
+            
+            // Skill name
+            const nameText = this.add.text(10, 0, skillName, {
+                fontSize: '14px',
+                color: '#FFFFFF',
+                fontStyle: 'bold'
+            });
+            
+            // Level text
+            const levelText = this.add.text(10, 18, 'Level 1', {
+                fontSize: '11px',
+                color: '#FFD700'
+            });
+            
+            // Progress info text (XP needed)
+            const progressInfoText = this.add.text(150, 18, '0/100 XP', {
+                fontSize: '10px',
+                color: '#CCCCCC'
+            });
+            
+            // Level up info text
+            const levelUpInfoText = this.add.text(220, 18, '(100 XP to next)', {
+                fontSize: '9px',
+                color: '#AAAAAA'
+            });
+            
+            // Progress bar background
+            const progressBackground = this.add.rectangle(10, 32, 270, 6, 0x333333);
+            progressBackground.setOrigin(0, 0.5);
+            
+            // Progress bar fill
+            const progressFill = this.add.rectangle(10, 32, 0, 6, this.getSkillColor(skillName));
+            progressFill.setOrigin(0, 0.5);
+            
+            // Add to skill container
+            skillContainer.add([
+                skillIcon,
+                nameText, 
+                levelText, 
+                progressInfoText,
+                levelUpInfoText,
+                progressBackground, 
+                progressFill
+            ]);
+            
+            // Add to main skills panel
+            this.skillsPanel!.add(skillContainer);
+            
+            // Store references (extended)
+            this.skillBars.set(skillName, {
+                container: skillContainer,
+                levelText: levelText,
+                progressBackground: progressBackground,
+                progressFill: progressFill,
+                nameText: nameText,
+                progressInfoText: progressInfoText,
+                levelUpInfoText: levelUpInfoText,
+                skillIcon: skillIcon
+            });
+            
+            console.log(`🏆 [UI] Created and stored skill bar for: "${skillName}"`);
+        });
+        
+        console.log(`🏆 [UI] Created ${skillNames.length} detailed skill bars`);
+        console.log(`🏆 [UI] Skill bars stored:`, Array.from(this.skillBars.keys()));
+    }
+
+    private getSkillColor(skillName: string): number {
+        // Return different colors for different skills
+        const colors = {
+            'Farming': 0x00FF00,
+            'Fitness': 0xFF4444,
+            'Crafting': 0xFFAA00,
+            'Fishing': 0x00AAFF,
+            'Cooking': 0xFF6600,
+            'Learning': 0x9900FF,
+            'Trading': 0xFFD700
+        };
+        return colors[skillName as keyof typeof colors] || 0xFFFFFF;
+    }
+
+    private updateSkillBar(skillName: string, level: number, progress: number, currentExperience?: number, experienceToNext?: number, experienceGained?: number) {
+        const skillBar = this.skillBars.get(skillName);
+        if (!skillBar) {
+            console.warn(`🏆 [UI] Skill bar not found for ${skillName}`);
+            return;
+        }
+        
+        console.log(`🏆 [UI] Updating visual elements for ${skillName}: Level ${level}, Progress ${Math.floor(progress * 100)}%`);
+        
+        // Update level text
+        skillBar.levelText.setText(`Level ${level}`);
+        
+        // Update progress bar (progress should be 0-1)
+        const progressWidth = Math.max(0, Math.min(270, progress * 270));
+        skillBar.progressFill.setDisplaySize(progressWidth, 6);
+        
+        // Update progress info text
+        if (currentExperience !== undefined && experienceToNext !== undefined) {
+            const currentXPText = `${Math.floor(currentExperience)}/${Math.floor(currentExperience + experienceToNext)} XP`;
+            const nextLevelText = `(${Math.floor(experienceToNext)} XP to next)`;
+            skillBar.progressInfoText.setText(currentXPText);
+            skillBar.levelUpInfoText.setText(nextLevelText);
+            console.log(`🏆 [UI] Updated ${skillName} XP text: ${currentXPText}, ${nextLevelText}`);
+        } else {
+            // Fallback if detailed XP info not available
+            const progressPercent = Math.floor(progress * 100);
+            skillBar.progressInfoText.setText(`${progressPercent}%`);
+            skillBar.levelUpInfoText.setText(`(${100 - progressPercent}% to next)`);
+            console.log(`🏆 [UI] Updated ${skillName} progress text (fallback): ${progressPercent}%`);
+        }
+        
+        // Show experience gain feedback if provided
+        if (experienceGained !== undefined && experienceGained > 0) {
+            this.showExperienceGainFeedback(skillName, experienceGained);
+        }
+    }
+
+    private showExperienceGainFeedback(skillName: string, experienceGained: number) {
+        const skillBar = this.skillBars.get(skillName);
+        if (!skillBar || !this.skillsPanel) return;
+        
+        // Get the skill bar's world position
+        const skillBarWorldPos = skillBar.container.getWorldTransformMatrix();
+        const containerWorldPos = this.skillsPanel.getWorldTransformMatrix();
+        
+        // Create temporary XP text positioned relative to the skill bar
+        const xpText = this.add.text(
+            280, 
+            skillBar.container.y + 5,
+            `+${experienceGained} XP`,
+            {
+                fontSize: '11px',
+                color: '#00FF00',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 1
+            }
+        );
+        
+        // Add to skills panel temporarily
+        this.skillsPanel.add(xpText);
+        
+        // Animate and remove
+        this.tweens.add({
+            targets: xpText,
+            y: xpText.y - 25,
+            alpha: 0,
+            duration: 1800,
+            ease: 'Power2',
+            onComplete: () => {
+                xpText.destroy();
+            }
+        });
+    }
+
+    private updateTotalLevel(totalLevel: number) {
+        if (this.totalLevelText) {
+            this.totalLevelText.setText(`Total Level: ${totalLevel}`);
+        }
+    }
+
+    private handleSkillProgress(event: any) {
+        const { skillName, newLevel, experienceGained, progress, currentExperience, experienceToNext } = event;
+        
+        console.log(`🏆 [UI] Received skill progress event for: "${skillName}"`);
+        console.log(`🏆 [UI] Available skill bars: [${Array.from(this.skillBars.keys()).join(', ')}]`);
+        console.log(`🏆 [UI] Skill bar exists for "${skillName}": ${this.skillBars.has(skillName)}`);
+        console.log(`🏆 [UI] Updating skill bar for ${skillName}: Level ${newLevel}, Progress ${Math.floor(progress * 100)}%, XP: ${currentExperience}/${currentExperience + experienceToNext}`);
+        
+        this.updateSkillBar(skillName, newLevel, progress, currentExperience, experienceToNext, experienceGained);
+        
+        if (event.leveledUp) {
+            console.log(`🎉 [UI] ${skillName} leveled up to ${newLevel}!`);
+            this.showSkillLevelUpNotification(skillName, newLevel);
+        }
+    }
+
+    private showSkillLevelUpNotification(skillName: string, newLevel: number) {
+        // Create a temporary level up notification
+        const notification = this.add.text(
+            this.cameras.main.centerX,
+            100,
+            `🎉 ${skillName} Level ${newLevel}!`,
+            {
+                fontSize: '20px',
+                color: '#FFD700',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 3
+            }
+        ).setOrigin(0.5);
+        
+        notification.setDepth(2000);
+        notification.setScrollFactor(0); // Fixed to camera
+        
+        // Animate the notification
+        this.tweens.add({
+            targets: notification,
+            y: 60,
+            alpha: 0,
+            scale: 1.2,
+            duration: 3000,
+            ease: 'Power2',
+            onComplete: () => {
+                notification.destroy();
+            }
+        });
+    }
+
     private triggerSpeedDating() {
         console.log("🎯 [UI] Player triggered speed dating manually");
         console.log(`📊 [UI] Current player count: ${this.currentPlayerCount}`);
@@ -307,6 +665,37 @@ export class UIScene extends Scene {
         // Listen for player count updates from GameScene
         this.game.events.on('playerCountUpdate', (playerCount: number) => {
             this.updatePlayerCount(playerCount);
+        });
+
+        // Listen for skill progress events from GameScene
+        this.game.events.on('skillProgress', (event: any) => {
+            console.log(`🏆 [UI] Skill progress: ${event.skillName} +${event.experienceGained} XP`);
+            this.handleSkillProgress(event);
+        });
+
+        // Listen for skill system initialization (to create skill bars)
+        this.game.events.on('skillSystemInitialized', (skillNames: string[]) => {
+            console.log(`🏆 [UI] ===== SKILL SYSTEM INITIALIZED EVENT RECEIVED =====`);
+            console.log(`🏆 [UI] Received skill names: ${skillNames ? skillNames.join(', ') : 'NONE'}`);
+            console.log(`🏆 [UI] Skill names count: ${skillNames ? skillNames.length : 0}`);
+            
+            if (skillNames && skillNames.length > 0) {
+                console.log(`🏆 [UI] Creating skill bars for ${skillNames.length} skills`);
+                this.initializeSkillBars(skillNames);
+                
+                // Request initial skill data right after creating the bars
+                setTimeout(() => {
+                    console.log(`🏆 [UI] Requesting initial skill data after skill bars created`);
+                    this.requestSkillDataUpdate();
+                }, 200);
+            } else {
+                console.warn(`🏆 [UI] No skill names provided - cannot create skill bars`);
+            }
+        });
+
+        // Listen for total level updates
+        this.game.events.on('totalLevelUpdate', (totalLevel: number) => {
+            this.updateTotalLevel(totalLevel);
         });
     }
 
@@ -579,7 +968,7 @@ export class UIScene extends Scene {
         });
 
         // Add debug panel toggle button
-        const debugToggleButton = this.add.text(this.cameras.main.width - 120, 10, "Debug Panel", {
+        const debugToggleButton = this.add.text(this.cameras.main.width - 250, 10, "Debug Panel", {
             fontSize: "12px",
             color: "#FFFFFF",
             backgroundColor: "rgba(0, 0, 255, 0.7)",
@@ -588,6 +977,27 @@ export class UIScene extends Scene {
 
         debugToggleButton.on('pointerdown', () => {
             this.toggleDebugPanel();
+        });
+
+        // Add character panel toggle button
+        const characterToggleButton = this.add.text(this.cameras.main.width - 120, 10, "Character", {
+            fontSize: "12px",
+            color: "#FFD700",
+            backgroundColor: "rgba(0, 0, 0, 0.7)",
+            padding: { x: 6, y: 2 }
+        }).setInteractive();
+
+        characterToggleButton.on('pointerdown', () => {
+            this.toggleSkillsPanel();
+        });
+
+        // Hover effects for character button
+        characterToggleButton.on('pointerover', () => {
+            characterToggleButton.setBackgroundColor('rgba(255, 215, 0, 0.3)');
+        });
+
+        characterToggleButton.on('pointerout', () => {
+            characterToggleButton.setBackgroundColor('rgba(0, 0, 0, 0.7)');
         });
     }
 

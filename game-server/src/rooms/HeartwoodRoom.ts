@@ -1,5 +1,5 @@
 import { Room, Client } from "colyseus";
-import { GameState, Player } from "./schema";
+import { GameState, Player, SkillData } from "./schema";
 import { MapManager } from "../maps/MapManager";
 import { createClient } from 'redis';
 import { Pool } from 'pg';
@@ -12,6 +12,7 @@ import { AgentMovementSystem } from "../systems/AgentMovementSystem";
 import { PlanningSystem } from "../systems/PlanningSystem";
 import { ThoughtSystem } from "../systems/ThoughtSystem";
 import { SpeedDatingManager } from "../systems/SpeedDatingManager";
+import { SkillManager, SkillProgressEvent } from "../systems/SkillManager";
 
 // Database pool interface
 interface DatabasePool {
@@ -53,6 +54,7 @@ export class HeartwoodRoom extends Room<GameState> {
     private planningSystem!: PlanningSystem;
     private thoughtSystem!: ThoughtSystem;
     private speedDatingManager!: SpeedDatingManager;
+    private skillManager!: SkillManager;
     
     // Chat system
     private chatHistory: Array<{
@@ -130,6 +132,9 @@ export class HeartwoodRoom extends Room<GameState> {
         player.currentActivity = "No activity set";
         player.lastUpdate = Date.now();
         
+        // Initialize player skills
+        this.initializePlayerSkills(player);
+        
         // Add player to state
         this.state.players.set(client.sessionId, player);
         
@@ -164,6 +169,9 @@ export class HeartwoodRoom extends Room<GameState> {
         
         // Initialize agent systems
         this.initializeAgentSystems();
+        
+        // Initialize skill manager
+        this.skillManager = new SkillManager();
         
         // Register unified input message handler
         this.onMessage("player_input", (client: Client, message: { directions: string[], type: string, timestamp: number }) => {
@@ -238,6 +246,15 @@ export class HeartwoodRoom extends Room<GameState> {
         // Chat history request handler
         this.onMessage("request_chat_history", (client: Client) => {
             this.sendChatHistory(client);
+        });
+
+        // Skill system message handlers
+        this.onMessage("activity_complete", (client: Client, message: { activityName: string, skillName: string, experienceGained: number, location: string }) => {
+            this.handleActivityComplete(client, message);
+        });
+
+        this.onMessage("request_skill_data", (client: Client, message: any) => {
+            this.handleSkillDataRequest(client);
         });
         
         // Start the game loop
@@ -1884,6 +1901,140 @@ Respond with ONLY your dialogue (no quotes or attribution needed):`;
         } catch (error) {
             console.error('❌ [NPC-NPC] Error storing conversation memory:', error);
         }
+    }
+
+    // ======= SKILL SYSTEM METHODS =======
+
+    /**
+     * Initialize skills for a new player
+     */
+    private initializePlayerSkills(player: Player) {
+        console.log(`🏆 [SERVER] Initializing skills for player: ${player.name}`);
+        
+        const playerSkills = this.skillManager.initializePlayerSkills(player.name);
+        
+        // Sync skills to player schema
+        playerSkills.forEach((skillData, skillName) => {
+            const schemaSkill = new SkillData();
+            schemaSkill.name = skillData.name;
+            schemaSkill.level = skillData.level;
+            schemaSkill.experience = skillData.experience;
+            schemaSkill.experienceToNext = skillData.experienceToNext;
+            
+            player.skills.set(skillName, schemaSkill);
+        });
+        
+        player.totalLevel = this.skillManager.getTotalLevel(player.name);
+        
+        console.log(`🏆 [SERVER] Player ${player.name} initialized with ${playerSkills.size} skills, total level ${player.totalLevel}`);
+    }
+
+    /**
+     * Handle activity completion and skill experience gain
+     */
+    private handleActivityComplete(client: Client, message: { activityName: string, skillName: string, experienceGained: number, location: string }) {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) {
+            console.warn(`🏆 [SERVER] Player not found for activity completion: ${client.sessionId}`);
+            return;
+        }
+
+        console.log(`🏆 [SERVER] ${player.name} completed activity: ${message.activityName} (${message.skillName} +${message.experienceGained} XP)`);
+
+        // Add experience to skill
+        const progressEvent = this.skillManager.addExperience(player.name, message.skillName, message.experienceGained);
+        
+        if (progressEvent) {
+            // Update player schema with new skill data
+            this.updatePlayerSkillInSchema(player, message.skillName, progressEvent);
+            
+            // Send progress event to client
+            client.send("skill_progress", progressEvent);
+            
+            // Log activity and skill progress
+            this.logPlayerActivity(player.name, `Completed ${message.activityName}`, message.location);
+            
+            console.log(`🏆 [SERVER] Sent skill progress event to ${player.name}: ${progressEvent.skillName} Level ${progressEvent.newLevel}`);
+        }
+    }
+
+    /**
+     * Handle skill data request from client
+     */
+    private handleSkillDataRequest(client: Client) {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) {
+            console.warn(`🏆 [SERVER] Player not found for skill data request: ${client.sessionId}`);
+            return;
+        }
+
+        console.log(`🏆 [SERVER] Sending all skill data to ${player.name}`);
+
+        const playerSkills = this.skillManager.getPlayerSkills(player.name);
+        if (playerSkills) {
+            // Send each skill's data
+            playerSkills.forEach((skillData, skillName) => {
+                const progressEvent: SkillProgressEvent = {
+                    skillName: skillName,
+                    experienceGained: 0, // No XP gained, just data sync
+                    newLevel: skillData.level,
+                    leveledUp: false,
+                    currentExperience: skillData.experience,
+                    experienceToNext: skillData.experienceToNext,
+                    progress: this.calculateSkillProgress(skillData)
+                };
+
+                client.send("skill_progress", progressEvent);
+            });
+
+            // Send total level
+            const totalLevel = this.skillManager.getTotalLevel(player.name);
+            client.send("total_level_update", { totalLevel });
+            
+            console.log(`🏆 [SERVER] Sent ${playerSkills.size} skills and total level ${totalLevel} to ${player.name}`);
+        }
+    }
+
+    /**
+     * Update player skill in the schema
+     */
+    private updatePlayerSkillInSchema(player: Player, skillName: string, progressEvent: SkillProgressEvent) {
+        const schemaSkill = player.skills.get(skillName);
+        if (schemaSkill) {
+            schemaSkill.level = progressEvent.newLevel;
+            schemaSkill.experience = progressEvent.currentExperience;
+            schemaSkill.experienceToNext = progressEvent.experienceToNext;
+        }
+        
+        // Update total level
+        player.totalLevel = this.skillManager.getTotalLevel(player.name);
+    }
+
+    /**
+     * Calculate skill progress (0-1) for a skill
+     */
+    private calculateSkillProgress(skill: SkillData): number {
+        const currentLevelXp = this.calculateExperienceForLevel(skill.level + 1);
+        const previousLevelXp = this.calculateExperienceForLevel(skill.level);
+        const neededXp = currentLevelXp - previousLevelXp;
+        
+        if (neededXp === 0) return 1;
+        return skill.experience / neededXp;
+    }
+
+    /**
+     * Calculate experience required for a given level
+     */
+    private calculateExperienceForLevel(level: number): number {
+        if (level <= 1) return 0;
+        return Math.floor(100 * Math.pow(1.5, level - 2));
+    }
+
+    /**
+     * Log player activity for debugging
+     */
+    private logPlayerActivity(playerName: string, activity: string, location: string) {
+        console.log(`📊 [ACTIVITY] ${playerName}: ${activity} at ${location}`);
     }
 
     onDispose() {

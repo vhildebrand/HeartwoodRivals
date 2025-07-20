@@ -4,6 +4,7 @@ import { InputManager } from "../input/InputManager";
 import { PlayerController } from "../controllers/PlayerController";
 import { MapManager } from "../maps/MapManager";
 import { AudioManager } from "../utils/AudioManager";
+import { LocationInteractionSystem } from "../systems/LocationInteractionSystem";
 import AppConfig from "../../config";
 
 export class GameScene extends Scene {
@@ -55,6 +56,14 @@ export class GameScene extends Scene {
     private lastDebugUpdateTime: number = 0;
     private debugUpdateInterval: number = 2000; // Update every 2 seconds
     private previousNPCData: Map<string, any> = new Map();
+    
+    // Location interaction system
+    private locationInteractionSystem: LocationInteractionSystem;
+    private currentLocation: string | null = null;
+    private isPerformingActivity: boolean = false;
+    private activityTimer: Phaser.Time.TimerEvent | null = null;
+    private activityIndicator: Phaser.GameObjects.Container | null = null;
+    private locationInteractionIndicator: Phaser.GameObjects.Text | null = null;
 
     constructor() {
         super("GameScene");
@@ -67,6 +76,9 @@ export class GameScene extends Scene {
         console.log("🌍 Starting world creation...");
         this.createWorld();
         console.log("🌍 World creation completed");
+        
+        // Initialize location interaction system (skills now managed by server)
+        this.initializeLocationInteractionSystem();
         
         // Initialize controllers
         this.initializeControllers();
@@ -273,6 +285,35 @@ export class GameScene extends Scene {
         console.log("Building sprites creation complete!");
     }
 
+    private initializeLocationInteractionSystem() {
+        console.log("🎯 === LOCATION INTERACTION SYSTEM INITIALIZATION ===");
+        
+        // Initialize location interaction system
+        this.locationInteractionSystem = new LocationInteractionSystem();
+        
+        // Load locations data from cache
+        const locationsData = this.cache.json.get('beacon_bay_locations');
+        if (locationsData) {
+            this.locationInteractionSystem.loadLocationsData(locationsData);
+            console.log("✅ Location interaction system initialized with locations data");
+        } else {
+            console.error("❌ Failed to load locations data for interaction system");
+        }
+        
+        // Create location interaction indicator
+        this.locationInteractionIndicator = this.add.text(0, 0, '', {
+            fontSize: '14px',
+            color: '#00FF00',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            padding: { x: 8, y: 4 }
+        });
+        this.locationInteractionIndicator.setDepth(1000);
+        this.locationInteractionIndicator.setScrollFactor(0); // Fixed to camera
+        this.locationInteractionIndicator.setVisible(false);
+        
+        console.log("🎯 Location interaction system ready!");
+    }
+
     private initializeControllers() {
         // Initialize player controller
         this.playerController = new PlayerController(this);
@@ -358,10 +399,17 @@ export class GameScene extends Scene {
             this.decreaseVolume();
         });
         
+        // Location interaction key
+        this.input.keyboard?.addKey('F').on('down', () => {
+            this.handleLocationInteraction();
+        });
+        
         console.log("GameScene: Controllers initialized");
-        console.log("🎮 Controls: WASD to move, E to interact, Q to zoom out, Z to zoom in");
+        console.log("🎮 Controls: WASD to move, E to interact with NPCs, F to interact with locations");
+        console.log("🎮 More: Q to zoom out, Z to zoom in, S to show skills panel");
         console.log("🕐 Time: 1-6 to set time, +/- to advance time, R to toggle speed");
         console.log("🎵 Audio: M to start/toggle music, Numpad +/- to adjust volume");
+        console.log("🏆 Skills: Visit different locations and press F to perform activities!");
     }
 
     private setGameTime(time: string) {
@@ -611,6 +659,256 @@ export class GameScene extends Scene {
         }
     }
 
+    private handleLocationInteraction() {
+        if (!this.myPlayerId || this.isPerformingActivity) return;
+        
+        const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
+        if (!mySprite) return;
+        
+        // Check if any other input is active
+        const uiScene = this.scene.get('UIScene') as any;
+        if (uiScene && (uiScene.speechInputActive || uiScene.activityInputActive)) {
+            console.log(`🚫 [GAME] Cannot start location activity while typing`);
+            return;
+        }
+        
+        if (uiScene && uiScene.getDialogueManager()?.isDialogueActive()) {
+            console.log(`🚫 [GAME] Cannot start location activity during dialogue`);
+            return;
+        }
+        
+        // Get current location
+        const location = this.locationInteractionSystem.getPlayerLocation(mySprite.x, mySprite.y);
+        if (!location) {
+            console.log(`🚫 [GAME] No interactable location found at current position`);
+            return;
+        }
+        
+        // Get available activities
+        const locationDef = this.locationInteractionSystem.getLocationActivities(location);
+        if (!locationDef || locationDef.activities.length === 0) {
+            console.log(`🚫 [GAME] No activities available at ${location}`);
+            return;
+        }
+        
+        // For now, just use the first activity (could expand to show a menu later)
+        const activity = locationDef.activities[0];
+        this.startActivity(activity, locationDef.name);
+    }
+
+    // Initialize skill system UI after server connection is established
+    private initializeSkillSystemUI() {
+        // Get available skills from locations for UI initialization
+        const allSkills = this.locationInteractionSystem.getAllSkills();
+        console.log(`🏆 [GAME] Available skills from locations:`, allSkills);
+        
+        // Give UIScene time to initialize, then emit skill system initialization event
+        this.time.delayedCall(500, () => {
+            console.log(`🏆 [GAME] Emitting skillSystemInitialized event with skills:`, allSkills);
+            this.game.events.emit('skillSystemInitialized', allSkills);
+            
+            // Request initial skill data from server after a brief delay
+            this.time.delayedCall(1000, () => {
+                console.log(`🏆 [GAME] Requesting initial skill data from server`);
+                this.requestSkillDataFromServer();
+            });
+        });
+    }
+
+    // Server-side skill system - request data from server
+    private requestSkillDataFromServer() {
+        if (!this.room) {
+            console.warn(`🏆 [GAME] Cannot request skill data - no room connection`);
+            return;
+        }
+        
+        console.log(`🏆 [GAME] Requesting skill data from server`);
+        this.room.send('request_skill_data', {});
+    }
+
+    private startActivity(activity: import("../systems/LocationInteractionSystem").LocationActivity, locationName: string) {
+        if (this.isPerformingActivity) return;
+        
+        console.log(`🎯 [GAME] Starting activity: ${activity.name} at ${locationName}`);
+        
+        // Set activity state
+        this.isPerformingActivity = true;
+        
+        // Block movement during activity
+        this.inputManager.setMovementBlocked(true);
+        
+        // Create activity indicator
+        this.createActivityIndicator(activity, locationName);
+        
+        // Start activity timer
+        this.activityTimer = this.time.delayedCall(activity.activityDuration, () => {
+            this.completeActivity(activity);
+        });
+        
+        // Show progress to player
+        console.log(`🎯 [GAME] Performing ${activity.name}... (${activity.activityDuration}ms)`);
+        console.log(`💡 [GAME] Press ESCAPE to cancel activity`);
+        
+        // Add escape handler for canceling activity
+        const escapeKey = this.input.keyboard?.addKey('ESC');
+        if (escapeKey) {
+            const cancelHandler = () => {
+                this.cancelActivity();
+                escapeKey.off('down', cancelHandler);
+            };
+            escapeKey.on('down', cancelHandler);
+        }
+    }
+
+    private completeActivity(activity: import("../systems/LocationInteractionSystem").LocationActivity) {
+        console.log(`✅ [GAME] Completed activity: ${activity.name}`);
+        
+        // Send activity completion to server for skill experience
+        if (this.room && this.myPlayerId) {
+            const player = this.playerController.getPlayerSprite(this.myPlayerId);
+            if (player) {
+                // Calculate tile position for location info
+                const tileX = Math.floor(player.x / 16);
+                const tileY = Math.floor(player.y / 16);
+                const location = `${tileX},${tileY}`;
+
+                const activityData = {
+                    activityName: activity.name,
+                    skillName: activity.skill,
+                    experienceGained: activity.experiencePerAction,
+                    location: location
+                };
+
+                console.log(`🏆 [GAME] Sending activity completion to server:`, activityData);
+                this.room.send('activity_complete', activityData);
+            }
+        }
+        
+        this.endActivity();
+    }
+
+    private cancelActivity() {
+        console.log(`🚫 [GAME] Activity cancelled`);
+        this.endActivity();
+    }
+
+    private endActivity() {
+        // Reset activity state
+        this.isPerformingActivity = false;
+        
+        // Unblock movement
+        this.inputManager.setMovementBlocked(false);
+        
+        // Clear activity timer
+        if (this.activityTimer) {
+            this.activityTimer.destroy();
+            this.activityTimer = null;
+        }
+        
+        // Remove activity indicator
+        this.removeActivityIndicator();
+    }
+
+    private createActivityIndicator(activity: import("../systems/LocationInteractionSystem").LocationActivity, locationName: string) {
+        if (!this.myPlayerId) return;
+        
+        const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
+        if (!mySprite) return;
+        
+        // Create container for activity indicator
+        this.activityIndicator = this.add.container(mySprite.x, mySprite.y - 60);
+        this.activityIndicator.setDepth(2000);
+        
+        // Background
+        const background = this.add.rectangle(0, 0, 200, 60, 0x000000, 0.8);
+        background.setStrokeStyle(2, 0x00FF00, 1);
+        
+        // Activity text
+        const activityText = this.add.text(0, -15, `${activity.name}`, {
+            fontSize: '14px',
+            color: '#00FF00',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+        
+        // Location text
+        const locationText = this.add.text(0, 0, `at ${locationName}`, {
+            fontSize: '10px',
+            color: '#CCCCCC'
+        }).setOrigin(0.5);
+        
+        // Progress bar background
+        const progressBg = this.add.rectangle(0, 18, 160, 8, 0x333333);
+        
+        // Progress bar fill
+        const progressFill = this.add.rectangle(-80, 18, 0, 8, 0x00FF00);
+        progressFill.setOrigin(0, 0.5);
+        
+        // Add all to container
+        this.activityIndicator.add([background, activityText, locationText, progressBg, progressFill]);
+        
+        // Animate progress bar
+        this.tweens.add({
+            targets: progressFill,
+            width: 160,
+            duration: activity.activityDuration,
+            ease: 'Linear'
+        });
+        
+        // Follow player (update position based on sprite)
+        this.updateActivityIndicatorPosition();
+    }
+
+    private removeActivityIndicator() {
+        if (this.activityIndicator) {
+            this.activityIndicator.destroy();
+            this.activityIndicator = null;
+        }
+    }
+
+    private updateActivityIndicatorPosition() {
+        if (!this.activityIndicator || !this.myPlayerId) return;
+        
+        const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
+        if (mySprite) {
+            this.activityIndicator.setPosition(mySprite.x, mySprite.y - 60);
+        }
+    }
+
+    private showLevelUpEffect(skillName: string, newLevel: number) {
+        if (!this.myPlayerId) return;
+        
+        const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
+        if (!mySprite) return;
+        
+        // Create level up text effect
+        const levelUpText = this.add.text(
+            mySprite.x, 
+            mySprite.y - 80,
+            `${skillName} Level ${newLevel}!`,
+            {
+                fontSize: '18px',
+                color: '#FFD700',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 3
+            }
+        ).setOrigin(0.5);
+        levelUpText.setDepth(3000);
+        
+        // Animate the level up effect
+        this.tweens.add({
+            targets: levelUpText,
+            y: mySprite.y - 120,
+            alpha: 0,
+            scale: 1.5,
+            duration: 2000,
+            ease: 'Power2',
+            onComplete: () => {
+                levelUpText.destroy();
+            }
+        });
+    }
+
     private getNearbyNPC(playerX: number, playerY: number): { id: string, name: string } | null {
         const interactionDistance = 32; // 2 tiles
         
@@ -797,6 +1095,9 @@ export class GameScene extends Scene {
                 this.cameraFollowingPlayer = false;
                 // Emit player ID and username for UI Scene to set up dialogue manager
                 this.game.events.emit('playerIdSet', this.myPlayerId, username);
+                
+                // Initialize skill system UI after connection is established
+                this.initializeSkillSystemUI();
             }
             
             // Set up state change handler
@@ -1057,8 +1358,14 @@ export class GameScene extends Scene {
         this.inputManager.update();
         this.playerController.update(delta);
         
-        // Update interaction indicator
+        // Update interaction indicators
         this.updateInteractionIndicator();
+        this.updateLocationInteractionIndicator();
+        
+        // Update activity indicator position if active
+        if (this.isPerformingActivity) {
+            this.updateActivityIndicatorPosition();
+        }
         
         // Occasional logging
         if (Math.random() < 0.001) {
@@ -1087,6 +1394,49 @@ export class GameScene extends Scene {
         } else {
             this.interactionIndicator?.setVisible(false);
         }
+    }
+
+    private updateLocationInteractionIndicator() {
+        if (!this.myPlayerId || !this.locationInteractionIndicator) return;
+        
+        const mySprite = this.playerController.getPlayerSprite(this.myPlayerId);
+        if (!mySprite) return;
+        
+        // Don't show location indicator if performing activity
+        if (this.isPerformingActivity) {
+            this.locationInteractionIndicator.setVisible(false);
+            return;
+        }
+        
+        // Get current location
+        const location = this.locationInteractionSystem.getPlayerLocation(mySprite.x, mySprite.y);
+        
+        if (location) {
+            const locationDef = this.locationInteractionSystem.getLocationActivities(location);
+            if (locationDef && locationDef.activities.length > 0) {
+                const activity = locationDef.activities[0];
+                
+                // Check if location has changed
+                if (this.currentLocation !== location) {
+                    this.currentLocation = location;
+                    console.log(`📍 [GAME] Entered ${locationDef.name} - Press F to ${activity.name}`);
+                }
+                
+                // Show location interaction indicator
+                this.locationInteractionIndicator.setText(`Press F to ${activity.name} (${activity.skill})`);
+                this.locationInteractionIndicator.setPosition(10, 120);
+                this.locationInteractionIndicator.setVisible(true);
+                
+                return;
+            }
+        }
+        
+        // No interactable location
+        if (this.currentLocation) {
+            this.currentLocation = null;
+            console.log(`📍 [GAME] Left interactable area`);
+        }
+        this.locationInteractionIndicator.setVisible(false);
     }
 
     private setupSpeedDatingEventListeners() {
@@ -1169,6 +1519,17 @@ export class GameScene extends Scene {
         this.room.onMessage('speed_dating_results', (data: any) => {
             console.log('💕 [GAME_SCENE] Speed dating results received:', data);
             this.game.events.emit('speed_dating_results', data);
+        });
+
+        // Skill system message listeners
+        this.room.onMessage('skill_progress', (data: any) => {
+            console.log('🏆 [GAME_SCENE] Skill progress received:', data);
+            this.game.events.emit('skillProgress', data);
+        });
+
+        this.room.onMessage('total_level_update', (data: any) => {
+            console.log('🏆 [GAME_SCENE] Total level update received:', data.totalLevel);
+            this.game.events.emit('totalLevelUpdate', data.totalLevel);
         });
         
         // Chat message handlers

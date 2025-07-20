@@ -1,5 +1,12 @@
 import { Schema, MapSchema, type } from "@colyseus/schema";
 
+export class SkillData extends Schema {
+    @type("string") name!: string;
+    @type("number") level!: number;
+    @type("number") experience!: number;
+    @type("number") experienceToNext!: number;
+}
+
 export class Player extends Schema {
     @type("string") id!: string;
     @type("string") name!: string;
@@ -11,6 +18,8 @@ export class Player extends Schema {
     @type("boolean") isMoving!: boolean;
     @type("string") currentActivity!: string;  // Current activity description
     @type("number") lastUpdate!: number;
+    @type({ map: SkillData }) skills = new MapSchema<SkillData>();
+    @type("number") totalLevel!: number;
 }
 
 export class Agent extends Schema {
