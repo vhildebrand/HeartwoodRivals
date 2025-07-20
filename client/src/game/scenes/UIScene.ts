@@ -466,8 +466,10 @@ export class UIScene extends Scene {
         skillBar.levelText.setText(`Level ${level}`);
         
         // Update progress bar (progress should be 0-1)
-        const progressWidth = Math.max(0, Math.min(270, progress * 270));
-        skillBar.progressFill.setDisplaySize(progressWidth, 6);
+        const maxWidth = 270;
+        const progressWidth = Math.max(0, Math.min(maxWidth, progress * maxWidth));
+        console.log(`🏆 [UI] Setting progress bar width for ${skillName}: ${progressWidth}px (${Math.floor(progress * 100)}%)`);
+        skillBar.progressFill.width = progressWidth;
         
         // Update progress info text
         if (currentExperience !== undefined && experienceToNext !== undefined) {

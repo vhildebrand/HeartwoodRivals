@@ -726,6 +726,24 @@ export class GameScene extends Scene {
         this.room.send('request_skill_data', {});
     }
 
+    private stopAllMovement() {
+        console.log(`🛑 [GAME] Stopping all movement for activity`);
+        
+        // Clear any pending movement inputs
+        this.pendingInputs = [];
+        
+        // Send stop command to server immediately
+        if (this.room) {
+            this.room.send('player_input', { 
+                directions: [],
+                type: 'stop',
+                timestamp: Date.now()
+            });
+        }
+        
+        console.log(`🛑 [GAME] All movement stopped`);
+    }
+
     private startActivity(activity: import("../systems/LocationInteractionSystem").LocationActivity, locationName: string) {
         if (this.isPerformingActivity) return;
         
@@ -733,6 +751,9 @@ export class GameScene extends Scene {
         
         // Set activity state
         this.isPerformingActivity = true;
+        
+        // Stop all movement immediately
+        this.stopAllMovement();
         
         // Block movement during activity
         this.inputManager.setMovementBlocked(true);
