@@ -75,6 +75,86 @@ export class PreloaderScene extends Scene {
         this.load.image('portrait_william_shipwright', 'assets/portraits/william_shipwright.png');
         console.log("Character portraits loaded!");
         
+        // Load NPC sprite sheets for movement animations
+        console.log("Loading NPC sprite sheets for movement animations...");
+        
+        // Universal LPC Spritesheet format: 13 columns x 21 rows, 64x64 pixel frames
+        // Walking animations are typically on rows 8-11 (down, left, up, right)
+        this.load.spritesheet('npc_amelia_librarian', 'assets/heartwood_spritesheets/amelia_librarian.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_captain_finn', 'assets/heartwood_spritesheets/captain_finn.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_captain_rodriguez', 'assets/heartwood_spritesheets/captain_rodriguez.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_coach_jason', 'assets/heartwood_spritesheets/coach_jason.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_dj_nova', 'assets/heartwood_spritesheets/dj_nova.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_dr_helena', 'assets/heartwood_spritesheets/dr_helena.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_elara_blacksmith', 'assets/heartwood_spritesheets/elara_blacksmith.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_father_michael', 'assets/heartwood_spritesheets/father_michael.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_isabella_baker', 'assets/heartwood_spritesheets/isabella_baker.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_judge_patricia_wells', 'assets/heartwood_spritesheets/judge_patricia_wells.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_luna_tailor', 'assets/heartwood_spritesheets/luna_tailor.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_marcus_merchant', 'assets/heartwood_spritesheets/marcus_merchant.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_maya_teacher', 'assets/heartwood_spritesheets/maya_teacher.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_mayor_henderson', 'assets/heartwood_spritesheets/mayor_henderson.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_melody_sinclair', 'assets/heartwood_spritesheets/melody_sinclair.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_officer_blake', 'assets/heartwood_spritesheets/officer_blake.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_oliver_lighthouse_keeper', 'assets/heartwood_spritesheets/oliver_lighthouse_keeper.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_professor_cornelius', 'assets/heartwood_spritesheets/professor_cornelius.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_sarah_farmer', 'assets/heartwood_spritesheets/sarah_farmer.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_sophia_apothecary', 'assets/heartwood_spritesheets/sophia_apothecary.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_sterling_blackwood', 'assets/heartwood_spritesheets/sterling_blackwood.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_thomas_tavern_keeper', 'assets/heartwood_spritesheets/thomas_tavern_keeper.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_victoria_woodworker', 'assets/heartwood_spritesheets/victoria_woodworker.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        this.load.spritesheet('npc_william_shipwright', 'assets/heartwood_spritesheets/william_shipwright.png', {
+            frameWidth: 64, frameHeight: 64, margin: 0, spacing: 0
+        });
+        
+        console.log("NPC sprite sheets loaded!");
+        
         // Auto-generated tile loading code
         console.log("Loading 183 individual tile images...");
         

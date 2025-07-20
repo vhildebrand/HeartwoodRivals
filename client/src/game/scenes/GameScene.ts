@@ -2,6 +2,7 @@ import { Scene } from "phaser";
 import { Client } from "colyseus.js";
 import { InputManager } from "../input/InputManager";
 import { PlayerController } from "../controllers/PlayerController";
+import { NPCController } from "../controllers/NPCController";
 import { MapManager } from "../maps/MapManager";
 import { AudioManager } from "../utils/AudioManager";
 import { LocationInteractionSystem } from "../systems/LocationInteractionSystem";
@@ -17,6 +18,7 @@ export class GameScene extends Scene {
     // New architecture components
     private inputManager: InputManager;
     private playerController: PlayerController;
+    private npcController: NPCController;
     
     // Fixed-rate input sampling
     private lastInputSent: number = 0;
@@ -24,15 +26,6 @@ export class GameScene extends Scene {
     private pendingInputs: string[] = [];
     
     // NPC system
-    private npcs: Map<string, { 
-        sprite: Phaser.GameObjects.Sprite, 
-        nameLabel: Phaser.GameObjects.Text, 
-        actionLabel: Phaser.GameObjects.Text,
-        dialogueBubble: Phaser.GameObjects.Container | null,
-        name: string, 
-        x: number, 
-        y: number 
-    }> = new Map();
     private interactionIndicator: Phaser.GameObjects.Text | null = null;
     private lastNpcCount: number = 0; // Track last NPC count to avoid spam logging
     
@@ -318,6 +311,10 @@ export class GameScene extends Scene {
         // Initialize player controller
         this.playerController = new PlayerController(this);
         this.playerController.createAnimations();
+        
+        // Initialize NPC controller
+        this.npcController = new NPCController(this);
+        this.npcController.createNPCAnimations();
         
         // Initialize input manager
         this.inputManager = new InputManager(this);
@@ -932,21 +929,7 @@ export class GameScene extends Scene {
 
     private getNearbyNPC(playerX: number, playerY: number): { id: string, name: string } | null {
         const interactionDistance = 32; // 2 tiles
-        
-        for (const [npcId, npcData] of this.npcs) {
-            const npcX = npcData.sprite.x;
-            const npcY = npcData.sprite.y;
-            
-            const distance = Math.sqrt(
-                Math.pow(playerX - npcX, 2) + Math.pow(playerY - npcY, 2)
-            );
-            
-            if (distance <= interactionDistance) {
-                return { id: npcId, name: npcData.name };
-            }
-        }
-        
-        return null;
+        return this.npcController.getNearbyNPC(playerX, playerY, interactionDistance);
     }
 
     private handleMove(direction: string) {
@@ -1213,56 +1196,23 @@ export class GameScene extends Scene {
     private updateAgents(agentStates: any) {
         // Update existing agents and create new ones
         agentStates.forEach((agent: any, agentId: string) => {
-            const existingAgent = this.npcs.get(agentId);
-            
-            if (existingAgent) {
-                // Update existing agent position and state
-                existingAgent.sprite.x = agent.x * 16; // Convert to pixels
-                existingAgent.sprite.y = agent.y * 16;
-                existingAgent.nameLabel.x = agent.x * 16;
-                existingAgent.nameLabel.y = agent.y * 16 - 20;
-                existingAgent.actionLabel.x = agent.x * 16;
-                existingAgent.actionLabel.y = agent.y * 16 + 20;
-                
-                // Update dialogue bubble position if exists
-                const bubble = this.activeDialogueBubbles.get(agentId);
-                if (bubble) {
-                    bubble.container.x = agent.x * 16;
-                    bubble.container.y = agent.y * 16 - 60;
-                }
-                
-                // Update depths based on new Y position to maintain proper layering
-                const newDepth = 10000 + (agent.y * 16);
-                existingAgent.sprite.setDepth(newDepth);
-                existingAgent.nameLabel.setDepth(newDepth + 5);
-                existingAgent.actionLabel.setDepth(newDepth + 5);
-                
-                // Update action label text
-                const actionText = agent.currentActivity || 'idle';
-                existingAgent.actionLabel.setText(actionText);
-                
-                // Update stored position
-                existingAgent.x = agent.x;
-                existingAgent.y = agent.y;
-            } else {
-                // Create new agent
-                this.createAgent(agentId, agent);
-            }
+            this.npcController.updateNPC(agentId, agent);
         });
         
         // Remove agents that no longer exist
-        const currentAgents = Array.from(this.npcs.keys());
-        currentAgents.forEach(agentId => {
+        const currentNPCs = Array.from(this.npcController.getAllNPCs().keys());
+        currentNPCs.forEach(agentId => {
             if (!agentStates.has(agentId)) {
-                this.removeAgent(agentId);
+                this.npcController.removeNPC(agentId);
             }
         });
         
         // Show total agents in console only when count changes
-        if (this.npcs.size !== this.lastNpcCount) {
-            this.lastNpcCount = this.npcs.size;
-            if (this.npcs.size > 0) {
-                console.log(`🤖 [CLIENT] Total NPCs active: ${this.npcs.size}`);
+        const currentNPCCount = this.npcController.getAllNPCs().size;
+        if (currentNPCCount !== this.lastNpcCount) {
+            this.lastNpcCount = currentNPCCount;
+            if (currentNPCCount > 0) {
+                console.log(`🤖 [CLIENT] Total NPCs active: ${currentNPCCount}`);
             }
         }
         
@@ -1316,61 +1266,7 @@ export class GameScene extends Scene {
         }
     }
 
-    private createAgent(agentId: string, agentData: any) {
-        const agentSprite = this.add.sprite(agentData.x * 16, agentData.y * 16, 'player');
-        agentSprite.setScale(1);
-        // Set NPC depth high enough to always be above building objects (which use obj.y)
-        // Using 10000 + Y position ensures proper sorting among NPCs while staying above buildings
-        agentSprite.setDepth(10000 + (agentData.y * 16));
-        agentSprite.setTint(0x00ff00); // Green tint to distinguish from players
-        
-        // Create name label above agent
-        const nameLabel = this.add.text(agentData.x * 16, agentData.y * 16 - 20, agentData.name, {
-            fontSize: '10px',
-            color: '#FFFFFF',
-            backgroundColor: '#000000',
-            padding: { x: 3, y: 1 }
-        });
-        nameLabel.setOrigin(0.5, 0.5);
-        nameLabel.setDepth(10000 + (agentData.y * 16) + 5);
-        
-        // Create action label below agent
-        const actionText = agentData.currentActivity || 'idle';
-        const actionLabel = this.add.text(agentData.x * 16, agentData.y * 16 + 20, actionText, {
-            fontSize: '9px',
-            color: '#FF0000', // Red text as requested
-            backgroundColor: '#000000',
-            padding: { x: 3, y: 1 }
-        });
-        actionLabel.setOrigin(0.5, 0.5);
-        actionLabel.setDepth(10000 + (agentData.y * 16) + 5);
-        
-        // Store agent data
-        this.npcs.set(agentId, {
-            sprite: agentSprite,
-            nameLabel: nameLabel,
-            actionLabel: actionLabel,
-            dialogueBubble: null,
-            name: agentData.name,
-            x: agentData.x,
-            y: agentData.y
-        });
-        
-        console.log(`Created agent: ${agentData.name} at (${agentData.x}, ${agentData.y}) - ${actionText}`);
-    }
 
-    private removeAgent(agentId: string) {
-        const agent = this.npcs.get(agentId);
-        if (agent) {
-            agent.sprite.destroy();
-            agent.nameLabel.destroy();
-            agent.actionLabel.destroy();
-            // Remove any active dialogue bubble
-            this.removeDialogueBubble(agentId);
-            this.npcs.delete(agentId);
-            console.log(`Removed agent: ${agentId}`);
-        }
-    }
 
     // Client-side prediction methods removed for stability - server-side optimizations provide sufficient performance
 
@@ -1378,6 +1274,7 @@ export class GameScene extends Scene {
         // Update all controllers
         this.inputManager.update();
         this.playerController.update(delta);
+        this.npcController.update(delta);
         
         // Update interaction indicators
         this.updateInteractionIndicator();
@@ -1404,7 +1301,7 @@ export class GameScene extends Scene {
         
         if (nearbyNpc) {
             // Show interaction indicator above the NPC
-            const npcData = this.npcs.get(nearbyNpc.id);
+            const npcData = this.npcController.getNPC(nearbyNpc.id);
             if (npcData) {
                 this.interactionIndicator?.setPosition(
                     npcData.sprite.x - 40, 
@@ -1598,55 +1495,13 @@ export class GameScene extends Scene {
         });
     }
 
-    private checkNearbyNPCs() {
-        if (!this.myPlayerId) return;
-        
-        const player = this.playerController.getPlayerSprite(this.myPlayerId);
-        if (!player) return;
-        
-        const nearbyNPCs: any[] = [];
-        const interactionRange = 100;
-        
-        this.npcs.forEach((npc, id) => {
-            const distance = Phaser.Math.Distance.Between(
-                player.x, player.y,
-                npc.sprite.x, npc.sprite.y
-            );
-            
-            if (distance <= interactionRange) {
-                nearbyNPCs.push({
-                    id: id,
-                    name: npc.name,
-                    distance: distance
-                });
-            }
-        });
-        
-        // Sort by distance
-        nearbyNPCs.sort((a, b) => a.distance - b.distance);
-        
-        // Update interaction indicator
-        if (nearbyNPCs.length > 0 && this.interactionIndicator) {
-            const closestNPC = nearbyNPCs[0];
-            const npcData = this.npcs.get(closestNPC.id);
-            
-            if (npcData) {
-                this.interactionIndicator.setPosition(
-                    npcData.sprite.x - 40, 
-                    npcData.sprite.y - 30
-                );
-                this.interactionIndicator.setVisible(true);
-            }
-        } else {
-            this.interactionIndicator?.setVisible(false);
-        }
-    }
+
 
     private handleNPCConversationInitiation(data: { npcId: string, npcName: string, topic: string, approach: string, message: string }) {
         console.log(`💬 [GAME] Handling NPC conversation initiation from ${data.npcName}`);
         
         // Show a notification or pop-up about the NPC wanting to talk
-        const npcData = this.npcs.get(data.npcId);
+        const npcData = this.npcController.getNPC(data.npcId);
         if (npcData) {
             // Create a visual indicator that the NPC wants to talk
             const conversationBubble = this.add.text(
@@ -1707,7 +1562,7 @@ export class GameScene extends Scene {
         turn: number, 
         maxTurns: number 
     }) {
-        const npcData = this.npcs.get(data.speakerId);
+        const npcData = this.npcController.getNPC(data.speakerId);
         if (!npcData) {
             console.warn(`💬 [BUBBLE] NPC ${data.speakerId} not found for dialogue bubble`);
             return;
@@ -1832,20 +1687,11 @@ export class GameScene extends Scene {
         // Clean up controllers
         this.inputManager?.destroy();
         this.playerController?.destroy();
+        this.npcController?.destroy();
         
         // Clean up building labels
         this.buildingLabels.forEach(label => label.destroy());
         this.buildingLabels = [];
-        
-        // Clean up NPCs and their name labels
-        this.npcs.forEach((npc, npcId) => {
-            npc.sprite.destroy();
-            npc.nameLabel.destroy();
-            npc.actionLabel.destroy();
-            // Clean up any active dialogue bubbles
-            this.removeDialogueBubble(npcId);
-        });
-        this.npcs.clear();
         
         // Clean up any remaining dialogue bubbles
         this.activeDialogueBubbles.forEach((bubble, npcId) => {

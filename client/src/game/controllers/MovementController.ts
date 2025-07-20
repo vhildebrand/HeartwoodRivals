@@ -30,6 +30,8 @@ export class MovementController {
 
     public setTargetPosition(x: number, y: number) {
         this.targetPosition = { x, y };
+        // Mark as moving whenever a new target is set
+        this.isMoving = true;
         this.calculateVelocity();
     }
 
@@ -65,6 +67,8 @@ export class MovementController {
         const distance = Math.sqrt(dx * dx + dy * dy);
 
         if (distance > 0.1) {
+            // We have some distance to cover, ensure the controller is in moving state
+            this.isMoving = true;
             this.velocity.x = (dx / distance) * this.config.speed;
             this.velocity.y = (dy / distance) * this.config.speed;
         } else {
