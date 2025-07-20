@@ -65,7 +65,7 @@ export class SpeedDatingManager {
   private matchIdCounter: number = 1; // Counter for generating unique match IDs
 
   // Dating-specific configuration (using real-world time, not game time)
-  private readonly DEFAULT_DATE_DURATION = 2 * 60 * 1000; // 2 minutes in real-world milliseconds
+  private readonly DEFAULT_DATE_DURATION = 1 * 60 * 1000; // 1 minute in real-world milliseconds
   private readonly COUNTDOWN_DURATION = 15 * 1000; // 15 seconds in real-world milliseconds
   private readonly VIBE_KEYWORDS = {
     positive: ['love', 'like', 'enjoy', 'fun', 'great', 'amazing', 'wonderful', 'beautiful', 'interesting', 'exciting'],
@@ -84,10 +84,19 @@ export class SpeedDatingManager {
   /**
    * Initialize a speed dating event
    */
-  async initializeEvent(eventData: Partial<SpeedDatingEvent>): Promise<void> {
+  async initializeEvent(eventData: Partial<SpeedDatingEvent>, currentPlayerCount?: number): Promise<void> {
     console.log(`🌹 [SPEED_DATING] Initializing event: ${eventData.eventName}`);
     
     try {
+      // Set maxRounds based on current player count when event is created
+      if (currentPlayerCount && currentPlayerCount > 0) {
+        this.maxRounds = currentPlayerCount;
+        console.log(`📊 [SPEED_DATING] Setting maxRounds to ${this.maxRounds} based on current player count`);
+      } else {
+        this.maxRounds = 1; // Fallback
+        console.log(`⚠️ [SPEED_DATING] Using fallback maxRounds of ${this.maxRounds}`);
+      }
+      
       // Store event data
       this.currentEvent = {
         id: eventData.id || Date.now(),
@@ -103,7 +112,7 @@ export class SpeedDatingManager {
         matches: []
       };
 
-      console.log(`✅ [SPEED_DATING] Event initialized: ${this.currentEvent.eventName}`);
+      console.log(`✅ [SPEED_DATING] Event initialized: ${this.currentEvent.eventName}, maxRounds: ${this.maxRounds}`);
       
       // Notify web API about event creation
       // await this.notifyWebAPI('event_created', {

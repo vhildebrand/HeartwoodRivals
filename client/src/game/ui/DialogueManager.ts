@@ -1,4 +1,5 @@
 import { Scene } from 'phaser';
+import AppConfig from '../../config';
 
 export class DialogueManager {
     private scene: Scene;
@@ -265,7 +266,8 @@ export class DialogueManager {
 
         try {
             // Send message to API
-            const response = await fetch('http://localhost:3000/npc/interact', {
+            const config = AppConfig.getInstance();
+            const response = await fetch(config.getApiUrl('npc/interact'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -312,7 +314,8 @@ export class DialogueManager {
         if (!this.currentJobId) return;
 
         try {
-            const response = await fetch(`http://localhost:3000/npc/conversation/${this.currentJobId}`);
+            const config = AppConfig.getInstance();
+            const response = await fetch(config.getApiUrl(`npc/conversation/${this.currentJobId}`));
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -432,7 +435,8 @@ export class DialogueManager {
             };
             
             // Send to server for post-conversation reflection
-            const response = await fetch('http://localhost:3000/npc/conversation-end', {
+            const config = AppConfig.getInstance();
+            const response = await fetch(config.getApiUrl('npc/conversation-end'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

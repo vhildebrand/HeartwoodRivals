@@ -197,7 +197,7 @@ export class LLMWorker {
     try {
       console.log(`📅 [LLM] Triggering post-conversation thoughts for ${npcId}`);
       
-      const response = await fetch('http://localhost:3000/thought/conversation-complete', {
+                      const response = await fetch(`http://localhost:${process.env.PORT || '3000'}/thought/conversation-complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

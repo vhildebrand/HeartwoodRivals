@@ -4,6 +4,7 @@ import { InputManager } from "../input/InputManager";
 import { PlayerController } from "../controllers/PlayerController";
 import { MapManager } from "../maps/MapManager";
 import { AudioManager } from "../utils/AudioManager";
+import AppConfig from "../../config";
 
 export class GameScene extends Scene {
     private client: Client;
@@ -756,7 +757,9 @@ export class GameScene extends Scene {
         console.log("=== Starting connection to Colyseus server ===");
         
         try {
-            this.client = new Client(`ws://localhost:2567`);
+            const config = AppConfig.getInstance();
+            config.logConfig(); // Log current configuration for debugging
+            this.client = new Client(config.WEBSOCKET_URL);
             
             // Get username from user or use default
             let username = localStorage.getItem('heartwoodUsername');

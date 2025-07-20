@@ -13,6 +13,12 @@ export default defineConfig({
     },
     server: {
         port: 5173,
-        host: '0.0.0.0'
+        host: '0.0.0.0',
+        hmr: {
+            host: 'localhost'  // HMR should use localhost for development
+        },
+        watch: {
+            usePolling: true   // Required for Docker file watching
+        }
     }
 });

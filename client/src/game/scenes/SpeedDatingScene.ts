@@ -44,6 +44,10 @@ export class SpeedDatingScene extends Scene {
     private matchTimer: number = 0;
     private conversationLog: string[] = [];
     
+    // Round tracking
+    private currentRound: number = 0;
+    private totalRounds: number = 0;
+    
     // New: Track vibe feedback per message
     private messageVibeData: Map<number, MessageVibeData> = new Map();
     private userMessageCount: number = 0;
@@ -60,9 +64,15 @@ export class SpeedDatingScene extends Scene {
     private inputText: Phaser.GameObjects.Text | null = null;
     private timerText: Phaser.GameObjects.Text | null = null;
     private vibeText: Phaser.GameObjects.Text | null = null;
+    private roundText: Phaser.GameObjects.Text | null = null;
     private instructionsText: Phaser.GameObjects.Text | null = null;
     private vibeBarBackground: Phaser.GameObjects.Rectangle | null = null;
     private vibeBarFill: Phaser.GameObjects.Rectangle | null = null;
+    
+    // Minimize/restore functionality
+    private minimizeButton: Phaser.GameObjects.Rectangle | null = null;
+    private minimizeButtonText: Phaser.GameObjects.Text | null = null;
+    private isMinimized: boolean = false;
     
     // New: Hover tooltip elements
     private hoverTooltip: Phaser.GameObjects.Container | null = null;
@@ -201,6 +211,29 @@ export class SpeedDatingScene extends Scene {
             }
         ).setOrigin(0.5);
 
+        // Round information with icon
+        const roundIcon = this.add.text(
+            width * 0.4, 
+            height * 0.22, 
+            '🔄', 
+            {
+                fontSize: '20px',
+                fontFamily: 'Arial'
+            }
+        ).setOrigin(0.5);
+
+        this.roundText = this.add.text(
+            width * 0.5, 
+            height * 0.22, 
+            'Round: -/-', 
+            {
+                fontSize: '20px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+
         // Vibe bar background
         this.vibeBarBackground = this.add.rectangle(
             width / 2, 
@@ -319,12 +352,37 @@ export class SpeedDatingScene extends Scene {
         this.instructionsText = this.add.text(
             width / 2, 
             height * 0.9,
-            'Press ENTER to send • Arrow keys to scroll • ESC to close results • Hover over your messages to see NPC reactions', 
+            'Press ENTER to send • Arrow keys to scroll • ESC to close results • Hover over your messages to see NPC reactions • Click [-] to minimize', 
             {
                 fontSize: '14px',
                 color: '#ff69b4',
                 fontFamily: '"Segoe UI", Arial, sans-serif',
                 fontStyle: 'italic'
+            }
+        ).setOrigin(0.5);
+
+        // Minimize button
+        this.minimizeButton = this.add.rectangle(
+            width * 0.95,
+            height * 0.12,
+            40,
+            30,
+            0x666666,
+            0.8
+        );
+        this.minimizeButton.setStrokeStyle(2, 0xffffff, 0.6);
+        this.minimizeButton.setInteractive({ useHandCursor: true });
+        this.minimizeButton.on('pointerdown', () => this.toggleMinimize());
+
+        this.minimizeButtonText = this.add.text(
+            width * 0.95,
+            height * 0.12,
+            '−',
+            {
+                fontSize: '24px',
+                color: '#ffffff',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'bold'
             }
         ).setOrigin(0.5);
 
@@ -338,6 +396,8 @@ export class SpeedDatingScene extends Scene {
             this.npcNameText,
             timerIcon,
             this.timerText,
+            roundIcon,
+            this.roundText,
             vibeIcon,
             this.vibeText,
             this.vibeBarBackground,
@@ -347,6 +407,8 @@ export class SpeedDatingScene extends Scene {
             this.inputText,
             sendButton,
             sendText,
+            this.minimizeButton,
+            this.minimizeButtonText,
             this.instructionsText
         ]);
 
@@ -844,6 +906,10 @@ export class SpeedDatingScene extends Scene {
             status: 'active'
         };
         
+        // Update round information
+        this.currentRound = data.round || 1;
+        this.totalRounds = data.totalRounds || 1;
+        
         this.matchTimer = data.duration;
         this.inputActive = true;
         
@@ -866,6 +932,11 @@ export class SpeedDatingScene extends Scene {
         if (this.npcNameText) {
             const npcName = this.getNPCDisplayName(data.npcId);
             this.npcNameText.setText(`💕 Dating: ${npcName}`);
+        }
+        
+        // Update round display
+        if (this.roundText) {
+            this.roundText.setText(`Round: ${this.currentRound}/${this.totalRounds}`);
         }
         
         // Show the dialogue interface
@@ -1795,6 +1866,45 @@ export class SpeedDatingScene extends Scene {
         setTimeout(() => {
             this.sendingMessage = false;
         }, 500);
+    }
+
+    private toggleMinimize() {
+        if (!this.dialogueContainer) return;
+        
+        this.isMinimized = !this.isMinimized;
+        
+        if (this.isMinimized) {
+            // Minimize - hide most elements but keep a small header
+            this.dialogueContainer.setVisible(false);
+            
+            // Show minimized indicator in UIScene
+            const gameScene = this.scene.get('GameScene') as any;
+            if (gameScene) {
+                this.game.events.emit('speed_dating_minimized', { 
+                    currentRound: this.currentRound, 
+                    totalRounds: this.totalRounds,
+                    matchActive: this.currentMatch !== null
+                });
+            }
+            
+            if (this.minimizeButtonText) {
+                this.minimizeButtonText.setText('□');
+            }
+            
+            console.log('💕 [SPEED_DATING] Scene minimized');
+        } else {
+            // Restore - show all elements
+            this.dialogueContainer.setVisible(true);
+            
+            // Hide minimized indicator
+            this.game.events.emit('speed_dating_restored');
+            
+            if (this.minimizeButtonText) {
+                this.minimizeButtonText.setText('−');
+            }
+            
+            console.log('💕 [SPEED_DATING] Scene restored');
+        }
     }
 
     private returnToGame() {

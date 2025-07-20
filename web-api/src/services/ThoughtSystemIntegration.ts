@@ -501,7 +501,7 @@ export class ThoughtSystemIntegration {
     
     try {
       // Use the unified thought processing endpoint
-      const response = await fetch('http://localhost:3000/thought/process', {
+              const response = await fetch(`http://localhost:${process.env.PORT || '3000'}/thought/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

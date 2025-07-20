@@ -425,7 +425,7 @@ export class AgentObservationSystem {
     try {
       console.log(`📅 [OBSERVATION] Triggering scheduling thoughts for ${observation.agent_id}: high importance observation`);
       
-      const response = await fetch('http://localhost:3000/thought/conversation-complete', {
+                  const response = await fetch(`http://localhost:${process.env.PORT || '3000'}/thought/conversation-complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

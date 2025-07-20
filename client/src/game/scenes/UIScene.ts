@@ -2,6 +2,7 @@
 import { Scene } from "phaser";
 import { DialogueManager } from "../ui/DialogueManager";
 import { ChatManager } from "../ui/ChatManager";
+import AppConfig from "../../config";
 
 export class UIScene extends Scene {
     private dialogueManager: DialogueManager | null = null;
@@ -30,6 +31,12 @@ export class UIScene extends Scene {
     private countdownText: Phaser.GameObjects.Text | null = null;
     private countdownBackground: Phaser.GameObjects.Rectangle | null = null;
     private countdownVisible: boolean = false;
+    
+    // Minimized speed dating indicator
+    private minimizedSpeedDatingIndicator: Phaser.GameObjects.Container | null = null;
+    private minimizedIndicatorBackground: Phaser.GameObjects.Rectangle | null = null;
+    private minimizedIndicatorText: Phaser.GameObjects.Text | null = null;
+    private minimizedRestoreButton: Phaser.GameObjects.Rectangle | null = null;
     
     // Player text interface
     private playerTextContainer: Phaser.GameObjects.Container | null = null;
@@ -195,13 +202,13 @@ export class UIScene extends Scene {
         
         // Hover effects
         this.speedDatingButton.on('pointerover', () => {
-            this.speedDatingButton.setFillStyle(0xff6bb3);
-            this.speedDatingButtonText.setScale(1.05);
+            this.speedDatingButton!.setFillStyle(0xff6bb3);
+            this.speedDatingButtonText!.setScale(1.05);
         });
         
         this.speedDatingButton.on('pointerout', () => {
-            this.speedDatingButton.setFillStyle(0xe24a90);
-            this.speedDatingButtonText.setScale(1.0);
+            this.speedDatingButton!.setFillStyle(0xe24a90);
+            this.speedDatingButtonText!.setScale(1.0);
         });
         
         // Add elements to container
@@ -219,29 +226,31 @@ export class UIScene extends Scene {
 
     private triggerSpeedDating() {
         console.log("🎯 [UI] Player triggered speed dating manually");
+        console.log(`📊 [UI] Current player count: ${this.currentPlayerCount}`);
         
         // Send message to game server to start speed dating
         const gameScene = this.scene.get('GameScene') as any;
         if (gameScene && gameScene.room) {
             gameScene.room.send('start_speed_dating', {
                 triggeredBy: 'player_ui',
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                currentPlayerCount: this.currentPlayerCount // Pass current player count
             });
             
-            console.log("✅ [UI] Speed dating start request sent to server");
+            console.log(`✅ [UI] Speed dating start request sent to server with ${this.currentPlayerCount} players`);
             
             // Disable button temporarily to prevent spam clicking
             if (this.speedDatingButton && this.speedDatingButtonText) {
-                this.speedDatingButton.setFillStyle(0x666666);
-                this.speedDatingButtonText.setText('Starting...');
-                this.speedDatingButton.disableInteractive();
+                this.speedDatingButton!.setFillStyle(0x666666);
+                this.speedDatingButtonText!.setText('Starting...');
+                this.speedDatingButton!.disableInteractive();
                 
                 // Re-enable after 3 seconds
                 this.time.delayedCall(3000, () => {
                     if (this.speedDatingButton && this.speedDatingButtonText) {
-                        this.speedDatingButton.setFillStyle(0xe24a90);
-                        this.speedDatingButtonText.setText('Start Speed Dating!');
-                        this.speedDatingButton.setInteractive();
+                        this.speedDatingButton!.setFillStyle(0xe24a90);
+                        this.speedDatingButtonText!.setText('Start Speed Dating!');
+                        this.speedDatingButton!.setInteractive();
                     }
                 });
             }
@@ -261,6 +270,17 @@ export class UIScene extends Scene {
         this.game.events.on('speed_dating_start', (data: any) => {
             console.log('💕 [UI] Speed dating started, hiding countdown');
             this.hideSpeedDatingCountdown();
+        });
+        
+        // Speed dating minimize/restore events
+        this.game.events.on('speed_dating_minimized', (data: any) => {
+            console.log('💕 [UI] Speed dating minimized:', data);
+            this.showMinimizedSpeedDatingIndicator(data);
+        });
+        
+        this.game.events.on('speed_dating_restored', () => {
+            console.log('💕 [UI] Speed dating restored');
+            this.hideMinimizedSpeedDatingIndicator();
         });
         
         // Existing event listeners...
@@ -362,6 +382,117 @@ export class UIScene extends Scene {
                     this.speedDatingCountdown?.setVisible(false);
                     this.speedDatingCountdown?.setAlpha(1);
                     this.countdownVisible = false;
+                }
+            });
+        }
+    }
+
+    private showMinimizedSpeedDatingIndicator(data: any) {
+        const { width, height } = this.cameras.main;
+        
+        // Create minimized indicator if it doesn't exist
+        if (!this.minimizedSpeedDatingIndicator) {
+            this.minimizedSpeedDatingIndicator = this.add.container(0, 0);
+            this.minimizedSpeedDatingIndicator.setDepth(1000);
+            
+            // Background
+            this.minimizedIndicatorBackground = this.add.rectangle(
+                width * 0.85,
+                height * 0.1,
+                200,
+                60,
+                0x1a0d1a,
+                0.9
+            );
+            this.minimizedIndicatorBackground.setStrokeStyle(2, 0xff69b4, 0.8);
+            
+            // Text
+            this.minimizedIndicatorText = this.add.text(
+                width * 0.85,
+                height * 0.1,
+                'Speed Dating',
+                {
+                    fontSize: '16px',
+                    color: '#ff69b4',
+                    fontFamily: '"Segoe UI", Arial, sans-serif',
+                    fontStyle: 'bold',
+                    align: 'center'
+                }
+            ).setOrigin(0.5);
+            
+            // Restore button
+            this.minimizedRestoreButton = this.add.rectangle(
+                width * 0.93,
+                height * 0.1,
+                30,
+                30,
+                0xff69b4,
+                0.8
+            );
+            this.minimizedRestoreButton.setStrokeStyle(2, 0xffffff);
+            this.minimizedRestoreButton.setInteractive({ useHandCursor: true });
+            this.minimizedRestoreButton.on('pointerdown', () => {
+                // Send restore event to SpeedDatingScene
+                const speedDatingScene = this.scene.get('SpeedDatingScene') as any;
+                if (speedDatingScene && speedDatingScene.toggleMinimize) {
+                    speedDatingScene.toggleMinimize();
+                }
+            });
+            
+            const restoreButtonText = this.add.text(
+                width * 0.93,
+                height * 0.1,
+                '↗',
+                {
+                    fontSize: '16px',
+                    color: '#ffffff',
+                    fontFamily: 'Arial',
+                    fontStyle: 'bold'
+                }
+            ).setOrigin(0.5);
+            
+            this.minimizedSpeedDatingIndicator.add([
+                this.minimizedIndicatorBackground,
+                this.minimizedIndicatorText,
+                this.minimizedRestoreButton,
+                restoreButtonText
+            ]);
+        }
+        
+        // Update indicator text with current round info
+        if (this.minimizedIndicatorText) {
+            let displayText = 'Speed Dating';
+            if (data.matchActive && data.currentRound && data.totalRounds) {
+                displayText = `Speed Dating\nRound ${data.currentRound}/${data.totalRounds}`;
+            }
+            this.minimizedIndicatorText.setText(displayText);
+        }
+        
+        // Show indicator
+        this.minimizedSpeedDatingIndicator.setVisible(true);
+        this.minimizedSpeedDatingIndicator.setAlpha(0);
+        
+        // Fade in animation
+        this.tweens.add({
+            targets: this.minimizedSpeedDatingIndicator,
+            alpha: 1,
+            duration: 300,
+            ease: 'Power2'
+        });
+    }
+
+    private hideMinimizedSpeedDatingIndicator() {
+        if (this.minimizedSpeedDatingIndicator && this.minimizedSpeedDatingIndicator.visible) {
+            // Fade out animation
+            this.tweens.add({
+                targets: this.minimizedSpeedDatingIndicator,
+                alpha: 0,
+                duration: 300,
+                ease: 'Power2',
+                onComplete: () => {
+                    if (this.minimizedSpeedDatingIndicator) {
+                        this.minimizedSpeedDatingIndicator.setVisible(false);
+                    }
                 }
             });
         }
@@ -983,7 +1114,8 @@ export class UIScene extends Scene {
         try {
             console.log(`📋 [UI] Generating plan for ${npcName}...`);
             
-            const response = await fetch('http://localhost:3000/npc/generate-plan', {
+            const config = AppConfig.getInstance();
+            const response = await fetch(config.getApiUrl('npc/generate-plan'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

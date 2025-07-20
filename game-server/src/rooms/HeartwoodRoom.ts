@@ -595,6 +595,7 @@ export class HeartwoodRoom extends Room<GameState> {
 
     private handleManualSpeedDatingStart(client: Client, message: any) {
         console.log(`🎯 [SPEED_DATING] Player ${client.sessionId} manually triggered speed dating start`);
+        console.log(`📊 [SPEED_DATING] Message data:`, message);
         
         // Check if player is authorized to start speed dating (for now, any player can start)
         if (!this.speedDatingManager) {
@@ -602,8 +603,12 @@ export class HeartwoodRoom extends Room<GameState> {
             return;
         }
         
+        // Extract current player count from message or calculate from current players
+        const currentPlayerCount = message.currentPlayerCount || this.state.players.size;
+        console.log(`📊 [SPEED_DATING] Using player count: ${currentPlayerCount} (from message: ${message.currentPlayerCount}, actual: ${this.state.players.size})`);
+        
         // Start the full speed dating event (initialize, register participants, then countdown)
-        this.startSpeedDatingEvent();
+        this.startSpeedDatingEvent(currentPlayerCount);
     }
 
 
@@ -825,7 +830,7 @@ export class HeartwoodRoom extends Room<GameState> {
         }
     }
 
-    private async startSpeedDatingEvent() {
+    private async startSpeedDatingEvent(currentPlayerCount?: number) {
         if (!this.speedDatingManager) {
             console.error('❌ [SPEED_DATING] SpeedDatingManager not initialized');
             return;
@@ -841,12 +846,16 @@ export class HeartwoodRoom extends Room<GameState> {
         try {
             console.log('💕 [SPEED_DATING] Starting speed dating event...');
             
-            // Create event
+            // Use provided player count or fall back to current players
+            const playerCount = currentPlayerCount || this.state.players.size;
+            console.log(`📊 [SPEED_DATING] Initializing event for ${playerCount} players`);
+            
+            // Create event with current player count
             await this.speedDatingManager.initializeEvent({
                 eventName: `Daily Romance - Day ${this.gameTime.getCurrentDay()}`,
                 location: 'town_square',
                 seasonTheme: 'Harvest Romance'
-            });
+            }, playerCount);
             
             // Register all online players
             const playerIds = Array.from(this.state.players.keys());
@@ -857,7 +866,6 @@ export class HeartwoodRoom extends Room<GameState> {
             
             // Register a selection of NPCs based on player count
             // Select exactly as many NPCs as there are players for balanced rotation
-            const playerCount = playerIds.length;
             const npcsPerEvent = Math.min(playerCount, this.agents.size); // Equal to player count
             
             // Randomly select NPCs using Fisher-Yates shuffle
