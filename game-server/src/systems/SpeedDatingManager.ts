@@ -65,7 +65,7 @@ export class SpeedDatingManager {
   private matchIdCounter: number = 1; // Counter for generating unique match IDs
 
   // Dating-specific configuration (using real-world time, not game time)
-  private readonly DEFAULT_DATE_DURATION = 1 * 60 * 1000; // 1 minute in real-world milliseconds
+  private readonly DEFAULT_DATE_DURATION = 90 * 1000; // 90 seconds in real-world milliseconds
   private readonly COUNTDOWN_DURATION = 10 * 1000; // 10 seconds in real-world milliseconds
   private readonly VIBE_KEYWORDS = {
     positive: ['love', 'like', 'enjoy', 'fun', 'great', 'amazing', 'wonderful', 'beautiful', 'interesting', 'exciting'],

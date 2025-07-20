@@ -146,16 +146,41 @@ export class SpeedDatingScene extends Scene {
         );
         headerBg.setStrokeStyle(2, 0xff69b4, 0.5);
 
+        // Character portrait area - dedicated space on the left
+        const portraitFrame = this.add.rectangle(
+            width * 0.12, // Left side of screen
+            height * 0.45, // Vertically centered in the main area
+            140,
+            180,
+            0x2d1b2d,
+            0.9
+        );
+        portraitFrame.setStrokeStyle(3, 0xff69b4, 0.8);
+
+        // Portrait label
+        const portraitLabel = this.add.text(
+            width * 0.12,
+            height * 0.56, // Below the portrait frame
+            'Your Date',
+            {
+                fontSize: '14px',
+                color: '#ff69b4',
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+                fontStyle: 'italic',
+                align: 'center'
+            }
+        ).setOrigin(0.5);
+
         // Character portrait (initially hidden)
         this.characterPortrait = this.add.image(
-            width / 2 - 150,
-            height * 0.15,
+            width * 0.12, // Centered in the portrait frame
+            height * 0.45, // Centered vertically in the main area
             'portrait_amelia_librarian' // Default portrait, will be updated
         );
         this.characterPortrait.setOrigin(0.5, 0.5);
-        this.characterPortrait.setScale(0.08); // Much smaller scale to fit properly
+        this.characterPortrait.setScale(0.12); // Larger scale now that we have dedicated space
         this.characterPortrait.setVisible(false); // Hidden initially
-        this.characterPortrait.setDepth(1001); // Above other UI elements
+        this.characterPortrait.setDepth(1002); // Above the frame
 
         // NPC name and match info with better styling
         this.npcNameText = this.add.text(
@@ -269,14 +294,14 @@ export class SpeedDatingScene extends Scene {
             1
         );
 
-        // Create chat container for scrolling
-        this.chatContainer = this.add.container(width / 2, height * 0.3);
+        // Create chat container for scrolling - adjusted for portrait space
+        this.chatContainer = this.add.container(width * 0.58, height * 0.3); // Shifted right to make room for portrait
         
-        // Chat background with better styling
+        // Chat background with better styling - narrower to accommodate portrait
         this.chatBackground = this.add.rectangle(
             0, 
             height * 0.25, // Relative to container
-            width * 0.85, 
+            width * 0.65, // Narrower width to make room for portrait
             height * 0.42,
             0x0d0d0d, 
             0.9
@@ -287,28 +312,28 @@ export class SpeedDatingScene extends Scene {
         this.chatMask = this.add.graphics();
         this.chatMask.fillStyle(0xffffff);
         this.chatMask.fillRect(
-            width * 0.075,
+            width * 0.25, // Adjusted left edge to account for portrait
             height * 0.31,
-            width * 0.85,
+            width * 0.65, // Matching the narrower chat width
             height * 0.42
         );
 
         // Chat history with better formatting
         this.chatHistory = this.add.text(
-            0, 
+            -width * 0.3, // Left-aligned within the chat container
             height * 0.05, // Start at top of chat container
             'Welcome to the Speed Dating Gauntlet!\nYour romantic journey begins soon...', 
             {
                 fontSize: '17px',
-                color: '#ffffff',
+                color: '#cccccc',
                 fontFamily: '"Segoe UI", Arial, sans-serif',
                 fontStyle: 'normal',
-                wordWrap: { width: width * 0.8 },
+                wordWrap: { width: width * 0.6 }, // Adjusted for narrower chat area
                 align: 'left',
                 lineSpacing: 10,
                 padding: { x: 15, y: 15 }
             }
-        ).setOrigin(0.5, 0);
+        ).setOrigin(0, 0); // Left-aligned origin
 
         // Apply mask to chat history for scrolling
         this.chatHistory.setMask(this.chatMask.createGeometryMask());
@@ -366,13 +391,14 @@ export class SpeedDatingScene extends Scene {
         this.instructionsText = this.add.text(
             width / 2, 
             height * 0.9,
-            'Press ENTER to send • Arrow keys to scroll • ESC to close results • Hover over your messages to see NPC reactions • Click [-] to minimize', 
+            'Press ENTER to send • Arrow keys to scroll • ESC to close results\nBlue = Your messages • Green = NPC responses • Gray = System messages\nHover over your messages to see NPC reactions • Click [-] to minimize', 
             {
                 fontSize: '14px',
                 color: '#ff69b4',
                 fontFamily: '"Segoe UI", Arial, sans-serif',
                 fontStyle: 'italic',
-                align: 'center'
+                align: 'center',
+                lineSpacing: 3
             }
         ).setOrigin(0.5);
 
@@ -408,6 +434,8 @@ export class SpeedDatingScene extends Scene {
         this.dialogueContainer.add([
             this.backgroundPanel,
             headerBg,
+            portraitFrame,
+            portraitLabel,
             this.characterPortrait,
             this.npcNameText,
             timerIcon,
@@ -1057,7 +1085,7 @@ export class SpeedDatingScene extends Scene {
             'sophia_apothecary': 'Sophia (Apothecary)',
             'sterling_blackwood': 'Sterling Blackwood',
             'thomas_tavern_keeper': 'Thomas (Tavern Keeper)',
-            'victor_woodworker': 'Victor (Woodworker)',
+            'victoria_woodworker': 'Victoria (Woodworker)',
             'william_shipwright': 'William (Shipwright)'
         };
         return npcNames[npcId] || npcId;
@@ -1810,10 +1838,18 @@ export class SpeedDatingScene extends Scene {
         
         this.conversationLog.forEach((message, index) => {
             const isUserMessage = message.startsWith('You: ');
-            const textColor = isUserMessage ? '#ffff99' : '#ffffff';
+            const isNPCMessage = message.includes(': ') && !isUserMessage && !message.startsWith('💕') && !message.startsWith('⏰') && !message.startsWith('💬') && !message.startsWith('⏱️') && !message.startsWith('💭') && !message.startsWith('⏳');
+            
+            // Color coding: User messages in blue, NPC messages in green, system messages in gray
+            let textColor = '#cccccc'; // Default system message color
+            if (isUserMessage) {
+                textColor = '#87ceeb'; // Light blue for user messages
+            } else if (isNPCMessage) {
+                textColor = '#98fb98'; // Light green for NPC messages
+            }
             
             const messageText = this.add.text(
-                0,
+                -width * 0.3, // Left-aligned within the chat container
                 yOffset,
                 message,
                 {
@@ -1821,12 +1857,12 @@ export class SpeedDatingScene extends Scene {
                     color: textColor,
                     fontFamily: '"Segoe UI", Arial, sans-serif',
                     fontStyle: 'normal',
-                    wordWrap: { width: width * 0.8 },
+                    wordWrap: { width: width * 0.6 }, // Adjusted for narrower chat area
                     align: 'left',
                     lineSpacing: 10,
                     padding: { x: 15, y: 5 }
                 }
-            ).setOrigin(0.5, 0);
+            ).setOrigin(0, 0); // Left-aligned origin
             
             // Apply mask
             if (this.chatMask) {
@@ -1841,14 +1877,20 @@ export class SpeedDatingScene extends Scene {
                     
                     messageText.on('pointerover', () => {
                         this.showVibeTooltip(messageText, vibeData);
+                        // Brighten the message on hover
+                        messageText.setColor('#b0e0e6');
+                        messageText.setAlpha(1.0); // Full opacity on hover
                     });
                     
                     messageText.on('pointerout', () => {
                         this.hideVibeTooltip();
+                        // Return to original color and transparency
+                        messageText.setColor('#87ceeb');
+                        messageText.setAlpha(0.9);
                     });
                     
-                    // Add subtle highlight for hoverable messages
-                    messageText.setTint(0xffffcc);
+                    // Add subtle styling to indicate it's hoverable
+                    messageText.setAlpha(0.9); // Slightly transparent to indicate interactivity
                 }
                 userMessageIndex++;
             }
