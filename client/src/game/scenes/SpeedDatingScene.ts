@@ -1869,41 +1869,40 @@ export class SpeedDatingScene extends Scene {
     }
 
     private toggleMinimize() {
-        if (!this.dialogueContainer) return;
-        
         this.isMinimized = !this.isMinimized;
         
         if (this.isMinimized) {
-            // Minimize - hide most elements but keep a small header
-            this.dialogueContainer.setVisible(false);
+            // Minimize - sleep the scene to completely remove it from input processing
+            this.scene.sleep();
+            
+            // Resume the GameScene so player can move around
+            this.scene.resume('GameScene');
+            
+            // Clear any active input state to prevent interference with movement
+            this.inputActive = false;
+            this.currentMessage = '';
+            this.updateInputDisplay();
             
             // Show minimized indicator in UIScene
-            const gameScene = this.scene.get('GameScene') as any;
-            if (gameScene) {
-                this.game.events.emit('speed_dating_minimized', { 
-                    currentRound: this.currentRound, 
-                    totalRounds: this.totalRounds,
-                    matchActive: this.currentMatch !== null
-                });
-            }
+            this.game.events.emit('speed_dating_minimized', { 
+                currentRound: this.currentRound, 
+                totalRounds: this.totalRounds,
+                matchActive: this.currentMatch !== null
+            });
             
-            if (this.minimizeButtonText) {
-                this.minimizeButtonText.setText('□');
-            }
-            
-            console.log('💕 [SPEED_DATING] Scene minimized');
+            console.log('💕 [SPEED_DATING] Scene minimized (sleeping) and GameScene resumed for movement');
         } else {
-            // Restore - show all elements
-            this.dialogueContainer.setVisible(true);
+            // Restore - wake the scene to bring it back into input processing
+            this.scene.wake();
+            this.scene.bringToTop();
+            
+            // Pause the GameScene again during active speed dating
+            this.scene.pause('GameScene');
             
             // Hide minimized indicator
             this.game.events.emit('speed_dating_restored');
             
-            if (this.minimizeButtonText) {
-                this.minimizeButtonText.setText('−');
-            }
-            
-            console.log('💕 [SPEED_DATING] Scene restored');
+            console.log('💕 [SPEED_DATING] Scene restored (woken up) and GameScene paused');
         }
     }
 
@@ -1915,10 +1914,15 @@ export class SpeedDatingScene extends Scene {
             console.log('🎵 [SPEED_DATING] Returned to background music on scene exit');
         }
         
+        // Hide and stop the speed dating scene
         this.scene.setVisible(false);
         this.scene.sendToBack();
+        
+        // Make sure GameScene is resumed for normal gameplay
         this.scene.resume('GameScene');
         this.scene.resume('UIScene');
+        
+        console.log('💕 [SPEED_DATING] Returned to game with GameScene resumed');
     }
 
     destroy() {
